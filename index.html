@@ -1,0 +1,558 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Planificador de Horarios</title>
+<style>
+  :root{
+    --bg: #f6f6f7;
+    --card: #ffffff;
+    --ink: #171717;
+    --muted:#6b7280;
+    --border:#e5e7eb;
+
+    /* Colores de roles */
+    --c-cocina:#ef4444;        /* rojo */
+    --c-empaque:#f97316;       /* naranja */
+    --c-sandwich:#facc15;      /* amarillo */
+    --c-lobby:#10b981;         /* verde */
+    --c-presentacion:#0ea5e9;  /* celeste */
+    --c-delivery:#6366f1;      /* índigo */
+    --c-caja:#8b5cf6;          /* violeta */
+    --c-anfitriona:#ec4899;    /* rosa */
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;background:var(--bg);color:var(--ink);font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial;
+  }
+  .wrap{max-width:1200px;margin:0 auto;padding:16px}
+  .bar{position:sticky;top:0;background:#ffffffcc;backdrop-filter:saturate(1.1) blur(6px);border-bottom:1px solid var(--border);z-index:50}
+  .bar-inner{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:10px 16px;max-width:1200px;margin:0 auto}
+  h1{margin:0;font-size:20px}
+  .btn{border:1px solid var(--ink);background:var(--ink);color:#fff;border-radius:10px;padding:8px 12px;cursor:pointer}
+  .btn.secondary{background:#fff;color:var(--ink);border-color:var(--border)}
+  .btn:disabled{opacity:.6;cursor:not-allowed}
+  .select,.input,.file{
+    border:1px solid var(--border);border-radius:10px;padding:8px 10px;background:#fff;color:var(--ink)
+  }
+  .grid{
+    display:grid;gap:16px;
+    grid-template-columns: 1fr 2fr;
+  }
+  @media (min-width:1024px){
+    .grid{grid-template-columns: 1fr 2fr;}
+  }
+  .card{background:var(--card);border:1px solid var(--border);border-radius:18px;box-shadow:0 1px 2px rgba(0,0,0,.03);overflow:hidden}
+  .card-h{padding:12px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+  .card-c{padding:14px}
+  .stack{display:flex;flex-direction:column;gap:10px}
+  .row{display:flex;gap:10px;align-items:center}
+  .chips{display:flex;gap:6px;flex-wrap:wrap}
+  .chip{font-size:12px;padding:3px 8px;border-radius:999px;border:1px solid var(--border);background:#fff}
+  .badge{font-size:11px;padding:2px 7px;border-radius:999px;color:#fff;display:inline-block}
+  .b-cocina{background:var(--c-cocina)} .b-empaque{background:var(--c-empaque)}
+  .b-sandwich{background:var(--c-sandwich);color:#111} .b-lobby{background:var(--c-lobby)}
+  .b-presentación{background:var(--c-presentacion)} .b-delivery{background:var(--c-delivery)}
+  .b-caja{background:var(--c-caja)} .b-anfitriona{background:var(--c-anfitriona)}
+
+  /* Tabla de horario */
+  .scroller{overflow:auto;border-top:1px solid var(--border)}
+  .table{min-width:1200px}
+  .thead{position:sticky;top:0;background:#fff;border-bottom:1px solid var(--border);z-index:10}
+  .rowg{display:grid}
+  .namecol{position:sticky;left:0;background:#fff;border-right:1px solid var(--border);z-index:5;padding:6px 10px;display:flex;gap:8px;align-items:center}
+  .name{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .stars{display:flex;gap:4px;align-items:center;min-width:0;flex-wrap:wrap}
+  .slot-h{font-size:10px;color:var(--muted);text-align:center;border-left:1px solid var(--border);padding:6px 0}
+  .slot{height:26px;border-left:1px solid var(--border);position:relative;cursor:crosshair;user-select:none}
+  .slot.assigned .label{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:#fff}
+  .slot.sandwich .label{color:#111} /* por el amarillo */
+  .slot:hover{outline:1px dashed #aaa;outline-offset:-3px}
+  .legend{display:flex;flex-wrap:wrap;gap:10px}
+  .legend > div{display:flex;gap:6px;align-items:center}
+  .hr{height:1px;background:var(--border);margin:8px 0}
+  .pilltab{border:1px solid var(--border);background:#fff;padding:6px 10px;border-radius:999px;cursor:pointer}
+  .pilltab.active{background:#111;border-color:#111;color:#fff}
+  .muted{color:var(--muted)}
+  .danger{color:#b91c1c}
+  .ghost{background:#fafafa}
+  .del{color:#b91c1c;border-color:#fecaca;background:#fff}
+</style>
+</head>
+<body>
+  <div class="bar">
+    <div class="bar-inner">
+      <h1>Planificador de Horarios</h1>
+      <div class="row">
+        <select id="roleFilter" class="select" title="Filtrar por rol"></select>
+        <button id="btnExport" class="btn">Exportar</button>
+        <label class="btn secondary" style="cursor:pointer;">
+          Importar<input id="fileImport" class="file" type="file" accept="application/json" style="display:none">
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="grid">
+      <!-- Empleados -->
+      <section class="card">
+        <div class="card-h"><strong>Empleados</strong></div>
+        <div class="card-c stack">
+          <div class="row">
+            <input id="inpName" class="input" placeholder="Nombre y apellido" style="flex:1">
+            <button id="btnAddEmp" class="btn">Añadir</button>
+          </div>
+
+          <div class="row">
+            <span class="muted" style="font-size:12px">Filtrar empleados por estrella:</span>
+            <select id="empFilter" class="select"></select>
+          </div>
+
+          <div id="empList" class="stack"></div>
+        </div>
+      </section>
+
+      <!-- Horarios -->
+      <section class="card">
+        <div class="card-h" style="gap:8px;flex-wrap:wrap">
+          <div id="dayTabs" class="row" style="flex-wrap:wrap"></div>
+          <div class="row" style="margin-left:auto">
+            <span class="muted" style="font-size:12px">Rol activo:</span>
+            <select id="activeRole" class="select"></select>
+          </div>
+        </div>
+
+        <!-- Form rápido -->
+        <div class="card-c" style="border-bottom:1px solid var(--border)">
+          <div class="row" style="flex-wrap:wrap;gap:10px">
+            <div style="flex:1;min-width:220px">
+              <div class="muted" style="font-size:12px">Empleado</div>
+              <select id="formEmp" class="select" style="width:100%"></select>
+            </div>
+            <div>
+              <div class="muted" style="font-size:12px">Rol</div>
+              <select id="formRole" class="select"></select>
+            </div>
+            <div>
+              <div class="muted" style="font-size:12px">Inicio</div>
+              <select id="formStart" class="select"></select>
+            </div>
+            <div>
+              <div class="muted" style="font-size:12px">Fin (exclusivo)</div>
+              <select id="formEnd" class="select"></select>
+            </div>
+            <button id="btnAddShift" class="btn">Agregar</button>
+          </div>
+        </div>
+
+        <!-- Grilla -->
+        <div class="scroller">
+          <div class="table">
+            <div id="thead" class="thead"></div>
+            <div id="tbody"></div>
+          </div>
+        </div>
+
+        <!-- Leyenda -->
+        <div class="card-c">
+          <div><strong>Leyenda de roles</strong></div>
+          <div id="legend" class="legend" style="margin-top:8px"></div>
+        </div>
+      </section>
+    </div>
+
+    <div style="margin-top:12px" class="muted">
+      Guardado automático en este navegador. Tip: arrastrá para pintar; si arrastrás sobre celdas ya pintadas, borra.
+    </div>
+  </div>
+
+<script>
+(function(){
+  /* ====== Datos base ====== */
+  const ROLES = [
+    { key: "Cocina",       cls: "b-cocina",       color: getComputedStyle(document.documentElement).getPropertyValue('--c-cocina').trim(),       darkText:false },
+    { key: "Empaque",      cls: "b-empaque",      color: getComputedStyle(document.documentElement).getPropertyValue('--c-empaque').trim(),      darkText:false },
+    { key: "Sandwich",     cls: "b-sandwich",     color: getComputedStyle(document.documentElement).getPropertyValue('--c-sandwich').trim(),     darkText:true  },
+    { key: "Lobby",        cls: "b-lobby",        color: getComputedStyle(document.documentElement).getPropertyValue('--c-lobby').trim(),        darkText:false },
+    { key: "Presentación", cls: "b-presentación", color: getComputedStyle(document.documentElement).getPropertyValue('--c-presentacion').trim(), darkText:false },
+    { key: "Delivery",     cls: "b-delivery",     color: getComputedStyle(document.documentElement).getPropertyValue('--c-delivery').trim(),     darkText:false },
+    { key: "Caja",         cls: "b-caja",         color: getComputedStyle(document.documentElement).getPropertyValue('--c-caja').trim(),         darkText:false },
+    { key: "Anfitriona",   cls: "b-anfitriona",   color: getComputedStyle(document.documentElement).getPropertyValue('--c-anfitriona').trim(),   darkText:false },
+  ];
+  const DAYS = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"];
+
+  function generateTimeSlots(){
+    const out = [];
+    let h=6, m=0;                 // 06:00
+    for(let i=0;i<40;i++){        // hasta 02:00 del siguiente (20 horas = 40 medias horas)
+      out.push({index:i,label:two(h)+":"+two(m),h,m});
+      m+=30; if(m>=60){m=0; h++; if(h===24) h=0;}
+    }
+    return out;
+  }
+  const SLOTS = generateTimeSlots();
+
+  /* ====== Estado (localStorage) ====== */
+  const LS_KEY = "kfc.horarios.v1";
+  const state = load() || { employees: [], schedule: {}, activeDay:0 };
+  save(); // normaliza
+
+  function load(){
+    try{ return JSON.parse(localStorage.getItem(LS_KEY)); }catch(e){ return null; }
+  }
+  function save(){
+    localStorage.setItem(LS_KEY, JSON.stringify(state));
+  }
+
+  /* ====== Helpers UI ====== */
+  const el = (sel)=>document.querySelector(sel);
+  const empList = el("#empList");
+  const empFilter = el("#empFilter");
+  const roleFilter = el("#roleFilter");
+  const activeRole = el("#activeRole");
+  const dayTabs = el("#dayTabs");
+  const thead = el("#thead");
+  const tbody = el("#tbody");
+  const formEmp = el("#formEmp");
+  const formRole = el("#formRole");
+  const formStart = el("#formStart");
+  const formEnd = el("#formEnd");
+
+  function two(n){ return String(n).padStart(2,"0"); }
+
+  function optionize(select, items, map=(x)=>({value:x, label:x}), includeBlank){
+    select.innerHTML = "";
+    if(includeBlank){ const o = document.createElement("option"); o.value=""; o.textContent=includeBlank; select.appendChild(o); }
+    for(const it of items){
+      const {value,label} = map(it);
+      const o = document.createElement("option");
+      o.value = value; o.textContent = label;
+      select.appendChild(o);
+    }
+  }
+
+  /* ====== Controles superiores ====== */
+  optionize(roleFilter, [{key:"",name:"Todos"},...ROLES.map(r=>({key:r.key,name:r.key}))], (x)=>({value:x.key,label:x.name}));
+  optionize(empFilter, [{key:"",name:"Todos"},...ROLES.map(r=>({key:r.key,name:r.key}))], (x)=>({value:x.key,label:x.name}));
+  optionize(activeRole, ROLES, (r)=>({value:r.key,label:r.key}));
+  optionize(formRole, ROLES, (r)=>({value:r.key,label:r.key}));
+  optionize(formStart, SLOTS, (s)=>({value:s.index,label:s.label}));
+  optionize(formEnd,   SLOTS, (s)=>({value:s.index,label:s.label}));
+
+  el("#btnExport").addEventListener("click", ()=>{
+    const blob = new Blob([JSON.stringify(state,null,2)], {type:"application/json"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `planilla-horarios-${new Date().toISOString().slice(0,10)}.json`;
+    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  });
+  el("#fileImport").addEventListener("change", (e)=>{
+    const f = e.target.files?.[0]; if(!f) return;
+    const r = new FileReader();
+    r.onload = ()=>{
+      try{
+        const data = JSON.parse(r.result);
+        if(Array.isArray(data.employees) && typeof data.schedule === "object"){
+          state.employees = data.employees;
+          state.schedule = data.schedule || {};
+          state.activeDay = data.activeDay ?? 0;
+          save(); renderAll();
+        } else alert("Archivo inválido.");
+      }catch{ alert("Archivo inválido."); }
+    };
+    r.readAsText(f);
+  });
+
+  /* ====== Empleados ====== */
+  el("#btnAddEmp").addEventListener("click", addEmployee);
+  el("#inpName").addEventListener("keydown",(ev)=>{ if(ev.key==="Enter") addEmployee(); });
+
+  function addEmployee(){
+    const name = el("#inpName").value.trim();
+    if(!name) return;
+    const id = crypto.randomUUID();
+    state.employees.push({id, name, stars: []});
+    el("#inpName").value = "";
+    save(); renderAll();
+  }
+
+  function toggleStar(empId, roleKey){
+    const emp = state.employees.find(e=>e.id===empId);
+    if(!emp) return;
+    const i = emp.stars.indexOf(roleKey);
+    if(i>=0) emp.stars.splice(i,1); else emp.stars.push(roleKey);
+    save(); renderAll();
+  }
+
+  function removeEmployee(empId){
+    if(!confirm("¿Eliminar empleado?")) return;
+    state.employees = state.employees.filter(e=>e.id!==empId);
+    for(const d in state.schedule){ delete state.schedule[d]?.[empId]; }
+    save(); renderAll();
+  }
+
+  /* ====== Horarios ====== */
+  function ensureDay(d){ state.schedule[d] = state.schedule[d] || {}; }
+  function setCell(day, empId, slotIndex, roleOrNull){
+    ensureDay(day);
+    const row = state.schedule[day][empId] || {};
+    if(roleOrNull) row[slotIndex] = roleOrNull; else delete row[slotIndex];
+    state.schedule[day][empId] = row;
+    save();
+  }
+  function fillRange(day, empId, a, b, role){
+    if(a>b) [a,b]=[b,a];
+    ensureDay(day);
+    const row = state.schedule[day][empId] || {};
+    for(let i=a;i<=b;i++){ if(role) row[i]=role; else delete row[i]; }
+    state.schedule[day][empId] = row;
+    save();
+  }
+
+  /* Pintado por arrastre */
+  let dragging=false, erase=false;
+  function onDown(day, empId, slotIndex, has){
+    dragging = true; erase = !!has;
+    setCell(day, empId, slotIndex, has ? null : activeRole.value);
+  }
+  function onEnter(day, empId, slotIndex){
+    if(!dragging) return;
+    setCell(day, empId, slotIndex, erase ? null : activeRole.value);
+  }
+  window.addEventListener("mouseup", ()=> dragging=false);
+
+  /* Form rápido */
+  el("#btnAddShift").addEventListener("click", ()=>{
+    const empId = formEmp.value; if(!empId) return;
+    const role = formRole.value;
+    const s = Number(formStart.value), e = Number(formEnd.value);
+    if(Number.isNaN(s)||Number.isNaN(e)) return;
+    fillRange(state.activeDay, empId, s, e-1, role);
+    renderTable();
+  });
+
+  /* ====== Render ====== */
+  function renderDayTabs(){
+    dayTabs.innerHTML = "";
+    DAYS.forEach((d,idx)=>{
+      const b = document.createElement("button");
+      b.className = "pilltab"+(idx===state.activeDay?" active":"");
+      b.textContent = d;
+      b.addEventListener("click", ()=>{ state.activeDay=idx; save(); renderAll(); });
+      dayTabs.appendChild(b);
+    });
+  }
+
+  function renderLegend(){
+    const cont = document.getElementById("legend"); cont.innerHTML="";
+    ROLES.forEach(r=>{
+      const row = document.createElement("div");
+      const dot = document.createElement("span");
+      dot.style.width="14px"; dot.style.height="14px"; dot.style.borderRadius="3px";
+      dot.style.background = r.color;
+      const label = document.createElement("span"); label.textContent = r.key; label.style.fontSize="13px";
+      row.appendChild(dot); row.appendChild(label);
+      cont.appendChild(row);
+    });
+  }
+
+  function renderHead(){
+    const cols = `240px repeat(${SLOTS.length}, 1fr)`;
+    const g = document.createElement("div"); g.className="rowg"; g.style.gridTemplateColumns = cols;
+
+    const name = document.createElement("div");
+    name.className="namecol"; name.innerHTML = '<span class="muted" style="font-size:12px">Empleado</span>';
+    g.appendChild(name);
+
+    SLOTS.forEach(s=>{
+      const c = document.createElement("div"); c.className="slot-h"; c.textContent = s.label;
+      g.appendChild(c);
+    });
+
+    thead.innerHTML=""; thead.appendChild(g);
+  }
+
+  function renderEmpList(){
+    const filter = empFilter.value;
+    const filtered = state.employees
+      .slice()
+      .sort((a,b)=>a.name.localeCompare(b.name))
+      .filter(e=> !filter || (e.stars||[]).includes(filter));
+
+    empList.innerHTML = "";
+    if(filtered.length===0){
+      const p = document.createElement("div");
+      p.className="muted"; p.textContent="Agregá tu primer empleado 👇";
+      empList.appendChild(p);
+    }
+
+    optionize(formEmp, filtered, (e)=>({value:e.id, label:e.name}), "-- Seleccioná --");
+
+    filtered.forEach(e=>{
+      const card = document.createElement("div");
+      card.style.border="1px solid var(--border)"; card.style.borderRadius="12px"; card.style.padding="10px";
+
+      const top = document.createElement("div"); top.className="row"; top.style.justifyContent="space-between";
+      const nm = document.createElement("div"); nm.className="name"; nm.textContent=e.name; top.appendChild(nm);
+
+      const actions = document.createElement("div"); actions.className="row";
+      const bEst = document.createElement("button"); bEst.className="btn secondary"; bEst.textContent="Estrellas";
+      const bDel = document.createElement("button"); bDel.className="btn secondary del"; bDel.textContent="Eliminar";
+      actions.appendChild(bEst); actions.appendChild(bDel); top.appendChild(actions);
+
+      const badges = document.createElement("div"); badges.className="chips"; badges.style.marginTop="8px";
+      if(!e.stars || e.stars.length===0){
+        const m = document.createElement("span"); m.className="muted"; m.style.fontSize="12px"; m.textContent="Sin estrellas";
+        badges.appendChild(m);
+      } else {
+        e.stars.forEach(s=>{
+          const b = document.createElement("span"); b.className="badge "+clsFor(s); b.textContent=s; badges.appendChild(b);
+        });
+      }
+
+      bEst.addEventListener("click", ()=> openStarsModal(e.id, e.name, e.stars||[]));
+      bDel.addEventListener("click", ()=> removeEmployee(e.id));
+
+      card.appendChild(top); card.appendChild(badges);
+      empList.appendChild(card);
+    });
+  }
+
+  function renderTable(){
+    renderHead();
+
+    const cols = `240px repeat(${SLOTS.length}, 1fr)`;
+    tbody.innerHTML = "";
+
+    const filter = roleFilter.value;
+    const emps = state.employees
+      .slice()
+      .sort((a,b)=>a.name.localeCompare(b.name))
+      .filter(e=> !filter || (e.stars||[]).includes(filter));
+
+    emps.forEach(emp=>{
+      const row = document.createElement("div");
+      row.className="rowg"; row.style.gridTemplateColumns = cols; row.style.borderBottom="1px solid var(--border)";
+
+      const name = document.createElement("div");
+      name.className="namecol";
+      const nm = document.createElement("div"); nm.className="name"; nm.textContent = emp.name;
+      const stars = document.createElement("div"); stars.className="stars";
+      (emp.stars||[]).slice(0,3).forEach(s=>{
+        const b = document.createElement("span"); b.className="badge "+clsFor(s); b.textContent=s; stars.appendChild(b);
+      });
+      if((emp.stars||[]).length>3){
+        const more = document.createElement("span"); more.className="muted"; more.style.fontSize="12px";
+        more.textContent = `+${(emp.stars||[]).length-3}`; stars.appendChild(more);
+      }
+      name.appendChild(nm); name.appendChild(stars);
+      row.appendChild(name);
+
+      const day = state.activeDay;
+      const map = (state.schedule[day]||{})[emp.id] || {};
+
+      SLOTS.forEach(s=>{
+        const role = map[s.index];
+        const cell = document.createElement("div");
+        cell.className = "slot"+(role? " assigned "+slotCls(role):"");
+        cell.title = role ? `${role} @ ${s.label}` : s.label;
+        if(role){
+          const lab = document.createElement("div");
+          lab.className = "label";
+          lab.textContent = role;
+          cell.appendChild(lab);
+        }
+        cell.addEventListener("mousedown", ()=> onDown(day, emp.id, s.index, !!role));
+        cell.addEventListener("mouseenter", ()=> onEnter(day, emp.id, s.index));
+        row.appendChild(cell);
+      });
+
+      tbody.appendChild(row);
+    });
+  }
+
+  function renderAll(){
+    renderDayTabs();
+    renderLegend();
+    renderEmpList();
+    renderTable();
+    // sincroniza selects
+    formEmp.dispatchEvent(new Event('change'));
+  }
+
+  /* ====== Modal Estrellas ====== */
+  function openStarsModal(empId, name, stars){
+    const wrap = document.createElement("div");
+    wrap.style.position="fixed"; wrap.style.inset="0"; wrap.style.background="rgba(0,0,0,.35)";
+    wrap.style.display="flex"; wrap.style.alignItems="center"; wrap.style.justifyContent="center"; wrap.style.padding="16px"; wrap.style.zIndex=1000;
+
+    const box = document.createElement("div");
+    box.className="card"; box.style.maxWidth="560px"; box.style.width="100%";
+    const h = document.createElement("div"); h.className="card-h";
+    h.innerHTML = `<strong>Estrellas de ${escapeHtml(name)}</strong>`;
+    const c = document.createElement("div"); c.className="card-c";
+    const grid = document.createElement("div"); grid.style.display="grid"; grid.style.gridTemplateColumns="1fr 1fr"; grid.style.gap="10px";
+
+    ROLES.forEach(r=>{
+      const btn = document.createElement("button");
+      const isOn = (stars||[]).includes(r.key);
+      btn.className = "btn secondary";
+      btn.style.justifyContent="space-between"; btn.style.display="flex"; btn.style.width="100%";
+      btn.style.borderRadius="12px"; btn.style.border = isOn ? "1px solid transparent" : "1px solid var(--border)";
+      btn.style.background = isOn ? r.color : "#fff";
+      btn.style.color = isOn ? (r.darkText?"#111":"#fff") : "var(--ink)";
+      btn.innerHTML = `<span>${r.key}</span><span>${isOn?"★":""}</span>`;
+      btn.addEventListener("click", ()=>{
+        toggleStar(empId, r.key);
+        wrap.remove();
+      });
+      grid.appendChild(btn);
+    });
+
+    const f = document.createElement("div"); f.style.textAlign="right"; f.style.marginTop="12px";
+    const done = document.createElement("button"); done.className="btn"; done.textContent="Listo";
+    done.addEventListener("click", ()=> wrap.remove());
+    f.appendChild(done);
+
+    c.appendChild(grid); c.appendChild(f);
+    box.appendChild(h); box.appendChild(c);
+    wrap.appendChild(box);
+    wrap.addEventListener("click",(e)=>{ if(e.target===wrap) wrap.remove(); });
+    document.body.appendChild(wrap);
+  }
+
+  /* ====== Utils ====== */
+  function clsFor(role){
+    const k = role.toLowerCase();
+    if(k==="cocina") return "b-cocina";
+    if(k==="empaque") return "b-empaque";
+    if(k==="sandwich") return "b-sandwich";
+    if(k==="lobby") return "b-lobby";
+    if(k==="presentación"||k==="presentacion") return "b-presentación";
+    if(k==="delivery") return "b-delivery";
+    if(k==="caja") return "b-caja";
+    if(k==="anfitriona") return "b-anfitriona";
+    return "";
+  }
+  function slotCls(role){
+    const k = role.toLowerCase();
+    return k==="sandwich" ? " sandwich" : "";
+  }
+  function escapeHtml(s){ return s.replace(/[&<>"']/g, c=>({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;" }[c])); }
+
+  /* ====== Inicializa selects fijos ====== */
+  // Relleno selects de cabecera
+  optionize(document.getElementById("activeRole"), ROLES, r=>({value:r.key,label:r.key}));
+  optionize(document.getElementById("formRole"), ROLES, r=>({value:r.key,label:r.key}));
+  optionize(empFilter, [{key:"",name:"Todos"},...ROLES.map(r=>({key:r.key,name:r.key}))], x=>({value:x.key,label:x.name}));
+
+  /* ====== Render ====== */
+  renderAll();
+
+})();
+</script>
+</body>
+</html>
