@@ -1,0 +1,70 @@
+:root{
+    --bg: #f6f6f7;
+    --card: #ffffff;
+    --ink: #171717;
+    --muted:#6b7280;
+    --border:#e5e7eb;
+
+    /* Colores de roles */
+    --c-cocina:#ef4444;        /* rojo */
+    --c-empaque:#f97316;       /* naranja */
+    --c-sandwich:#facc15;      /* amarillo */
+    --c-lobby:#10b981;         /* verde */
+    --c-presentacion:#0ea5e9;  /* celeste */
+    --c-delivery:#6366f1;      /* índigo */
+    --c-caja:#8b5cf6;          /* violeta */
+    --c-anfitriona:#ec4899;    /* rosa */
+    --c-descarga:#14b8a6;      /* teal */
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;background:var(--bg);color:var(--ink);font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial;
+  }
+  .wrap{max-width:1200px;margin:0 auto;padding:16px}
+  .bar{position:sticky;top:0;background:#ffffffcc;backdrop-filter:saturate(1.1) blur(6px);border-bottom:1px solid var(--border);z-index:50}
+  .bar-inner{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:24px;max-width:1200px;margin:0 auto}
+  h1{margin:0;font-size:20px}
+  .btn{border:1px solid var(--ink);background:var(--ink);color:#fff;border-radius:10px;padding:8px 12px;cursor:pointer}
+  .btn.secondary{background:#fff;color:var(--ink);border-color:var(--border)}
+  .btn:disabled{opacity:.6;cursor:not-allowed}
+  .select,.input,.file{
+    border:1px solid var(--border);border-radius:10px;padding:8px 10px;background:#fff;color:var(--ink)
+  }
+  .card{background:var(--card);border:1px solid var(--border);border-radius:18px;box-shadow:0 1px 2px rgba(0,0,0,.03);overflow:hidden}
+  .card-h{padding:12px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+  .card-c{padding:14px}
+  .stack{display:flex;flex-direction:column;gap:10px}
+  .row{display:flex;gap:10px;align-items:center}
+  .chips{display:flex;gap:6px;flex-wrap:wrap}
+  .chip{font-size:12px;padding:3px 8px;border-radius:999px;border:1px solid var(--border);background:#fff}
+  .badge{font-size:11px;padding:2px 7px;border-radius:999px;color:#fff;display:inline-block}
+  .b-cocina{background:var(--c-cocina)} .b-empaque{background:var(--c-empaque)}
+  .b-sandwich{background:var(--c-sandwich);color:#111} .b-lobby{background:var(--c-lobby)}
+  .b-presentación{background:var(--c-presentacion)} .b-delivery{background:var(--c-delivery)}
+  .b-caja{background:var(--c-caja)} .b-anfitriona{background:var(--c-anfitriona)}
+  .b-descarga{background:var(--c-descarga)}
+
+  /* Tabla de horario */
+  .scroller{overflow:auto;border-top:1px solid var(--border)}
+  .table{min-width:1200px}
+  .thead{position:sticky;top:0;background:#fff;border-bottom:1px solid var(--border);z-index:10}
+  .rowg{display:grid}
+  .namecol{position:sticky;left:0;background:#fff;border-right:1px solid var(--border);z-index:5;padding:6px 10px;display:flex;gap:8px;align-items:center}
+  .name{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .stars{display:flex;gap:4px;align-items:center;min-width:0;flex-wrap:wrap}
+  .slot-h{font-size:10px;color:var(--muted);text-align:center;border-left:1px solid var(--border);padding:6px 0}
+  .slot{height:42px;border-left:1px solid var(--border);position:relative;cursor:crosshair;user-select:none}
+  .slot.assigned .label{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:#fff}
+  .slot.sandwich .label{color:#111} /* por el amarillo */
+  .slot:hover{outline:1px dashed #aaa;outline-offset:-3px}
+  .legend{display:flex;flex-wrap:wrap;gap:10px}
+  .legend > div{display:flex;gap:6px;align-items:center}
+  .hr{height:1px;background:var(--border);margin:8px 0}
+  .pilltab{border:1px solid var(--border);background:#fff;padding:6px 10px;border-radius:999px;cursor:pointer}
+  .pilltab.active{background:#111;border-color:#111;color:#fff}
+  .muted{color:var(--muted)}
+  .danger{color:#b91c1c}
+  .ghost{background:#fafafa}
+  .del{color:#b91c1c;border-color:#fecaca;background:#fff}
+  .new-shift-slot:hover { background: #e5e7eb; }
