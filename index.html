@@ -7,6 +7,7 @@
 <script src="https://www.gstatic.com/firebasejs/12.2.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.2.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -17,10 +18,12 @@
         <div id="main-menu" style="margin-left: 20px;">
           <button id="btn-view-schedule" class="btn">Hacer Horarios</button>
           <button id="btn-view-employees" class="btn secondary">Agregar Empleados</button>
+          <button id="btn-view-templates" class="btn secondary">Plantillas</button>
         </div>
       </div>
       <div class="row">
-        <select id="roleFilter" class="select" title="Filtrar por rol"></select>
+        <select id="weekSelector" class="select" title="Seleccionar semana"></select>
+        <select id="roleFilter" class="select" title="Filtrar por rol" style="margin-left: 12px;"></select>
         <button id="btnExport" class="btn">Exportar</button>
         <label class="btn secondary" style="cursor:pointer;">
           Importar<input id="fileImport" class="file" type="file" accept="application/json" style="display:none">
@@ -57,6 +60,21 @@
         </section>
     </div>
 
+    <div id="view-templates" class="wrap" style="display:none; max-width: 600px; margin: 0 auto;">
+        <!-- Plantillas -->
+        <section class="card">
+            <div class="card-h"><strong>Plantillas de días</strong></div>
+            <div class="card-c stack">
+                <div class="row">
+                    <input id="inpTemplateName" class="input" placeholder="Nombre de la plantilla" style="flex:1">
+                    <button id="btnSaveTemplate" class="btn">Guardar día actual como plantilla</button>
+                </div>
+                <div class="hr"></div>
+                <div id="templateList" class="stack"></div>
+            </div>
+        </section>
+    </div>
+
     <div id="view-schedule" class="wrap" style="max-width: none; padding: 0 16px;">
         <!-- Horarios -->
         <section class="card">
@@ -79,7 +97,10 @@
                         <div class="muted" style="font-size:12px">Fin (exclusivo)</div>
                         <select id="formEnd" class="select"></select>
                     </div>
-                    <button id="btnAddUnassignedShift" class="btn">Crear turno</button>
+                    <div style="align-self: end; padding-bottom: 4px;">
+                        <span id="shiftDuration" class="muted" style="font-size: 14px;"></span>
+                    </div>
+                    <button id="btnAddUnassignedShift" class="btn" style="margin-left: auto;">Crear turno</button>
                 </div>
             </div>
 

@@ -44,6 +44,7 @@
   .b-presentación{background:var(--c-presentacion)} .b-delivery{background:var(--c-delivery)}
   .b-caja{background:var(--c-caja)} .b-anfitriona{background:var(--c-anfitriona)}
   .b-descarga{background:var(--c-descarga)}
+  .b-minor {background: #f59e0b; color: #fff;}
 
   /* Tabla de horario */
   .scroller{overflow:auto;border-top:1px solid var(--border)}
