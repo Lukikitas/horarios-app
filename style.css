@@ -89,12 +89,26 @@
   gap: 4px;
 }
 
+body.dark-mode .pilltab.active {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--card);
+}
+body.dark-mode .namecol {
+  background: var(--card);
+  border-color: var(--border);
+}
+body.dark-mode .thead {
+  background: var(--card);
+  border-color: var(--border);
+}
+
 body.dark-mode {
-  --bg: #1f2937;
-  --card: #374151;
-  --ink: #f3f4f6;
-  --muted: #9ca3af;
-  --border: #4b5563;
+  --bg: #36393f;
+  --card: #2f3136;
+  --ink: #dcddde;
+  --muted: #72767d;
+  --border: #40444b;
 }
 body.dark-mode .btn.secondary {
   background: var(--card);
