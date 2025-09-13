@@ -104,11 +104,11 @@ body.dark-mode .thead {
 }
 
 body.dark-mode {
-  --bg: #36393f;
-  --card: #2f3136;
-  --ink: #dcddde;
-  --muted: #72767d;
-  --border: #40444b;
+  --bg: #23272a;
+  --card: #2c2f33;
+  --ink: #ffffff;
+  --muted: #99aab5;
+  --border: #3a3e44;
 }
 body.dark-mode .btn.secondary {
   background: var(--card);
@@ -126,6 +126,17 @@ body.dark-mode .ghost {
 }
 body.dark-mode .new-shift-slot:hover {
   background: #4b5563;
+}
+body.dark-mode .select, body.dark-mode .input {
+  background-color: var(--bg);
+  color: var(--ink);
+  border-color: var(--border);
+}
+body.dark-mode .btn {
+  color: #000;
+}
+body.dark-mode .btn.secondary {
+  color: var(--ink);
 }
 
 /* Employee Table */
