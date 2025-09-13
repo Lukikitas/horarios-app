@@ -183,6 +183,11 @@ const db = firebase.firestore();
   btnViewSchedule.addEventListener('click', () => showView('schedule'));
   btnViewEmployees.addEventListener('click', () => showView('employees'));
   btnViewTemplates.addEventListener('click', () => showView('templates'));
+  el("#empFilter").addEventListener("change", renderEmpList);
+  if (el("#empSearch")) {
+    el("#empSearch").addEventListener("input", renderEmpList);
+  }
+
 
   function two(n){ return String(n).padStart(2,"0"); }
 
@@ -727,7 +732,7 @@ const db = firebase.firestore();
     ROLES.forEach(r=>{
       const row = document.createElement("div");
       const dot = document.createElement("span");
-      dot.style.width="14px"; dot.style.height="14px"; dot.style.borderRadius="3px";
+      dot.style.width="14px"; dot.style.height="14px"; dot.style.borderRadius="0";
       dot.style.background = r.color;
       const label = document.createElement("span"); label.textContent = r.key; label.style.fontSize="13px";
       row.appendChild(dot); row.appendChild(label);
@@ -774,11 +779,17 @@ const db = firebase.firestore();
   }
 
   function renderEmpList(){
-    const filter = empFilter.value;
+    const starFilter = empFilter.value;
+    const searchFilter = el("#empSearch") ? el("#empSearch").value.toLowerCase() : "";
+
     const filtered = state.employees
       .slice()
       .sort((a,b)=>a.name.localeCompare(b.name))
-      .filter(e=> !filter || (e.stars||[]).includes(filter));
+      .filter(e=> {
+        const nameMatch = e.name.toLowerCase().includes(searchFilter);
+        const starMatch = !starFilter || (e.stars||[]).includes(starFilter);
+        return nameMatch && starMatch;
+      });
 
     empList.innerHTML = "";
     if(filtered.length===0){
@@ -797,27 +808,34 @@ const db = firebase.firestore();
 
       const nameCell = document.createElement("div");
       nameCell.className = "emp-cell name-cell";
-      nameCell.textContent = e.name;
+      nameCell.style.display = "flex";
+      nameCell.style.flexDirection = "column";
+      nameCell.style.alignItems = "flex-start";
+
+      const nameWrapper = document.createElement("div");
+      nameWrapper.textContent = e.name;
       if (e.isMinor) {
         const minorBadge = document.createElement("span");
         minorBadge.className = "badge b-minor";
         minorBadge.textContent = "Menor";
         minorBadge.style.marginLeft = "8px";
-        nameCell.appendChild(minorBadge);
+        nameWrapper.appendChild(minorBadge);
       }
+      nameCell.appendChild(nameWrapper);
 
-      const starsCell = document.createElement("div");
-      starsCell.className = "emp-cell stars-cell";
-      if(!e.stars || e.stars.length===0){
-        const m = document.createElement("span"); m.className="muted"; m.style.fontSize="12px"; m.textContent="Sin estrellas";
-        starsCell.appendChild(m);
-      } else {
+      if (e.stars && e.stars.length > 0) {
         const badges = document.createElement("div");
         badges.className="chips";
+        badges.style.marginTop = "6px";
         e.stars.forEach(s=>{
           const b = document.createElement("span"); b.className="badge "+clsFor(s); b.textContent=s; badges.appendChild(b);
         });
-        starsCell.appendChild(badges);
+        nameCell.appendChild(badges);
+      } else {
+        const m = document.createElement("span"); m.className="muted"; m.style.fontSize="12px";
+        m.style.marginTop = "6px";
+        m.textContent="Sin estrellas";
+        nameCell.appendChild(m);
       }
 
       const actionsCell = document.createElement("div");
@@ -839,7 +857,6 @@ const db = firebase.firestore();
       actionsCell.appendChild(bDel);
 
       row.appendChild(nameCell);
-      row.appendChild(starsCell);
       row.appendChild(actionsCell);
       table.appendChild(row);
     });
@@ -1062,15 +1079,28 @@ const db = firebase.firestore();
       const c = document.createElement("div"); c.className="card-c";
       const grid = document.createElement("div"); grid.style.display="grid"; grid.style.gridTemplateColumns="1fr 1fr"; grid.style.gap="10px";
 
+      const isDarkMode = document.body.classList.contains("dark-mode");
+      const offBgColor = isDarkMode ? '#2c2f33' : '#ffffff';
+      const offInkColor = isDarkMode ? '#ffffff' : '#171717';
+      const offBorderColor = isDarkMode ? '#3a3e44' : '#e5e7eb';
+
       ROLES.forEach(r=>{
         const btn = document.createElement("button");
         const isOn = stars.includes(r.key);
         btn.className = "btn secondary";
         btn.style.justifyContent="space-between"; btn.style.display="flex"; btn.style.width="100%";
-        btn.style.borderRadius="12px"; btn.style.border = isOn ? "1px solid transparent" : "1px solid var(--border)";
-        btn.style.background = isOn ? r.color : "#fff";
-        btn.style.color = isOn ? (r.darkText?"#111":"#fff") : "var(--ink)";
         btn.innerHTML = `<span>${r.key}</span><span>${isOn?"★":""}</span>`;
+
+        if (isOn) {
+            btn.style.background = r.color;
+            btn.style.color = r.darkText ? "#111" : "#fff";
+            btn.style.borderColor = "transparent";
+        } else {
+            btn.style.background = offBgColor;
+            btn.style.color = offInkColor;
+            btn.style.borderColor = offBorderColor;
+        }
+
         btn.addEventListener("click", ()=>{
           toggleStar(empId, r.key);
           renderModalContent();
@@ -1454,7 +1484,7 @@ const db = firebase.firestore();
 
     templateNames.forEach(name => {
       const card = document.createElement("div");
-      card.style.border="1px solid var(--border)"; card.style.borderRadius="12px"; card.style.padding="10px";
+      card.style.border="1px solid var(--border)"; card.style.padding="10px";
       card.className = "row";
       card.style.justifyContent = "space-between";
 
