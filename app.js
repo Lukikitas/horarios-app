@@ -69,6 +69,15 @@ const db = firebase.firestore();
       if (doc.exists) {
           const data = doc.data();
           state.employees = data.employees || [];
+          // Migration for availability and exceptions
+          state.employees.forEach(emp => {
+            if (!emp.availability) {
+              emp.availability = Array.from({ length: 7 }, () => ({ start: null, end: null }));
+            }
+            if (!emp.exceptions) {
+              emp.exceptions = [];
+            }
+          });
           state.templates = data.templates || {};
           state.activeDay = data.activeDay || 0;
           state.activeWeek = data.activeWeek || toISODateString(getMonday(new Date()));
@@ -176,6 +185,11 @@ const db = firebase.firestore();
   btnViewTemplates.addEventListener('click', () => showView('templates'));
 
   function two(n){ return String(n).padStart(2,"0"); }
+
+  function timeToSlotIndex(timeLabel) {
+    if (!timeLabel) return -1;
+    return SLOTS.findIndex(s => s.label === timeLabel);
+  }
 
   function optionize(select, items, map=(x)=>({value:x, label:x}), includeBlank){
     select.innerHTML = "";
@@ -309,10 +323,21 @@ const db = firebase.firestore();
     const name = el("#inpName").value.trim();
     if(!name) return;
     const id = crypto.randomUUID();
-    state.employees.push({id, name, stars: [], isMinor: false});
+    state.employees.push({
+      id,
+      name,
+      stars: [],
+      isMinor: false,
+      availability: Array.from({ length: 7 }, () => ({ start: null, end: null })),
+      exceptions: [],
+    });
     el("#inpName").value = "";
     save();
     renderEmpList();
+  }
+
+  function getEmployeeById(empId) {
+    return state.employees.find((e) => e.id === empId);
   }
 
   function toggleStar(empId, roleKey){
@@ -475,6 +500,49 @@ const db = firebase.firestore();
     }
 
     return { pass: true, message: "" };
+  }
+
+  function checkEmployeeAvailability(employee, shift, weekId, dayIndex) {
+    // Defensive checks
+    if (!employee.availability || !Array.isArray(employee.availability) || !employee.exceptions || !Array.isArray(employee.exceptions)) {
+        return { isAvailable: true, reason: '' };
+    }
+
+    const shiftDate = new Date(`${weekId}T12:00:00.000Z`);
+    shiftDate.setUTCDate(shiftDate.getUTCDate() + dayIndex);
+    const shiftDateString = toISODateString(shiftDate).slice(0, 10); // YYYY-MM-DD
+
+    // 1. Check exceptions
+    const exception = employee.exceptions.find(ex => ex.date === shiftDateString);
+    if (exception) {
+        if (!exception.start && !exception.end) {
+            return { isAvailable: false, reason: `${employee.name} tiene el día libre por una excepción.` };
+        }
+
+        const exceptionStartSlot = timeToSlotIndex(exception.start);
+        const exceptionEndSlot = timeToSlotIndex(exception.end);
+
+        if (exceptionStartSlot !== -1 && exceptionEndSlot !== -1) {
+            if (shift.startSlot < exceptionEndSlot && shift.endSlot >= exceptionStartSlot) {
+                 return { isAvailable: false, reason: `${employee.name} no está disponible en este horario por una excepción.` };
+            }
+        }
+    }
+
+    // 2. Check weekly availability
+    const dayAvailability = employee.availability[dayIndex];
+    if (dayAvailability && (dayAvailability.start || dayAvailability.end)) {
+        const availableStartSlot = timeToSlotIndex(dayAvailability.start);
+        const availableEndSlot = timeToSlotIndex(dayAvailability.end);
+
+        if (availableStartSlot !== -1 && availableEndSlot !== -1) {
+            if (shift.startSlot < availableStartSlot || shift.endSlot >= availableEndSlot) {
+                 return { isAvailable: false, reason: `El horario de disponibilidad de ${employee.name} para este día es de ${dayAvailability.start} a ${dayAvailability.end}.` };
+            }
+        }
+    }
+
+    return { isAvailable: true, reason: '' };
   }
 
   /* ====== Horarios ====== */
@@ -717,68 +785,66 @@ const db = firebase.firestore();
       const p = document.createElement("div");
       p.className="muted"; p.textContent="Agregá tu primer empleado 👇";
       empList.appendChild(p);
+      return;
     }
 
+    const table = document.createElement("div");
+    table.className = "emp-table";
+
     filtered.forEach(e=>{
-      const card = document.createElement("div");
-      card.style.border="1px solid var(--border)"; card.style.borderRadius="12px"; card.style.padding="10px";
+      const row = document.createElement("div");
+      row.className = "emp-row";
 
-      const top = document.createElement("div"); top.className="row"; top.style.justifyContent="space-between"; top.style.alignItems="center";
-
-      const nameAndMinor = document.createElement("div"); nameAndMinor.className="row"; nameAndMinor.style.alignItems="center";
-      const nm = document.createElement("div"); nm.className="name"; nm.textContent=e.name;
-      nameAndMinor.appendChild(nm);
-
+      const nameCell = document.createElement("div");
+      nameCell.className = "emp-cell name-cell";
+      nameCell.textContent = e.name;
       if (e.isMinor) {
         const minorBadge = document.createElement("span");
         minorBadge.className = "badge b-minor";
         minorBadge.textContent = "Menor";
         minorBadge.style.marginLeft = "8px";
-        nameAndMinor.appendChild(minorBadge);
+        nameCell.appendChild(minorBadge);
       }
-      top.appendChild(nameAndMinor);
 
-
-      const actions = document.createElement("div"); actions.className="row";
-      const bEst = document.createElement("button"); bEst.className="btn secondary"; bEst.textContent="Estrellas";
-      const bDel = document.createElement("button"); bDel.className="btn secondary del"; bDel.textContent="Eliminar";
-
-      actions.appendChild(bEst); actions.appendChild(bDel); top.appendChild(actions);
-
-      const bottom = document.createElement("div"); bottom.className="row"; bottom.style.justifyContent="space-between"; bottom.style.marginTop="8px";
-
-      const badges = document.createElement("div"); badges.className="chips";
+      const starsCell = document.createElement("div");
+      starsCell.className = "emp-cell stars-cell";
       if(!e.stars || e.stars.length===0){
         const m = document.createElement("span"); m.className="muted"; m.style.fontSize="12px"; m.textContent="Sin estrellas";
-        badges.appendChild(m);
+        starsCell.appendChild(m);
       } else {
+        const badges = document.createElement("div");
+        badges.className="chips";
         e.stars.forEach(s=>{
           const b = document.createElement("span"); b.className="badge "+clsFor(s); b.textContent=s; badges.appendChild(b);
         });
+        starsCell.appendChild(badges);
       }
-      bottom.appendChild(badges);
 
-      const minorToggle = document.createElement("label");
-      minorToggle.className = "row";
-      minorToggle.style.cursor = "pointer"; minorToggle.style.alignItems = "center";
-      const minorCheckbox = document.createElement("input");
-      minorCheckbox.type = "checkbox";
-      minorCheckbox.checked = e.isMinor;
-      minorCheckbox.addEventListener("change", () => toggleIsMinor(e.id));
-      const minorLabel = document.createElement("span");
-      minorLabel.textContent = "Menor de edad";
-      minorLabel.style.fontSize = "12px";
-      minorLabel.style.marginLeft = "4px";
-      minorToggle.appendChild(minorCheckbox);
-      minorToggle.appendChild(minorLabel);
-      bottom.appendChild(minorToggle);
+      const actionsCell = document.createElement("div");
+      actionsCell.className = "emp-cell actions-cell";
+      const bAvailability = document.createElement("button");
+      bAvailability.className="btn secondary"; bAvailability.textContent="Disponibilidad";
+      bAvailability.onclick = () => openAvailabilityModal(e.id);
 
-      bEst.addEventListener("click", ()=> openStarsModal(e.id, e.name));
-      bDel.addEventListener("click", ()=> removeEmployee(e.id));
+      const bEst = document.createElement("button");
+      bEst.className="btn secondary"; bEst.textContent="Estrellas";
+      bEst.onclick = () => openStarsModal(e.id, e.name);
 
-      card.appendChild(top); card.appendChild(bottom);
-      empList.appendChild(card);
+      const bDel = document.createElement("button");
+      bDel.className="btn secondary del"; bDel.textContent="Eliminar";
+      bDel.onclick = () => removeEmployee(e.id);
+
+      actionsCell.appendChild(bAvailability);
+      actionsCell.appendChild(bEst);
+      actionsCell.appendChild(bDel);
+
+      row.appendChild(nameCell);
+      row.appendChild(starsCell);
+      row.appendChild(actionsCell);
+      table.appendChild(row);
     });
+
+    empList.appendChild(table);
   }
 
   function renderTable(){
@@ -840,7 +906,8 @@ const db = firebase.firestore();
                 timeInfo.style.fontSize = "12px";
                 const startTime = SLOTS[shift.startSlot].label;
                 const endTime = SLOTS[shift.endSlot + 1] ? SLOTS[shift.endSlot + 1].label : "02:00";
-                timeInfo.textContent = `${startTime} - ${endTime}`;
+                const duration = (shift.endSlot - shift.startSlot + 1) * 0.5;
+                timeInfo.textContent = `${startTime} - ${endTime} (${String(duration).replace('.',',')}hs)`;
 
                 const assignWrapper = document.createElement("div");
                 assignWrapper.style.marginTop = "4px";
@@ -932,6 +999,9 @@ const db = firebase.firestore();
                         const roleData = ROLES.find(r => r.key === shift.role);
                         cell.className += " assigned " + (roleData ? clsFor(roleData.key) : "");
                         if(roleData && roleData.darkText) cell.className += " sandwich";
+                        if (!shift.employeeId) {
+                            cell.className += " unassigned";
+                        }
 
                         cell.addEventListener("mousedown", () => handleUnpaintStart(shift.id, i));
                         cell.addEventListener("mouseenter", () => handlePaintEnter(i));
@@ -1031,6 +1101,139 @@ const db = firebase.firestore();
     document.body.appendChild(wrap);
   }
 
+  function renderAvailability(empId, box) {
+    const emp = getEmployeeById(empId);
+    if (!emp) return;
+
+    // Defensive check
+    if (!Array.isArray(emp.availability) || emp.availability.length !== 7) {
+      emp.availability = Array.from({ length: 7 }, () => ({ start: null, end: null }));
+    }
+    if (!Array.isArray(emp.exceptions)) {
+      emp.exceptions = [];
+    }
+
+    box.innerHTML = `
+      <div class="card-h">
+        <strong>Disponibilidad de ${escapeHtml(emp.name)}</strong>
+      </div>
+      <div class="card-c stack">
+        <div class="stack">
+          <strong>Disponibilidad Semanal</strong>
+          ${DAYS.map((day, index) => `
+            <div class="row" style="justify-content: space-between; align-items: center;">
+              <span style="flex-basis: 100px;">${day}</span>
+              <div class="row">
+                <select class="select availability-start" data-day="${index}">
+                  <option value="">--</option>
+                  ${SLOTS.map(s => `<option value="${s.label}" ${emp.availability[index]?.start === s.label ? 'selected' : ''}>${s.label}</option>`).join('')}
+                </select>
+                <span>-</span>
+                <select class="select availability-end" data-day="${index}">
+                  <option value="">--</option>
+                  ${SLOTS.map(s => `<option value="${s.label}" ${emp.availability[index]?.end === s.label ? 'selected' : ''}>${s.label}</option>`).join('')}
+                </select>
+                <button class="btn secondary availability-clear" data-day="${index}">Full-time</button>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+        <div class="hr"></div>
+        <div class="stack">
+          <strong>Excepciones</strong>
+          <div id="exceptions-list" class="stack">
+            ${(emp.exceptions || []).map(ex => `
+              <div class="row" style="justify-content: space-between;">
+                <span>${ex.date} ${ex.start ? `de ${ex.start}` : ''} ${ex.end ? `a ${ex.end}`: (ex.start ? '' : '(Todo el día)')}</span>
+                <button class="btn secondary del remove-exception" data-date="${ex.date}">X</button>
+              </div>
+            `).join('')}
+          </div>
+          <div class="row" style="gap: 8px;">
+            <input type="date" id="exception-date" class="input" style="flex:1;">
+            <input type="time" id="exception-start" class="input" title="Hora de inicio (opcional)">
+            <input type="time" id="exception-end" class="input" title="Hora de fin (opcional)">
+            <button id="add-exception" class="btn">Añadir</button>
+          </div>
+        </div>
+        <div style="text-align: right; margin-top: 12px;">
+          <button id="availability-done" class="btn">Listo</button>
+        </div>
+      </div>
+    `;
+  }
+
+  function openAvailabilityModal(empId) {
+    const wrap = document.createElement("div");
+    wrap.style.position="fixed"; wrap.style.inset="0"; wrap.style.background="rgba(0,0,0,.35)";
+    wrap.style.display="flex"; wrap.style.alignItems="center"; wrap.style.justifyContent="center"; wrap.style.padding="16px"; wrap.style.zIndex=1000;
+
+    const box = document.createElement("div");
+    box.className="card"; box.style.maxWidth="600px"; box.style.width="100%";
+
+    renderAvailability(empId, box);
+    wrap.appendChild(box);
+    document.body.appendChild(wrap);
+
+    function attachListeners() {
+      const emp = getEmployeeById(empId);
+      if (!emp) return;
+
+      box.querySelector("#availability-done").addEventListener("click", () => {
+        save();
+        wrap.remove();
+        renderAll();
+      });
+
+      box.querySelectorAll(".availability-clear").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+          const dayIndex = e.target.dataset.day;
+          emp.availability[dayIndex].start = null;
+          emp.availability[dayIndex].end = null;
+          renderAvailability(empId, box);
+          attachListeners();
+        });
+      });
+
+      box.querySelectorAll(".availability-start, .availability-end").forEach(sel => {
+        sel.addEventListener("change", (e) => {
+          const dayIndex = e.target.dataset.day;
+          const type = e.target.classList.contains('availability-start') ? 'start' : 'end';
+          emp.availability[dayIndex][type] = e.target.value || null;
+        });
+      });
+
+      box.querySelector("#add-exception").addEventListener("click", () => {
+        const dateInput = box.querySelector('#exception-date');
+        const startInput = box.querySelector('#exception-start');
+        const endInput = box.querySelector('#exception-end');
+
+        if (dateInput.value) {
+            emp.exceptions.push({ date: dateInput.value, start: startInput.value || null, end: endInput.value || null });
+            renderAvailability(empId, box);
+            attachListeners();
+        }
+      });
+
+      box.querySelectorAll(".remove-exception").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+          const date = e.target.dataset.date;
+          emp.exceptions = emp.exceptions.filter(ex => ex.date !== date);
+          renderAvailability(empId, box);
+          attachListeners();
+        });
+      });
+    }
+
+    attachListeners();
+
+    wrap.addEventListener("click", (e) => {
+        if (e.target === wrap) {
+            wrap.remove();
+        }
+    });
+  }
+
   function openAssignEmployeeModal(shiftId) {
     const wrap = document.createElement("div");
     wrap.style.position="fixed"; wrap.style.inset="0"; wrap.style.background="rgba(0,0,0,.35)";
@@ -1054,9 +1257,6 @@ const db = firebase.firestore();
 
         if (isEmployeeAssignedOnDay(e.id, day)) return false;
 
-        const consecutiveDays = countConsecutiveWorkDaysEndingBefore(e.id, state.activeWeek, day);
-        if (consecutiveDays >= 5) return false;
-
         if (e.isMinor && shift.endSlot > MAX_SLOT_FOR_MINOR) {
             return false;
         }
@@ -1079,11 +1279,25 @@ const db = firebase.firestore();
             btn.textContent = `${emp.name} ${hoursText}`;
             btn.style.width = "100%";
             btn.addEventListener("click", () => {
-                const { pass, message } = checkRestTime(emp.id, shift, state.activeWeek, day);
-                if (!pass) {
-                    alert(message);
+                const consecutiveDays = countConsecutiveWorkDaysEndingBefore(emp.id, state.activeWeek, day);
+                if (consecutiveDays >= 5) {
+                    alert("Este empleado lleva 5 días trabajando seguidos.");
                     return;
                 }
+
+                const restCheck = checkRestTime(emp.id, shift, state.activeWeek, day);
+                if (!restCheck.pass) {
+                    alert(restCheck.message);
+                    return;
+                }
+
+                const availabilityCheck = checkEmployeeAvailability(emp, shift, state.activeWeek, day);
+                if (!availabilityCheck.isAvailable) {
+                    if (!confirm(availabilityCheck.reason + "\n\n¿Asignar de todos modos?")) {
+                        return;
+                    }
+                }
+
                 shift.employeeId = emp.id;
                 save();
                 renderTable();
@@ -1329,6 +1543,102 @@ const db = firebase.firestore();
       save();
       renderTemplateList();
     }
+  }
+
+  /* ====== Impresión ====== */
+  function printSchedule() {
+    const schedule = getActiveSchedule();
+    const employees = state.employees.slice().sort((a,b) => a.name.localeCompare(b.name));
+
+    const monday = new Date(state.activeWeek + "T12:00:00Z");
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+
+    const formatDate = (d) => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+
+    let tableRows = '';
+    employees.forEach(emp => {
+      let row = `<tr><td>${escapeHtml(emp.name)}</td>`;
+      for (let i = 0; i < 7; i++) {
+        const dayShifts = (schedule[i] || []).filter(s => s.employeeId === emp.id);
+        if (dayShifts.length > 0) {
+          const shift = dayShifts[0]; // Assume one shift per day per employee
+          const startTime = SLOTS[shift.startSlot].label;
+          const endTime = SLOTS[shift.endSlot + 1] ? SLOTS[shift.endSlot + 1].label : "02:00";
+          row += `<td>${startTime} - ${endTime}</td>`;
+        } else {
+          row += `<td>Descanso</td>`;
+        }
+      }
+      row += '</tr>';
+      tableRows += row;
+    });
+
+    const printWindow = window.open('', '', 'height=800,width=1200');
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Horario Semanal</title>
+          <style>
+            body { font-family: sans-serif; margin: 20px; }
+            h1, h2 { text-align: center; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
+            th { background-color: #f2f2f2; }
+            @media print {
+              body { margin: 0; }
+              .no-print { display: none; }
+            }
+          </style>
+        </head>
+        <body>
+          <h2>Departamento: KFC LA PLATA</h2>
+          <h1>Semana del: ${formatDate(monday)} al ${formatDate(sunday)}</h1>
+          <table>
+            <thead>
+              <tr>
+                <th>Apellido y Nombre</th>
+                ${DAYS.map(d => `<th>${d}</th>`).join('')}
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRows}
+            </tbody>
+          </table>
+          <script>
+            setTimeout(() => { window.print(); window.close(); }, 250);
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  }
+
+  el("#btnPrint").addEventListener("click", printSchedule);
+
+  /* ====== Dark Mode ====== */
+  const darkModeBtn = el("#btn-dark-mode");
+  const body = document.body;
+
+  function setDarkMode(isDark) {
+    if (isDark) {
+      body.classList.add("dark-mode");
+      darkModeBtn.textContent = "☀️";
+      localStorage.setItem("darkMode", "enabled");
+    } else {
+      body.classList.remove("dark-mode");
+      darkModeBtn.textContent = "🌙";
+      localStorage.setItem("darkMode", "disabled");
+    }
+  }
+
+  darkModeBtn.addEventListener("click", () => {
+    setDarkMode(!body.classList.contains("dark-mode"));
+  });
+
+  // Load theme preference on start
+  if (localStorage.getItem("darkMode") === "enabled") {
+    setDarkMode(true);
   }
 
   /* ====== Inicialización ====== */

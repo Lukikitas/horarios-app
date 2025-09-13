@@ -25,9 +25,11 @@
         <select id="weekSelector" class="select" title="Seleccionar semana"></select>
         <select id="roleFilter" class="select" title="Filtrar por rol" style="margin-left: 12px;"></select>
         <button id="btnExport" class="btn">Exportar</button>
+        <button id="btnPrint" class="btn">Imprimir</button>
         <label class="btn secondary" style="cursor:pointer;">
           Importar<input id="fileImport" class="file" type="file" accept="application/json" style="display:none">
         </label>
+        <button id="btn-dark-mode" class="btn secondary" style="margin-left:auto;">🌙</button>
       </div>
     </div>
   </div>
@@ -80,15 +82,15 @@
         <section class="card">
             <div class="card-h" style="gap:8px;flex-wrap:wrap">
                 <div id="dayTabs" class="row" style="flex-wrap:wrap"></div>
-                <div class="row" style="margin-left:auto">
-                    <span class="muted" style="font-size:12px">Rol activo:</span>
-                    <select id="activeRole" class="select"></select>
-                </div>
             </div>
 
             <!-- Form para crear turnos -->
             <div class="card-c" style="border-bottom:1px solid var(--border)">
                 <div class="row" style="flex-wrap:wrap;gap:10px">
+                    <div class="row" style="align-items:center;">
+                        <span class="muted" style="font-size:12px">Rol activo:</span>
+                        <select id="activeRole" class="select"></select>
+                    </div>
                     <div>
                         <div class="muted" style="font-size:12px">Inicio</div>
                         <select id="formStart" class="select"></select>
@@ -100,7 +102,7 @@
                     <div style="align-self: end; padding-bottom: 4px;">
                         <span id="shiftDuration" class="muted" style="font-size: 14px;"></span>
                     </div>
-                    <button id="btnAddUnassignedShift" class="btn" style="margin-left: auto;">Crear turno</button>
+                    <button id="btnAddUnassignedShift" class="btn">Crear turno</button>
                 </div>
             </div>
 
@@ -111,13 +113,12 @@
                     <div id="tbody"></div>
                 </div>
             </div>
-
-            <!-- Leyenda -->
-            <div class="card-c">
-                <div><strong>Leyenda de roles</strong></div>
-                <div id="legend" class="legend" style="margin-top:8px"></div>
-            </div>
         </section>
+    </div>
+
+    <!-- Sticky Legend Footer -->
+    <div id="legend-footer" class="legend-footer">
+        <div id="legend" class="legend"></div>
     </div>
 
     <div style="margin-top:12px" class="muted">
