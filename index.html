@@ -20,9 +20,7 @@
           <button id="btn-view-employees" class="btn secondary">Agregar Empleados</button>
           <button id="btn-view-templates" class="btn secondary">Plantillas</button>
         </div>
-      </div>
-      <div class="row">
-        <select id="weekSelector" class="select" title="Seleccionar semana"></select>
+        <select id="weekSelector" class="select" title="Seleccionar semana" style="margin-left: 20px;"></select>
         <select id="roleFilter" class="select" title="Filtrar por rol" style="margin-left: 12px;"></select>
         <button id="btnExport" class="btn">Exportar</button>
         <button id="btnPrint" class="btn">Imprimir</button>
@@ -85,13 +83,16 @@
     <div id="view-schedule" class="wrap" style="max-width: none; padding: 0 16px;">
         <!-- Horarios -->
         <section class="card">
-            <div class="card-h" style="gap:8px;flex-wrap:wrap">
-                <div id="dayTabs" class="row" style="flex-wrap:wrap"></div>
-            </div>
-
-            <!-- Form para crear turnos -->
-            <div class="card-c" style="border-bottom:1px solid var(--border)">
-                <div class="row" style="flex-wrap:wrap;gap:10px">
+            <div class="card-h card-h-controls">
+                <div class="row" style="flex-wrap:wrap;gap:16px;">
+                    <div class="stack" style="gap:4px">
+                        <div class="muted" style="font-size:12px">Tickets proyectados</div>
+                        <input id="projectedTickets" type="number" class="input" style="width:120px">
+                    </div>
+                    <div class="stack" style="gap:4px">
+                        <div class="muted" style="font-size:12px">Productividad proyectada</div>
+                        <span id="projectedProductivity" class="muted" style="font-size:14px; font-weight: bold; padding-top: 8px;">-</span>
+                    </div>
                     <div class="row" style="align-items:center;">
                         <span class="muted" style="font-size:12px">Rol activo:</span>
                         <select id="activeRole" class="select"></select>
@@ -109,6 +110,7 @@
                     </div>
                     <button id="btnAddUnassignedShift" class="btn">Crear turno</button>
                 </div>
+                <div id="dayTabs" class="row" style="flex-wrap:wrap; margin-left: auto;"></div>
             </div>
 
             <!-- Grilla -->
@@ -126,9 +128,6 @@
         <div id="legend" class="legend"></div>
     </div>
 
-    <div style="margin-top:12px" class="muted">
-      Guardado automático en este navegador.
-    </div>
   </div>
 
 <script src="app.js"></script>

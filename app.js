@@ -149,6 +149,8 @@ const db = firebase.firestore();
   const formStart = el("#formStart");
   const formEnd = el("#formEnd");
   const shiftDuration = el("#shiftDuration");
+  const projectedTickets = el("#projectedTickets");
+  const projectedProductivity = el("#projectedProductivity");
 
   const viewScheduleEl = el('#view-schedule');
   const viewEmployeesEl = el('#view-employees');
@@ -799,47 +801,46 @@ const db = firebase.firestore();
       return;
     }
 
-    const table = document.createElement("div");
-    table.className = "emp-table";
+    const table = document.createElement("table");
+    table.className = "emp-table-new"; // Use a new class to avoid style conflicts
 
+    const thead = table.createTHead();
+    const headRow = thead.insertRow();
+    headRow.innerHTML = "<th>Nombre</th><th>Estrellas</th><th>Acciones</th>";
+
+    const tbody = table.createTBody();
     filtered.forEach(e=>{
-      const row = document.createElement("div");
-      row.className = "emp-row";
+      const row = tbody.insertRow();
 
-      const nameCell = document.createElement("div");
-      nameCell.className = "emp-cell name-cell";
-      nameCell.style.display = "flex";
-      nameCell.style.flexDirection = "column";
-      nameCell.style.alignItems = "flex-start";
-
-      const nameWrapper = document.createElement("div");
-      nameWrapper.textContent = e.name;
+      // Name cell
+      const nameCell = row.insertCell();
+      nameCell.textContent = e.name;
       if (e.isMinor) {
         const minorBadge = document.createElement("span");
         minorBadge.className = "badge b-minor";
         minorBadge.textContent = "Menor";
         minorBadge.style.marginLeft = "8px";
-        nameWrapper.appendChild(minorBadge);
+        nameCell.appendChild(minorBadge);
       }
-      nameCell.appendChild(nameWrapper);
 
+      // Stars cell
+      const starsCell = row.insertCell();
       if (e.stars && e.stars.length > 0) {
         const badges = document.createElement("div");
         badges.className="chips";
-        badges.style.marginTop = "6px";
         e.stars.forEach(s=>{
           const b = document.createElement("span"); b.className="badge "+clsFor(s); b.textContent=s; badges.appendChild(b);
         });
-        nameCell.appendChild(badges);
+        starsCell.appendChild(badges);
       } else {
-        const m = document.createElement("span"); m.className="muted"; m.style.fontSize="12px";
-        m.style.marginTop = "6px";
-        m.textContent="Sin estrellas";
-        nameCell.appendChild(m);
+        starsCell.className = "muted";
+        starsCell.textContent="Sin estrellas";
       }
 
-      const actionsCell = document.createElement("div");
-      actionsCell.className = "emp-cell actions-cell";
+      // Actions cell
+      const actionsCell = row.insertCell();
+      actionsCell.className = "actions-cell-new";
+
       const bAvailability = document.createElement("button");
       bAvailability.className="btn secondary"; bAvailability.textContent="Disponibilidad";
       bAvailability.onclick = () => openAvailabilityModal(e.id);
@@ -848,25 +849,38 @@ const db = firebase.firestore();
       bEst.className="btn secondary"; bEst.textContent="Estrellas";
       bEst.onclick = () => openStarsModal(e.id, e.name);
 
+      const bMinor = document.createElement("button");
+      bMinor.className="btn secondary"; bMinor.textContent= e.isMinor ? "Quitar Menor" : "Hacer Menor";
+      bMinor.onclick = () => toggleIsMinor(e.id);
+
       const bDel = document.createElement("button");
       bDel.className="btn secondary del"; bDel.textContent="Eliminar";
       bDel.onclick = () => removeEmployee(e.id);
 
       actionsCell.appendChild(bAvailability);
       actionsCell.appendChild(bEst);
+      actionsCell.appendChild(bMinor);
       actionsCell.appendChild(bDel);
-
-      row.appendChild(nameCell);
-      row.appendChild(actionsCell);
-      table.appendChild(row);
     });
 
     empList.appendChild(table);
   }
 
+  function updateProjectedProductivity() {
+    const tickets = Number(projectedTickets.value);
+    const totalHours = calculateTotalDayHours(state.activeDay);
+    if (tickets > 0 && totalHours > 0) {
+        const productivity = tickets / totalHours;
+        projectedProductivity.textContent = productivity.toFixed(2);
+    } else {
+        projectedProductivity.textContent = "-";
+    }
+  }
+
   function renderTable(){
     renderHead();
     tbody.innerHTML = "";
+    updateProjectedProductivity();
 
     const day = state.activeDay;
     ensureDay(day);
@@ -1476,39 +1490,54 @@ const db = firebase.firestore();
     const templateNames = Object.keys(state.templates || {}).sort();
 
     if (templateNames.length === 0) {
-      const p = document.createElement("div");
-      p.className="muted"; p.textContent="No hay plantillas guardadas.";
-      templateList.appendChild(p);
-      return;
+        const p = document.createElement("div");
+        p.className="muted"; p.textContent="No hay plantillas guardadas.";
+        templateList.appendChild(p);
+        return;
     }
 
     templateNames.forEach(name => {
-      const card = document.createElement("div");
-      card.style.border="1px solid var(--border)"; card.style.padding="10px";
-      card.className = "row";
-      card.style.justifyContent = "space-between";
+        const templateShifts = state.templates[name] || [];
+        const shiftCount = templateShifts.length;
+        let totalSlots = 0;
+        templateShifts.forEach(shift => {
+            totalSlots += (shift.endSlot - shift.startSlot + 1);
+        });
+        const totalHours = totalSlots * 0.5;
 
-      const label = document.createElement("span");
-      label.textContent = name;
-      card.appendChild(label);
+        const card = document.createElement("div");
+        card.style.border="1px solid var(--border)"; card.style.padding="10px";
+        card.className = "row";
+        card.style.justifyContent = "space-between";
 
-      const actions = document.createElement("div");
-      actions.className = "row";
+        const infoDiv = document.createElement("div");
+        const label = document.createElement("strong");
+        label.textContent = name;
+        const details = document.createElement("div");
+        details.className = "muted";
+        details.style.fontSize = "12px";
+        details.textContent = `${shiftCount} turnos, ${String(totalHours).replace('.',',')}hs en total`;
+        infoDiv.appendChild(label);
+        infoDiv.appendChild(details);
+        card.appendChild(infoDiv);
 
-      const applyBtn = document.createElement("button");
-      applyBtn.className = "btn";
-      applyBtn.textContent = "Aplicar";
-      applyBtn.addEventListener("click", () => applyTemplate(name));
+        const actions = document.createElement("div");
+        actions.className = "row";
 
-      const deleteBtn = document.createElement("button");
-      deleteBtn.className = "btn secondary del";
-      deleteBtn.textContent = "Eliminar";
-      deleteBtn.addEventListener("click", () => deleteTemplate(name));
+        const applyBtn = document.createElement("button");
+        applyBtn.className = "btn";
+        applyBtn.textContent = "Aplicar";
+        applyBtn.addEventListener("click", () => applyTemplate(name));
 
-      actions.appendChild(applyBtn);
-      actions.appendChild(deleteBtn);
-      card.appendChild(actions);
-      templateList.appendChild(card);
+        const deleteBtn = document.createElement("button");
+        deleteBtn.className = "btn secondary del";
+        deleteBtn.textContent = "Eliminar";
+        deleteBtn.addEventListener("click", () => deleteTemplate(name));
+
+        actions.appendChild(applyBtn);
+        actions.appendChild(deleteBtn);
+        card.appendChild(actions);
+        templateList.appendChild(card);
     });
   }
 
@@ -1670,6 +1699,8 @@ const db = firebase.firestore();
   if (localStorage.getItem("darkMode") === "enabled") {
     setDarkMode(true);
   }
+
+  projectedTickets.addEventListener("input", updateProjectedProductivity);
 
   /* ====== Inicialización ====== */
   await loadState();
