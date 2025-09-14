@@ -556,8 +556,8 @@ const db = firebase.firestore();
     // 2. Check weekly availability (new logic)
     const dayAvailabilitySlots = employee.availability[dayIndex];
     if (!dayAvailabilitySlots || dayAvailabilitySlots.length === 0) {
-        // If no slots are defined for the day, treat as unavailable.
-        return { isAvailable: false, reason: `${employee.name} no ha definido su disponibilidad para este día.` };
+        // If no slots are defined for the day, assume full-time availability.
+        return { isAvailable: true, reason: '' };
     }
 
     let isAvailableInAnySlot = false;
@@ -1765,11 +1765,7 @@ const db = firebase.firestore();
       const formattedDate = `${dayName} ${dayDate.getDate()} de ${dayDate.toLocaleString('es-ES', { month: 'long' })} de ${dayDate.getFullYear()}`;
 
       let tableRows = '';
-      dayShifts.sort((a,b) => {
-        const empA = employees.find(e => e.id === a.employeeId);
-        const empB = employees.find(e => e.id === b.employeeId);
-        return empA.name.localeCompare(empB.name);
-      }).forEach(shift => {
+      dayShifts.sort((a, b) => a.startSlot - b.startSlot).forEach(shift => {
         const emp = employees.find(e => e.id === shift.employeeId);
         if (!emp) return;
 
