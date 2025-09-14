@@ -176,6 +176,10 @@ const db = firebase.firestore();
   const inpTemplateName = el('#inpTemplateName');
   const btnSaveTemplate = el('#btnSaveTemplate');
   const templateList = el('#templateList');
+  const printModal = el("#print-modal");
+  const printModalClose = el("#print-modal-close");
+  const btnPrintScheduleList = el("#btn-print-schedule-list");
+  const btnPrintDailyPlanning = el("#btn-print-daily-planning");
 
   function showView(viewName) {
     viewScheduleEl.style.display = 'none';
@@ -1744,7 +1748,172 @@ const db = firebase.firestore();
     printWindow.document.close();
   }
 
-  el("#btnPrint").addEventListener("click", printSchedule);
+  function printDailyPlanning() {
+    const schedule = getActiveSchedule();
+    const employees = state.employees;
+    const weekMonday = new Date(state.activeWeek + "T12:00:00Z");
+
+    let pagesHtml = '';
+
+    for (let i = 0; i < 7; i++) {
+      const dayShifts = (schedule[i] || []).filter(s => s.employeeId);
+      if (dayShifts.length === 0) continue; // Skip days with no assigned shifts
+
+      const dayDate = new Date(weekMonday);
+      dayDate.setDate(weekMonday.getDate() + i);
+      const dayName = DAYS[i];
+      const formattedDate = `${dayName} ${dayDate.getDate()} de ${dayDate.toLocaleString('es-ES', { month: 'long' })} de ${dayDate.getFullYear()}`;
+
+      let tableRows = '';
+      dayShifts.sort((a,b) => {
+        const empA = employees.find(e => e.id === a.employeeId);
+        const empB = employees.find(e => e.id === b.employeeId);
+        return empA.name.localeCompare(empB.name);
+      }).forEach(shift => {
+        const emp = employees.find(e => e.id === shift.employeeId);
+        if (!emp) return;
+
+        const shiftHours = (shift.endSlot - shift.startSlot + 1) * 0.5;
+        const startTimeLabel = SLOTS[shift.startSlot].label;
+        const endTimeLabel = SLOTS[shift.endSlot + 1] ? SLOTS[shift.endSlot + 1].label : "02:00";
+
+        let timelineCells = '';
+        for (let j = 0; j < SLOTS.length; j++) {
+          const inShift = j >= shift.startSlot && j <= shift.endSlot;
+          timelineCells += `<td class="${inShift ? 'in-shift' : ''}">${inShift ? 'A' : ''}</td>`;
+        }
+
+        tableRows += `
+          <tr>
+            <td>${escapeHtml(emp.name)}<br><span class="time-range">${startTimeLabel} a ${endTimeLabel}</span></td>
+            <td>${escapeHtml(shift.role)}</td>
+            <td>${String(shiftHours).replace('.', ',')}</td>
+            ${timelineCells}
+          </tr>
+        `;
+      });
+
+      let timelineHeader = '';
+      SLOTS.forEach(slot => {
+        timelineHeader += `<th>${slot.label.split(':')[0]}</th>`;
+      });
+
+      pagesHtml += `
+        <div class="page">
+          <div class="page-header">
+            <span>Departamento: KFC LA PLATA</span>
+            <span>${formattedDate}</span>
+          </div>
+          <table class="daily-planning-table">
+            <thead>
+              <tr>
+                <th style="width: 200px;">Empleado</th>
+                <th style="width: 100px;">Pos.</th>
+                <th style="width: 50px;">Hs.</th>
+                ${timelineHeader}
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRows}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    const printWindow = window.open('', '', 'height=800,width=1200');
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Planificación Diaria</title>
+          <style>
+            body { font-family: sans-serif; }
+            @media print {
+              @page {
+                size: landscape;
+                margin: 0.5in;
+              }
+              body {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
+            }
+            .page {
+              page-break-after: always;
+              width: 100%;
+            }
+            .page:last-child {
+              page-break-after: auto;
+            }
+            .page-header {
+              display: flex;
+              justify-content: space-between;
+              font-weight: bold;
+              margin-bottom: 10px;
+              font-size: 14px;
+            }
+            .daily-planning-table {
+              width: 100%;
+              border-collapse: collapse;
+              font-size: 9px;
+            }
+            .daily-planning-table th, .daily-planning-table td {
+              border: 1px solid #999;
+              padding: 3px;
+              text-align: center;
+              white-space: nowrap;
+            }
+            .daily-planning-table th {
+              background-color: #f0f0f0;
+            }
+            .daily-planning-table td:first-child {
+                text-align: left;
+                font-weight: bold;
+            }
+            .daily-planning-table .time-range {
+              font-size: 8px;
+              font-weight: normal;
+              color: #333;
+            }
+            .daily-planning-table td.in-shift {
+              background-color: #c9e6b3 !important;
+            }
+          </style>
+        </head>
+        <body>
+          ${pagesHtml}
+          <script>
+            setTimeout(() => { window.print(); window.close(); }, 250);
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  }
+
+  el("#btnPrint").addEventListener("click", () => {
+    printModal.style.display = "flex";
+  });
+
+  printModalClose.addEventListener("click", () => {
+    printModal.style.display = "none";
+  });
+
+  printModal.addEventListener("click", (e) => {
+    if (e.target === printModal) {
+      printModal.style.display = "none";
+    }
+  });
+
+  btnPrintScheduleList.addEventListener("click", () => {
+    printSchedule();
+    printModal.style.display = "none";
+  });
+
+  btnPrintDailyPlanning.addEventListener("click", () => {
+    printDailyPlanning();
+    printModal.style.display = "none";
+  });
 
   /* ====== Dark Mode ====== */
   const darkModeBtn = el("#btn-dark-mode");
