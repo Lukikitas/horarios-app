@@ -85,14 +85,6 @@
         <section class="card">
             <div class="card-h card-h-controls">
                 <div class="row" style="flex-wrap:wrap;gap:16px;">
-                    <div class="stack" style="gap:4px">
-                        <div class="muted" style="font-size:12px">Tickets proyectados</div>
-                        <input id="projectedTickets" type="number" class="input" style="width:120px">
-                    </div>
-                    <div class="stack" style="gap:4px">
-                        <div class="muted" style="font-size:12px">Productividad proyectada</div>
-                        <span id="projectedProductivity" class="muted" style="font-size:14px; font-weight: bold; padding-top: 8px;">-</span>
-                    </div>
                     <div class="row" style="align-items:center;">
                         <span class="muted" style="font-size:12px">Rol activo:</span>
                         <select id="activeRole" class="select"></select>
@@ -109,6 +101,15 @@
                         <span id="shiftDuration" class="muted" style="font-size: 14px;"></span>
                     </div>
                     <button id="btnAddUnassignedShift" class="btn">Crear turno</button>
+
+                    <div class="stack" style="gap:4px; margin-left: 20px;">
+                        <div class="muted" style="font-size:12px">Tickets proyectados</div>
+                        <input id="projectedTickets" type="number" class="input" style="width:120px">
+                    </div>
+                    <div class="stack" style="gap:4px">
+                        <div class="muted" style="font-size:12px">Productividad proyectada</div>
+                        <span id="projectedProductivity" class="muted" style="font-size:14px; font-weight: bold; padding-top: 8px;">-</span>
+                    </div>
                 </div>
                 <div id="dayTabs" class="row" style="flex-wrap:wrap; margin-left: auto;"></div>
             </div>

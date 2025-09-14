@@ -58,6 +58,7 @@ const db = firebase.firestore();
     employees: [],
     schedules: {},
     templates: {},
+    projectedTickets: {},
     activeWeek: toISODateString(getMonday(new Date())),
     activeDay:0
   };
@@ -72,13 +73,27 @@ const db = firebase.firestore();
           // Migration for availability and exceptions
           state.employees.forEach(emp => {
             if (!emp.availability) {
-              emp.availability = Array.from({ length: 7 }, () => ({ start: null, end: null }));
+                // New employee or very old data
+                emp.availability = { "0": [], "1": [], "2": [], "3": [], "4": [], "5": [], "6": [] };
+            } else if (Array.isArray(emp.availability)) {
+                // It's an array, needs migration from the old format
+                const newAvailability = { "0": [], "1": [], "2": [], "3": [], "4": [], "5": [], "6": [] };
+                for (let i = 0; i < 7; i++) {
+                    const dayData = emp.availability[i];
+                    if (dayData && (dayData.start || dayData.end)) { // Old format: [{...}, {...}]
+                        newAvailability[i] = [dayData];
+                    }
+                }
+                emp.availability = newAvailability;
             }
+            // If it's already an object, we assume it's the new correct format and do nothing.
+
             if (!emp.exceptions) {
               emp.exceptions = [];
             }
           });
           state.templates = data.templates || {};
+          state.projectedTickets = data.projectedTickets || {};
           state.activeDay = data.activeDay || 0;
           state.activeWeek = data.activeWeek || toISODateString(getMonday(new Date()));
 
@@ -335,7 +350,7 @@ const db = firebase.firestore();
       name,
       stars: [],
       isMinor: false,
-      availability: Array.from({ length: 7 }, () => ({ start: null, end: null })),
+      availability: { "0": [], "1": [], "2": [], "3": [], "4": [], "5": [], "6": [] },
       exceptions: [],
     });
     el("#inpName").value = "";
@@ -511,24 +526,22 @@ const db = firebase.firestore();
 
   function checkEmployeeAvailability(employee, shift, weekId, dayIndex) {
     // Defensive checks
-    if (!employee.availability || !Array.isArray(employee.availability) || !employee.exceptions || !Array.isArray(employee.exceptions)) {
-        return { isAvailable: true, reason: '' };
+    if (!employee.availability || Array.isArray(employee.availability) || !employee.exceptions || !Array.isArray(employee.exceptions)) {
+        return { isAvailable: true, reason: '' }; // Should not happen with migration
     }
 
     const shiftDate = new Date(`${weekId}T12:00:00.000Z`);
     shiftDate.setUTCDate(shiftDate.getUTCDate() + dayIndex);
-    const shiftDateString = toISODateString(shiftDate).slice(0, 10); // YYYY-MM-DD
+    const shiftDateString = toISODateString(shiftDate).slice(0, 10);
 
-    // 1. Check exceptions
+    // 1. Check exceptions (this part remains the same)
     const exception = employee.exceptions.find(ex => ex.date === shiftDateString);
     if (exception) {
         if (!exception.start && !exception.end) {
             return { isAvailable: false, reason: `${employee.name} tiene el día libre por una excepción.` };
         }
-
         const exceptionStartSlot = timeToSlotIndex(exception.start);
         const exceptionEndSlot = timeToSlotIndex(exception.end);
-
         if (exceptionStartSlot !== -1 && exceptionEndSlot !== -1) {
             if (shift.startSlot < exceptionEndSlot && shift.endSlot >= exceptionStartSlot) {
                  return { isAvailable: false, reason: `${employee.name} no está disponible en este horario por una excepción.` };
@@ -536,20 +549,32 @@ const db = firebase.firestore();
         }
     }
 
-    // 2. Check weekly availability
-    const dayAvailability = employee.availability[dayIndex];
-    if (dayAvailability && (dayAvailability.start || dayAvailability.end)) {
-        const availableStartSlot = timeToSlotIndex(dayAvailability.start);
-        const availableEndSlot = timeToSlotIndex(dayAvailability.end);
+    // 2. Check weekly availability (new logic)
+    const dayAvailabilitySlots = employee.availability[dayIndex];
+    if (!dayAvailabilitySlots || dayAvailabilitySlots.length === 0) {
+        // If no slots are defined for the day, treat as unavailable.
+        return { isAvailable: false, reason: `${employee.name} no ha definido su disponibilidad para este día.` };
+    }
 
-        if (availableStartSlot !== -1 && availableEndSlot !== -1) {
-            if (shift.startSlot < availableStartSlot || shift.endSlot >= availableEndSlot) {
-                 return { isAvailable: false, reason: `El horario de disponibilidad de ${employee.name} para este día es de ${dayAvailability.start} a ${dayAvailability.end}.` };
-            }
+    let isAvailableInAnySlot = false;
+    for (const slot of dayAvailabilitySlots) {
+        const availableStartSlot = slot.start ? timeToSlotIndex(slot.start) : 0;
+        const availableEndSlot = slot.end ? timeToSlotIndex(slot.end) - 1 : SLOTS.length - 1;
+
+        if (availableStartSlot === -1) continue; // Invalid start time in slot definition
+
+        if (shift.startSlot >= availableStartSlot && shift.endSlot <= availableEndSlot) {
+            isAvailableInAnySlot = true;
+            break; // Found a valid slot, no need to check others
         }
     }
 
-    return { isAvailable: true, reason: '' };
+    if (isAvailableInAnySlot) {
+        return { isAvailable: true, reason: '' };
+    } else {
+        const availableRanges = dayAvailabilitySlots.map(s => `${s.start || 'Apertura'} a ${s.end || 'Cierre'}`).join(', ');
+        return { isAvailable: false, reason: `El horario del turno no coincide con la disponibilidad de ${employee.name} para este día: ${availableRanges}.` };
+    }
   }
 
   /* ====== Horarios ====== */
@@ -721,11 +746,22 @@ const db = firebase.firestore();
   function renderDayTabs(){
     dayTabs.innerHTML = "";
     DAYS.forEach((d,idx)=>{
+      const container = document.createElement("div");
+      container.className = 'day-tab-item';
+
       const b = document.createElement("button");
-      b.className = "pilltab"+(idx===state.activeDay?" active":"");
+      b.className = "pilltab" + (idx === state.activeDay ? " active" : "");
       b.textContent = d;
-      b.addEventListener("click", ()=>{ state.activeDay=idx; save(); renderAll(); });
-      dayTabs.appendChild(b);
+      b.addEventListener("click", () => { state.activeDay = idx; save(); renderAll(); });
+
+      const hoursSpan = document.createElement("span");
+      const totalHours = calculateTotalDayHours(idx);
+      hoursSpan.className = 'day-tab-hours';
+      hoursSpan.textContent = totalHours > 0 ? `${String(totalHours).replace('.', ',')}hs` : `-`;
+
+      container.appendChild(b);
+      container.appendChild(hoursSpan);
+      dayTabs.appendChild(container);
     });
   }
 
@@ -866,12 +902,19 @@ const db = firebase.firestore();
     empList.appendChild(table);
   }
 
+  function renderProjectedTicketsInput() {
+    const weekTickets = state.projectedTickets[state.activeWeek] || {};
+    const dayTickets = weekTickets[state.activeDay] || '';
+    projectedTickets.value = dayTickets;
+  }
+
   function updateProjectedProductivity() {
-    const tickets = Number(projectedTickets.value);
+    const weekTickets = state.projectedTickets[state.activeWeek] || {};
+    const tickets = Number(weekTickets[state.activeDay] || 0);
     const totalHours = calculateTotalDayHours(state.activeDay);
     if (tickets > 0 && totalHours > 0) {
         const productivity = tickets / totalHours;
-        projectedProductivity.textContent = productivity.toFixed(2);
+        projectedProductivity.textContent = productivity.toFixed(1);
     } else {
         projectedProductivity.textContent = "-";
     }
@@ -1067,6 +1110,7 @@ const db = firebase.firestore();
   }
 
   function renderAll(){
+    renderProjectedTicketsInput();
     renderDayTabs();
     renderLegend();
     renderEmpList();
@@ -1149,12 +1193,9 @@ const db = firebase.firestore();
     const emp = getEmployeeById(empId);
     if (!emp) return;
 
-    // Defensive check
-    if (!Array.isArray(emp.availability) || emp.availability.length !== 7) {
-      emp.availability = Array.from({ length: 7 }, () => ({ start: null, end: null }));
-    }
-    if (!Array.isArray(emp.exceptions)) {
-      emp.exceptions = [];
+    // The migration in loadState should handle this, but as a fallback:
+    if (!emp.availability || Array.isArray(emp.availability)) { // check for old array format or null
+      emp.availability = { "0": [], "1": [], "2": [], "3": [], "4": [], "5": [], "6": [] };
     }
 
     box.innerHTML = `
@@ -1164,20 +1205,30 @@ const db = firebase.firestore();
       <div class="card-c stack">
         <div class="stack">
           <strong>Disponibilidad Semanal</strong>
-          ${DAYS.map((day, index) => `
-            <div class="row" style="justify-content: space-between; align-items: center;">
-              <span style="flex-basis: 100px;">${day}</span>
-              <div class="row">
-                <select class="select availability-start" data-day="${index}">
-                  <option value="">--</option>
-                  ${SLOTS.map(s => `<option value="${s.label}" ${emp.availability[index]?.start === s.label ? 'selected' : ''}>${s.label}</option>`).join('')}
-                </select>
-                <span>-</span>
-                <select class="select availability-end" data-day="${index}">
-                  <option value="">--</option>
-                  ${SLOTS.map(s => `<option value="${s.label}" ${emp.availability[index]?.end === s.label ? 'selected' : ''}>${s.label}</option>`).join('')}
-                </select>
-                <button class="btn secondary availability-clear" data-day="${index}">Full-time</button>
+          ${DAYS.map((day, dayIndex) => `
+            <div class="stack" style="border-top: 1px solid var(--border); padding-top: 8px; margin-top: 8px;">
+              <div class="row" style="justify-content: space-between; align-items: center;">
+                <strong>${day}</strong>
+                <button class="btn secondary add-availability-slot" data-day="${dayIndex}">Añadir horario</button>
+              </div>
+              <div class="stack" data-day-container="${dayIndex}">
+                ${(emp.availability[dayIndex] && emp.availability[dayIndex].length > 0 ? emp.availability[dayIndex].map((slot, slotIndex) => `
+                  <div class="row" style="justify-content: space-between; align-items: center;">
+                    <div class="row">
+                      <select class="select availability-start" data-day="${dayIndex}" data-slot="${slotIndex}">
+                        <option value="">--</option>
+                        ${SLOTS.map(s => `<option value="${s.label}" ${slot.start === s.label ? 'selected' : ''}>${s.label}</option>`).join('')}
+                      </select>
+                      <span>-</span>
+                      <select class="select availability-end" data-day="${dayIndex}" data-slot="${slotIndex}">
+                        <option value="">--</option>
+                        ${SLOTS.map(s => `<option value="${s.label}" ${slot.end === s.label ? 'selected' : ''}>${s.label}</option>`).join('')}
+                      </select>
+                    </div>
+                    <button class="btn secondary del remove-availability-slot" data-day="${dayIndex}" data-slot="${slotIndex}">X</button>
+                  </div>
+                `).join('') : '<span class="muted" style="font-size:12px;">Día libre / Full-time</span>')
+              }
               </div>
             </div>
           `).join('')}
@@ -1213,7 +1264,7 @@ const db = firebase.firestore();
     wrap.style.display="flex"; wrap.style.alignItems="center"; wrap.style.justifyContent="center"; wrap.style.padding="16px"; wrap.style.zIndex=1000;
 
     const box = document.createElement("div");
-    box.className="card"; box.style.maxWidth="600px"; box.style.width="100%";
+    box.className="card availability-modal-card"; box.style.maxWidth="600px"; box.style.width="100%";
 
     renderAvailability(empId, box);
     wrap.appendChild(box);
@@ -1226,24 +1277,44 @@ const db = firebase.firestore();
       box.querySelector("#availability-done").addEventListener("click", () => {
         save();
         wrap.remove();
-        renderAll();
       });
 
-      box.querySelectorAll(".availability-clear").forEach(btn => {
+      // New listener for adding a slot
+      box.querySelectorAll(".add-availability-slot").forEach(btn => {
         btn.addEventListener("click", (e) => {
           const dayIndex = e.target.dataset.day;
-          emp.availability[dayIndex].start = null;
-          emp.availability[dayIndex].end = null;
+          if (emp.availability[dayIndex]) {
+            emp.availability[dayIndex].push({ start: null, end: null });
+          } else {
+            emp.availability[dayIndex] = [{ start: null, end: null }];
+          }
           renderAvailability(empId, box);
           attachListeners();
         });
       });
 
+      // New listener for removing a slot
+      box.querySelectorAll(".remove-availability-slot").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+          const dayIndex = e.target.dataset.day;
+          const slotIndex = e.target.dataset.slot;
+          if (emp.availability[dayIndex] && emp.availability[dayIndex][slotIndex]) {
+            emp.availability[dayIndex].splice(slotIndex, 1);
+          }
+          renderAvailability(empId, box);
+          attachListeners();
+        });
+      });
+
+      // Updated listener for start/end selects
       box.querySelectorAll(".availability-start, .availability-end").forEach(sel => {
         sel.addEventListener("change", (e) => {
           const dayIndex = e.target.dataset.day;
+          const slotIndex = e.target.dataset.slot;
           const type = e.target.classList.contains('availability-start') ? 'start' : 'end';
-          emp.availability[dayIndex][type] = e.target.value || null;
+          if(emp.availability[dayIndex] && emp.availability[dayIndex][slotIndex]) {
+            emp.availability[dayIndex][slotIndex][type] = e.target.value || null;
+          }
         });
       });
 
@@ -1700,7 +1771,18 @@ const db = firebase.firestore();
     setDarkMode(true);
   }
 
-  projectedTickets.addEventListener("input", updateProjectedProductivity);
+  projectedTickets.addEventListener("input", () => {
+    const { activeWeek, activeDay } = state;
+    const tickets = projectedTickets.value;
+
+    if (!state.projectedTickets[activeWeek]) {
+        state.projectedTickets[activeWeek] = {};
+    }
+    state.projectedTickets[activeWeek][activeDay] = tickets;
+
+    save();
+    updateProjectedProductivity();
+  });
 
   /* ====== Inicialización ====== */
   await loadState();
