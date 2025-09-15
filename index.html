@@ -14,19 +14,25 @@
   <div class="bar">
     <div class="bar-inner">
       <div class="row">
-        <h1>Planificador de Horarios</h1>
-        <div id="main-menu" style="margin-left: 20px;">
-          <button id="btn-view-schedule" class="btn">Hacer Horarios</button>
-          <button id="btn-view-employees" class="btn secondary">Agregar Empleados</button>
-          <button id="btn-view-templates" class="btn secondary">Plantillas</button>
+        <h1 style="font-size: 1.1em; white-space: nowrap;">Planificador de Horarios</h1>
+        <div id="main-menu" style="margin-left: 16px;">
+          <button id="btn-view-schedule" class="btn main-menu-btn">Horarios</button>
+          <button id="btn-view-employees" class="btn secondary main-menu-btn">Empleados</button>
+          <button id="btn-view-templates" class="btn secondary main-menu-btn">Plantillas</button>
         </div>
-        <select id="weekSelector" class="select" title="Seleccionar semana" style="margin-left: 20px;"></select>
-        <select id="roleFilter" class="select" title="Filtrar por rol" style="margin-left: 12px;"></select>
-        <button id="btnExport" class="btn">Exportar</button>
-        <button id="btnPrint" class="btn">Imprimir</button>
-        <label class="btn secondary" style="cursor:pointer;">
-          Importar<input id="fileImport" class="file" type="file" accept="application/json" style="display:none">
-        </label>
+        <select id="weekSelector" class="select" title="Seleccionar semana" style="margin-left: 16px;"></select>
+        <select id="roleFilter" class="select" title="Filtrar por rol" style="margin-left: 8px;"></select>
+
+        <div class="dropdown" style="margin-left: 8px;">
+          <button id="btn-actions" class="btn secondary">Acciones ▾</button>
+          <div id="actions-dropdown" class="dropdown-content">
+            <button id="btnExport" class="dropdown-item">Exportar JSON</button>
+            <button id="btnPrint" class="dropdown-item">Imprimir</button>
+            <label class="dropdown-item" style="cursor:pointer;">
+              Importar JSON<input id="fileImport" class="file" type="file" accept="application/json" style="display:none">
+            </label>
+          </div>
+        </div>
         <button id="btn-dark-mode" class="btn secondary" style="margin-left:auto;">🌙</button>
       </div>
     </div>
@@ -84,34 +90,25 @@
         <!-- Horarios -->
         <section class="card">
             <div class="card-h card-h-controls">
-                <div class="row" style="flex-wrap:wrap;gap:16px;">
-                    <div class="row" style="align-items:center;">
-                        <span class="muted" style="font-size:12px">Rol activo:</span>
-                        <select id="activeRole" class="select"></select>
-                    </div>
-                    <div>
-                        <div class="muted" style="font-size:12px">Inicio</div>
-                        <select id="formStart" class="select"></select>
-                    </div>
-                    <div>
-                        <div class="muted" style="font-size:12px">Fin (exclusivo)</div>
-                        <select id="formEnd" class="select"></select>
-                    </div>
-                    <div style="align-self: end; padding-bottom: 4px;">
-                        <span id="shiftDuration" class="muted" style="font-size: 14px;"></span>
-                    </div>
-                    <button id="btnAddUnassignedShift" class="btn">Crear turno</button>
-
-                    <div class="stack" style="gap:4px; margin-left: 20px;">
-                        <div class="muted" style="font-size:12px">Tickets proyectados</div>
-                        <input id="projectedTickets" type="number" class="input" style="width:120px">
-                    </div>
-                    <div class="stack" style="gap:4px">
-                        <div class="muted" style="font-size:12px">Productividad proyectada</div>
-                        <span id="projectedProductivity" class="muted" style="font-size:14px; font-weight: bold; padding-top: 8px;">-</span>
+                <div class="controls-left">
+                    <div class="controls-group">
+                        <div class="control-item"><label for="activeRole" class="muted">Rol</label><select id="activeRole" class="select"></select></div>
+                        <div class="control-item"><label for="formStart" class="muted">Inicio</label><select id="formStart" class="select"></select></div>
+                        <div class="control-item"><label for="formEnd" class="muted">Fin</label><select id="formEnd" class="select"></select></div>
+                        <div class="control-item"><span id="shiftDuration" class="muted"></span></div>
+                        <div class="control-item"><button id="btnAddUnassignedShift" class="btn">Crear turno</button></div>
                     </div>
                 </div>
-                <div id="dayTabs" class="row" style="flex-wrap:wrap; margin-left: auto;"></div>
+                <div class="controls-center">
+                    <h2 id="day-title" class="day-title"></h2>
+                    <div class="controls-group">
+                        <div class="control-item"><label for="projectedTickets" class="muted">Tickets</label><input id="projectedTickets" type="number" class="input"></div>
+                        <div class="control-item"><label class="muted">Prod.</label><span id="projectedProductivity" class="strong"></span></div>
+                    </div>
+                </div>
+                <div class="controls-right">
+                    <div id="dayTabs" class="row" style="flex-wrap:wrap;"></div>
+                </div>
             </div>
 
             <!-- Grilla -->

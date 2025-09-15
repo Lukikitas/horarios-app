@@ -266,6 +266,10 @@ const db = firebase.firestore();
   optionize(roleFilter, [{key:"",name:"Todos"},...ROLES.map(r=>({key:r.key,name:r.key}))], (x)=>({value:x.key,label:x.name}));
   optionize(empFilter, [{key:"",name:"Todos"},...ROLES.map(r=>({key:r.key,name:r.key}))], (x)=>({value:x.key,label:x.name}));
   optionize(activeRole, ROLES, (r)=>({value:r.key,label:r.key}));
+  activeRole.addEventListener("change", () => {
+    // We just need to re-render the table to move the new shift row
+    renderTable();
+  });
   optionize(formStart, SLOTS, (s)=>({value:s.index,label:s.label}));
   optionize(formEnd,   SLOTS, (s)=>({value:s.index,label:s.label}));
 
@@ -424,6 +428,22 @@ const db = firebase.firestore();
           }
       }
       return totalSlots * 0.5;
+  }
+
+  function getEmployeeShiftsForWeek(employeeId) {
+    const shifts = [];
+    const schedule = getActiveSchedule();
+    // Ensure we iterate through days in order
+    const sortedDays = Object.keys(schedule).sort((a, b) => a - b);
+    for (const day of sortedDays) {
+        const dayShifts = schedule[day] || [];
+        for (const shift of dayShifts) {
+            if (shift.employeeId === employeeId) {
+                shifts.push({ ...shift, day: parseInt(day, 10) });
+            }
+        }
+    }
+    return shifts;
   }
 
   function isEmployeeAssignedOnDay(employeeId, day) {
@@ -761,12 +781,38 @@ const db = firebase.firestore();
       const hoursSpan = document.createElement("span");
       const totalHours = calculateTotalDayHours(idx);
       hoursSpan.className = 'day-tab-hours';
+      hoursSpan.dataset.day = idx;
       hoursSpan.textContent = totalHours > 0 ? `${String(totalHours).replace('.', ',')}hs` : `-`;
 
       container.appendChild(b);
       container.appendChild(hoursSpan);
       dayTabs.appendChild(container);
     });
+  }
+
+  function updateActiveDayHoursDisplay() {
+    const dayIndex = state.activeDay;
+    const hoursSpan = dayTabs.querySelector(`.day-tab-hours[data-day='${dayIndex}']`);
+    if (hoursSpan) {
+        const totalHours = calculateTotalDayHours(dayIndex);
+        hoursSpan.textContent = totalHours > 0 ? `${String(totalHours).replace('.', ',')}hs` : `-`;
+    }
+  }
+
+  function updateDayTitle() {
+    const dayIndex = state.activeDay;
+    const dayName = DAYS[dayIndex];
+
+    const weekMonday = new Date(state.activeWeek + "T12:00:00Z");
+    const dayDate = new Date(weekMonday);
+    dayDate.setDate(weekMonday.getDate() + dayIndex);
+
+    const formattedDate = `${dayName}, ${dayDate.getDate()} de ${dayDate.toLocaleString('es-ES', { month: 'long' })}`;
+
+    const dayTitleEl = el("#day-title");
+    if (dayTitleEl) {
+      dayTitleEl.textContent = formattedDate;
+    }
   }
 
   function renderLegend(){
@@ -924,193 +970,216 @@ const db = firebase.firestore();
     }
   }
 
-  function renderTable(){
+  function renderTable() {
     renderHead();
     tbody.innerHTML = "";
     updateProjectedProductivity();
+    updateActiveDayHoursDisplay();
+    updateDayTitle();
 
     const day = state.activeDay;
     ensureDay(day);
     const schedule = getActiveSchedule();
     const shifts = schedule[day] || [];
 
+    const createNewShiftRow = () => {
+        const newShiftRow = document.createElement("div");
+        newShiftRow.className = "rowg new-shift-row";
+        newShiftRow.style.gridTemplateColumns = `240px repeat(${SLOTS.length}, 1fr)`;
+        const newShiftNamecol = document.createElement("div");
+        newShiftNamecol.className = "namecol";
+        newShiftRow.appendChild(newShiftNamecol);
+
+        for (let i = 0; i < SLOTS.length; i++) {
+            const cell = document.createElement("div");
+            cell.className = "slot ghost new-shift-slot";
+            cell.dataset.slotIndex = i;
+            cell.addEventListener("mousedown", () => handlePaintStart(i));
+            cell.addEventListener("mouseenter", () => handlePaintEnter(i));
+            newShiftRow.appendChild(cell);
+        }
+        return newShiftRow;
+    };
+
+    const handleAddShiftClick = (role, event) => {
+        activeRole.value = role;
+
+        document.querySelectorAll('.add-shift-btn').forEach(b => b.style.display = 'block');
+        event.currentTarget.style.display = 'none';
+
+        const existingNewShiftRow = tbody.querySelector('.new-shift-row');
+        if (existingNewShiftRow) {
+            existingNewShiftRow.remove();
+        }
+
+        const newShiftRow = createNewShiftRow();
+        event.currentTarget.parentElement.insertAdjacentElement('afterend', newShiftRow);
+
+        const newShiftNamecol = newShiftRow.querySelector('.namecol');
+        const activeRoleName = escapeHtml(activeRole.value);
+        newShiftNamecol.innerHTML = `<span class="muted" style="font-style: italic;">Nuevo turno para ${activeRoleName}... (pintar)</span>`;
+    };
+
     if (shifts.length === 0) {
         const msgRow = document.createElement("div");
         msgRow.style.padding = "20px";
         msgRow.style.textAlign = "center";
         msgRow.className = "muted";
-        msgRow.textContent = "No hay turnos creados para este día. Créalos desde el formulario de arriba o pintando en la fila 'Nuevo Turno'.";
+        msgRow.textContent = "No hay turnos creados para este día. Créalos desde el formulario de arriba.";
         tbody.appendChild(msgRow);
-    } else {
-        const shiftsByRole = shifts.reduce((acc, shift) => {
-            if (!acc[shift.role]) {
-                acc[shift.role] = [];
+        return;
+    }
+
+    const shiftsByRole = shifts.reduce((acc, shift) => {
+        if (!acc[shift.role]) {
+            acc[shift.role] = [];
+        }
+        acc[shift.role].push(shift);
+        return acc;
+    }, {});
+
+    const sortedRoles = Object.keys(shiftsByRole).sort();
+
+    sortedRoles.forEach(role => {
+        const roleShifts = shiftsByRole[role];
+        roleShifts.sort((a, b) => a.startSlot - b.startSlot);
+
+        roleShifts.forEach((shift, index) => {
+            const cols = `240px repeat(${SLOTS.length}, 1fr)`;
+            const row = document.createElement("div");
+            if (index === 0) {
+                row.style.borderTop = "2px solid #d1d5db";
             }
-            acc[shift.role].push(shift);
-            return acc;
-        }, {});
+            row.className = "rowg";
+            row.style.gridTemplateColumns = cols;
+            row.style.borderBottom = "1px solid var(--border)";
 
-        const sortedRoles = Object.keys(shiftsByRole).sort();
+            const namecol = document.createElement("div");
+            namecol.className = "namecol";
+            namecol.style.flexDirection = "column";
+            namecol.style.alignItems = "flex-start";
+            namecol.style.justifyContent = "center";
+            namecol.style.position = "relative";
 
-        sortedRoles.forEach(role => {
-            const roleShifts = shiftsByRole[role];
-            roleShifts.sort((a, b) => a.startSlot - b.startSlot);
+            const detailsDiv = document.createElement("div");
+            const roleInfo = document.createElement("div");
+            roleInfo.style.fontWeight = "600";
+            roleInfo.textContent = shift.role;
 
-            roleShifts.forEach((shift, index) => {
-                const cols = `240px repeat(${SLOTS.length}, 1fr)`;
-                const row = document.createElement("div");
-                if (index === 0) {
-                    row.style.borderTop = "2px solid #d1d5db";
-                }
-                row.className = "rowg";
-                row.style.gridTemplateColumns = cols;
-                row.style.borderBottom = "1px solid var(--border)";
+            const timeInfo = document.createElement("div");
+            timeInfo.className = "muted";
+            timeInfo.style.fontSize = "12px";
+            const startTime = SLOTS[shift.startSlot].label;
+            const endTime = SLOTS[shift.endSlot + 1] ? SLOTS[shift.endSlot + 1].label : "02:00";
+            const duration = (shift.endSlot - shift.startSlot + 1) * 0.5;
+            timeInfo.textContent = `${startTime} - ${endTime} (${String(duration).replace('.',',')}hs)`;
 
-                const namecol = document.createElement("div");
-                namecol.className = "namecol";
-                namecol.style.flexDirection = "column";
-                namecol.style.alignItems = "flex-start";
-                namecol.style.justifyContent = "center";
-                namecol.style.position = "relative";
+            const assignWrapper = document.createElement("div");
+            assignWrapper.style.marginTop = "4px";
+            assignWrapper.className = "row";
 
-                const detailsDiv = document.createElement("div");
-
-                const roleInfo = document.createElement("div");
-                roleInfo.style.fontWeight = "600";
-                roleInfo.textContent = shift.role;
-
-                const timeInfo = document.createElement("div");
-                timeInfo.className = "muted";
-                timeInfo.style.fontSize = "12px";
-                const startTime = SLOTS[shift.startSlot].label;
-                const endTime = SLOTS[shift.endSlot + 1] ? SLOTS[shift.endSlot + 1].label : "02:00";
-                const duration = (shift.endSlot - shift.startSlot + 1) * 0.5;
-                timeInfo.textContent = `${startTime} - ${endTime} (${String(duration).replace('.',',')}hs)`;
-
-                const assignWrapper = document.createElement("div");
-                assignWrapper.style.marginTop = "4px";
-                assignWrapper.className = "row";
-
-                if (shift.employeeId) {
-                    const emp = state.employees.find(e => e.id === shift.employeeId);
-                    const empName = document.createElement("span");
-                    if (emp) {
-                        const weeklyHours = getEmployeeWeeklyHours(emp.id);
-                        const hoursText = `(${String(weeklyHours).replace('.', ',')}hs)`;
-                        empName.textContent = `${emp.name} ${hoursText}`;
-                    } else {
-                        empName.textContent = "Empleado no encontrado";
-                    }
-
-                    const unassignBtn = document.createElement("button");
-                    unassignBtn.className = "btn secondary del";
-                    unassignBtn.innerHTML = "&times;";
-                    unassignBtn.style.padding = "0px 4px";
-                    unassignBtn.style.fontSize = "10px";
-                    unassignBtn.style.lineHeight = "1";
-                    unassignBtn.style.marginLeft = "8px";
-                    unassignBtn.title = "Des-asignar empleado";
-                    unassignBtn.addEventListener("click", () => {
-                        shift.employeeId = null;
-                        save();
-                        renderTable();
-                    });
-
-                    assignWrapper.appendChild(empName);
-                    assignWrapper.appendChild(unassignBtn);
+            if (shift.employeeId) {
+                const emp = state.employees.find(e => e.id === shift.employeeId);
+                const empName = document.createElement("span");
+                if (emp) {
+                    const weeklyHours = getEmployeeWeeklyHours(emp.id);
+                    const hoursText = `(${String(weeklyHours).replace('.', ',')}hs)`;
+                    empName.textContent = `${emp.name} ${hoursText}`;
                 } else {
-                    const assignBtn = document.createElement("button");
-                    assignBtn.className = "btn secondary";
-                    assignBtn.textContent = "Asignar";
-                    assignBtn.style.padding = "2px 8px";
-                    assignBtn.addEventListener("click", () => openAssignEmployeeModal(shift.id));
-                    assignWrapper.appendChild(assignBtn);
+                    empName.textContent = "Empleado no encontrado";
                 }
-
-                detailsDiv.appendChild(roleInfo);
-                detailsDiv.appendChild(timeInfo);
-                detailsDiv.appendChild(assignWrapper);
-
-                const actionsDiv = document.createElement("div");
-                actionsDiv.style.position = "absolute";
-                actionsDiv.style.top = "5px";
-                actionsDiv.style.right = "5px";
-                actionsDiv.className = "row";
-
-                const editBtn = document.createElement("button");
-                editBtn.className = "btn secondary";
-                editBtn.innerHTML = "&#9998;";
-                editBtn.style.padding = "2px 6px";
-                editBtn.style.fontSize = "10px";
-                editBtn.title = "Editar turno";
-                editBtn.addEventListener("click", (e) => {
-                    e.stopPropagation();
-                    openEditShiftModal(shift.id);
+                const unassignBtn = document.createElement("button");
+                unassignBtn.className = "btn secondary del";
+                unassignBtn.innerHTML = "&times;";
+                unassignBtn.style.padding = "0px 4px";
+                unassignBtn.style.fontSize = "10px";
+                unassignBtn.style.lineHeight = "1";
+                unassignBtn.style.marginLeft = "8px";
+                unassignBtn.title = "Des-asignar empleado";
+                unassignBtn.addEventListener("click", () => {
+                    shift.employeeId = null;
+                    save();
+                    renderTable();
                 });
+                assignWrapper.appendChild(empName);
+                assignWrapper.appendChild(unassignBtn);
+            } else {
+                const assignBtn = document.createElement("button");
+                assignBtn.className = "btn secondary";
+                assignBtn.textContent = "Asignar";
+                assignBtn.style.padding = "2px 8px";
+                assignBtn.addEventListener("click", () => openAssignEmployeeModal(shift.id));
+                assignWrapper.appendChild(assignBtn);
+            }
 
-                const deleteBtn = document.createElement("button");
-                deleteBtn.className = "btn secondary del";
-                deleteBtn.innerHTML = "&times;";
-                deleteBtn.style.padding = "2px 6px";
-                deleteBtn.style.fontSize = "10px";
-                deleteBtn.title = "Eliminar turno";
-                deleteBtn.addEventListener("click", (e) => {
-                    e.stopPropagation();
-                    if(confirm("¿Eliminar este turno?")) deleteShift(shift.id);
-                });
+            detailsDiv.appendChild(roleInfo);
+            detailsDiv.appendChild(timeInfo);
+            detailsDiv.appendChild(assignWrapper);
 
-                actionsDiv.appendChild(editBtn);
-                actionsDiv.appendChild(deleteBtn);
+            const actionsDiv = document.createElement("div");
+            actionsDiv.style.position = "absolute";
+            actionsDiv.style.top = "5px";
+            actionsDiv.style.right = "5px";
+            actionsDiv.className = "row";
 
-                namecol.appendChild(detailsDiv);
-                namecol.appendChild(actionsDiv);
-                row.appendChild(namecol);
-
-                // Render the slots
-                for (let i = 0; i < SLOTS.length; i++) {
-                    const cell = document.createElement("div");
-                    cell.className = "slot";
-
-                    cell.addEventListener("click", () => handleSlotClick(shift, i));
-
-                    if (i >= shift.startSlot && i <= shift.endSlot) {
-                        const roleData = ROLES.find(r => r.key === shift.role);
-                        cell.className += " assigned " + (roleData ? clsFor(roleData.key) : "");
-                        if(roleData && roleData.darkText) cell.className += " sandwich";
-                        if (!shift.employeeId) {
-                            cell.className += " unassigned";
-                        }
-
-                        cell.addEventListener("mousedown", () => handleUnpaintStart(shift.id, i));
-                        cell.addEventListener("mouseenter", () => handlePaintEnter(i));
-                        cell.addEventListener("mouseup", () => handleUnpaintEnd(i));
-                    }
-                    row.appendChild(cell);
-                }
-
-                tbody.appendChild(row);
+            const editBtn = document.createElement("button");
+            editBtn.className = "btn secondary";
+            editBtn.innerHTML = "&#9998;";
+            editBtn.style.padding = "2px 6px";
+            editBtn.style.fontSize = "10px";
+            editBtn.title = "Editar turno";
+            editBtn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                openEditShiftModal(shift.id);
             });
+
+            const deleteBtn = document.createElement("button");
+            deleteBtn.className = "btn secondary del";
+            deleteBtn.innerHTML = "&times;";
+            deleteBtn.style.padding = "2px 6px";
+            deleteBtn.style.fontSize = "10px";
+            deleteBtn.title = "Eliminar turno";
+            deleteBtn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                if(confirm("¿Eliminar este turno?")) deleteShift(shift.id);
+            });
+
+            actionsDiv.appendChild(editBtn);
+            actionsDiv.appendChild(deleteBtn);
+            namecol.appendChild(detailsDiv);
+            namecol.appendChild(actionsDiv);
+            row.appendChild(namecol);
+
+            for (let i = 0; i < SLOTS.length; i++) {
+                const cell = document.createElement("div");
+                cell.className = "slot";
+                cell.addEventListener("click", () => handleSlotClick(shift, i));
+                if (i >= shift.startSlot && i <= shift.endSlot) {
+                    const roleData = ROLES.find(r => r.key === shift.role);
+                    cell.className += " assigned " + (roleData ? clsFor(roleData.key) : "");
+                    if(roleData && roleData.darkText) cell.className += " sandwich";
+                    if (!shift.employeeId) {
+                        cell.className += " unassigned";
+                    }
+                    cell.addEventListener("mousedown", () => handleUnpaintStart(shift.id, i));
+                    cell.addEventListener("mouseenter", () => handlePaintEnter(i));
+                    cell.addEventListener("mouseup", () => handleUnpaintEnd(i));
+                }
+                row.appendChild(cell);
+            }
+            tbody.appendChild(row);
         });
-    }
 
-    // Add the new shift row for painting
-    const newShiftRow = document.createElement("div");
-    newShiftRow.className = "rowg new-shift-row";
-    newShiftRow.style.gridTemplateColumns = `240px repeat(${SLOTS.length}, 1fr)`;
-    const newShiftNamecol = document.createElement("div");
-    newShiftNamecol.className = "namecol";
-    newShiftNamecol.innerHTML = '<span class="muted">Nuevo Turno (pintar)...</span>';
-    newShiftRow.appendChild(newShiftNamecol);
-
-    for (let i = 0; i < SLOTS.length; i++) {
-        const cell = document.createElement("div");
-        cell.className = "slot ghost new-shift-slot";
-        cell.dataset.slotIndex = i;
-        cell.addEventListener("mousedown", () => handlePaintStart(i));
-        cell.addEventListener("mouseenter", () => handlePaintEnter(i));
-        newShiftRow.appendChild(cell);
-    }
-    tbody.appendChild(newShiftRow);
+        const addShiftRow = document.createElement('div');
+        addShiftRow.className = 'add-shift-button-row';
+        const addButton = document.createElement('button');
+        addButton.className = 'add-shift-btn ' + clsFor(role);
+        addButton.textContent = '+';
+        addButton.title = `Añadir un nuevo turno de ${role}`;
+        addButton.addEventListener('click', (e) => handleAddShiftClick(role, e));
+        addShiftRow.appendChild(addButton);
+        tbody.appendChild(addShiftRow);
+    });
   }
 
   function renderAll(){
@@ -1391,11 +1460,38 @@ const db = firebase.firestore();
         c.textContent = "No hay empleados con la estrella requerida.";
     } else {
         qualifiedEmployees.forEach(emp => {
+            const empContainer = document.createElement('div');
+            empContainer.style.width = '100%';
+
             const btn = document.createElement("button");
             btn.className = "btn secondary";
+            btn.style.flexDirection = 'column';
+            btn.style.alignItems = 'flex-start';
+            btn.style.textAlign = 'left';
+
             const weeklyHours = getEmployeeWeeklyHours(emp.id);
             const hoursText = `(${String(weeklyHours).replace('.', ',')}hs)`;
-            btn.textContent = `${emp.name} ${hoursText}`;
+
+            const mainText = document.createElement('div');
+            mainText.textContent = `${emp.name} ${hoursText}`;
+
+            btn.appendChild(mainText);
+
+            const weekShifts = getEmployeeShiftsForWeek(emp.id);
+            if (weekShifts.length > 0) {
+                const summaryText = weekShifts.map(s => {
+                    const dayName = DAYS[s.day].slice(0, 3);
+                    const startTime = SLOTS[s.startSlot].label;
+                    const endTime = SLOTS[s.endSlot + 1] ? SLOTS[s.endSlot + 1].label : '??';
+                    return `${dayName} ${s.role.slice(0,3)}. ${startTime}-${endTime}`;
+                }).join(' | ');
+
+                const summaryDiv = document.createElement("div");
+                summaryDiv.className = "employee-shift-summary";
+                summaryDiv.textContent = summaryText;
+                btn.appendChild(summaryDiv);
+            }
+
             btn.style.width = "100%";
             btn.addEventListener("click", () => {
                 const consecutiveDays = countConsecutiveWorkDaysEndingBefore(emp.id, state.activeWeek, day);
@@ -1422,6 +1518,7 @@ const db = firebase.firestore();
                 renderTable();
                 wrap.remove();
             });
+
             c.appendChild(btn);
         });
     }
@@ -1935,6 +2032,25 @@ const db = firebase.firestore();
   if (localStorage.getItem("darkMode") === "enabled") {
     setDarkMode(true);
   }
+
+  /* ====== Dropdown ====== */
+  const actionsButton = el("#btn-actions");
+  const actionsDropdown = el("#actions-dropdown");
+
+  if(actionsButton) {
+    actionsButton.addEventListener("click", (e) => {
+      e.stopPropagation();
+      actionsDropdown.classList.toggle("show");
+    });
+  }
+
+  window.addEventListener("click", (e) => {
+    if (actionsDropdown && !e.target.matches('#btn-actions') && !e.target.parentElement.matches('#btn-actions')) {
+      if (actionsDropdown.classList.contains('show')) {
+        actionsDropdown.classList.remove('show');
+      }
+    }
+  });
 
   projectedTickets.addEventListener("input", () => {
     const { activeWeek, activeDay } = state;

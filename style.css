@@ -237,3 +237,151 @@ body.dark-mode .btn.secondary {
   min-width: 300px;
   max-width: 500px;
 }
+
+.employee-shift-summary {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: normal;
+  margin-top: 4px;
+}
+
+/* Header Rework */
+.main-menu-btn {
+  padding: 6px 10px; /* smaller buttons */
+}
+
+/* Dropdown Button */
+.dropdown {
+  position: relative;
+  display: inline-block;
+}
+
+.dropdown-content {
+  display: none;
+  position: absolute;
+  background-color: var(--card);
+  min-width: 160px;
+  box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+  z-index: 1;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  right: 0; /* Align to the right */
+}
+
+.dropdown-content .dropdown-item {
+  color: var(--ink);
+  padding: 10px 14px;
+  text-decoration: none;
+  display: block;
+  text-align: left;
+  background: none;
+  border: none;
+  width: 100%;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.dropdown-content .dropdown-item:hover {
+  background-color: var(--bg);
+}
+
+.dropdown-content.show {
+  display: block;
+}
+
+/* Schedule Controls Rework */
+.card-h-controls {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 24px;
+  width: 100%;
+}
+
+.controls-left { grid-column: 1; }
+.controls-center {
+  grid-column: 2;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.controls-right { grid-column: 3; }
+
+.day-title {
+  font-size: 1.1em;
+  font-weight: 600;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.controls-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.control-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.control-item label {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.control-item .select,
+.control-item .input {
+  padding: 4px 8px; /* smaller inputs */
+  font-size: 13px;
+}
+
+.control-item .input {
+    width: 80px;
+}
+
+#shiftDuration, #projectedProductivity {
+  font-size: 13px;
+  font-weight: 600;
+}
+#projectedProductivity {
+    min-width: 25px;
+    display: inline-block;
+    text-align: center;
+}
+
+.add-shift-button-row {
+    grid-column: 1 / -1;
+    display: flex;
+    justify-content: center;
+    padding: 4px 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.add-shift-btn {
+    width: 16px;
+    height: 16px;
+    border: none;
+    color: #fff;
+    font-size: 12px;
+    font-weight: bold;
+    padding: 0;
+    cursor: pointer;
+    border-radius: 50%;
+    margin: 0;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+
+.add-shift-btn:hover {
+    transform: scale(1.1);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
