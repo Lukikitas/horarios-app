@@ -576,8 +576,8 @@ const db = firebase.firestore();
     // 2. Check weekly availability (new logic)
     const dayAvailabilitySlots = employee.availability[dayIndex];
     if (!dayAvailabilitySlots || dayAvailabilitySlots.length === 0) {
-        // If no slots are defined for the day, assume full-time availability.
-        return { isAvailable: true, reason: '' };
+        // If no slots are defined, employee is not available on this day.
+        return { isAvailable: false, reason: `${employee.name} no tiene disponibilidad configurada para este día.` };
     }
 
     let isAvailableInAnySlot = false;
@@ -1332,6 +1332,11 @@ const db = firebase.firestore();
   }
 
   function openAvailabilityModal(empId) {
+    const emp = getEmployeeById(empId);
+    if (!emp) return;
+    // Clone availability to restore on cancel
+    const originalAvailability = JSON.parse(JSON.stringify(emp.availability));
+
     const wrap = document.createElement("div");
     wrap.style.position="fixed"; wrap.style.inset="0"; wrap.style.background="rgba(0,0,0,.35)";
     wrap.style.display="flex"; wrap.style.alignItems="center"; wrap.style.justifyContent="center"; wrap.style.padding="16px"; wrap.style.zIndex=1000;
@@ -1339,17 +1344,40 @@ const db = firebase.firestore();
     const box = document.createElement("div");
     box.className="card availability-modal-card"; box.style.maxWidth="600px"; box.style.width="100%";
 
+    const closeModal = (shouldRevert) => {
+        if (shouldRevert) {
+            emp.availability = originalAvailability;
+        }
+        wrap.remove();
+        renderAll(); // Always re-render to ensure UI is in sync
+    };
+
     renderAvailability(empId, box);
     wrap.appendChild(box);
     document.body.appendChild(wrap);
 
     function attachListeners() {
-      const emp = getEmployeeById(empId);
-      if (!emp) return;
-
       box.querySelector("#availability-done").addEventListener("click", () => {
+        // Check for conflicts before saving
+        const shiftsInWeek = getEmployeeShiftsForWeek(emp.id);
+        let conflictFound = false;
+        for (const shift of shiftsInWeek) {
+            const { isAvailable } = checkEmployeeAvailability(emp, shift, state.activeWeek, shift.day);
+            if (!isAvailable) {
+                conflictFound = true;
+                break; // Found one conflict, no need to check more
+            }
+        }
+
+        if (conflictFound) {
+            if (!confirm("Advertencia: La nueva disponibilidad entra en conflicto con al menos un turno ya asignado en la semana activa. ¿Desea guardar los cambios de todos modos?")) {
+                closeModal(true); // Revert changes
+                return;
+            }
+        }
+
         save();
-        wrap.remove();
+        closeModal(false); // Don't revert, just close
       });
 
       // New listener for adding a slot
@@ -1600,6 +1628,14 @@ const db = firebase.firestore();
             if (!pass) {
                 alert(message);
                 return;
+            }
+
+            // Check availability before saving edit
+            const availabilityCheck = checkEmployeeAvailability(emp, tempShift, state.activeWeek, day);
+            if (!availabilityCheck.isAvailable) {
+                if (!confirm(availabilityCheck.reason + "\n\n¿Guardar de todos modos?")) {
+                    return;
+                }
             }
         }
 
@@ -2064,6 +2100,91 @@ const db = firebase.firestore();
     save();
     updateProjectedProductivity();
   });
+
+  /* ====== Resumen Semanal ====== */
+  const weeklySummaryModal = el("#weekly-summary-modal");
+  const btnWeeklySummary = el("#btn-weekly-summary");
+  const weeklySummaryModalClose = el("#weekly-summary-modal-close");
+  const weeklySummaryContent = el("#weekly-summary-content");
+  const weeklySummaryTitle = el("#weekly-summary-title");
+
+  function renderWeeklySummary() {
+    // Set title
+    const monday = new Date(state.activeWeek + "T12:00:00Z");
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    const formatDate = (d) => `${String(d.getUTCDate()).padStart(2,'0')}/${String(d.getUTCMonth()+1).padStart(2,'0')}`;
+    if(weeklySummaryTitle) weeklySummaryTitle.textContent = `Semana del ${formatDate(monday)} al ${formatDate(sunday)}`;
+
+    const employees = state.employees.slice().sort((a,b) => a.name.localeCompare(b.name));
+    if (employees.length === 0) {
+      weeklySummaryContent.innerHTML = `<p class="muted">No hay empleados para mostrar.</p>`;
+      return;
+    }
+
+    const middleIndex = Math.ceil(employees.length / 2);
+    const leftColumnEmployees = employees.slice(0, middleIndex);
+    const rightColumnEmployees = employees.slice(middleIndex);
+
+    const generateTableFor = (employeeList) => {
+      let tableHTML = `
+        <table class="emp-table-new">
+          <thead>
+            <tr>
+              <th>Empleado</th>
+              <th>Horas Semanales</th>
+              <th>Días de Trabajo</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+      const dayShortNames = ["Lu", "Ma", "Mi", "Ju", "Vi", "Sá", "Do"];
+      employeeList.forEach(emp => {
+        const weeklyHours = getEmployeeWeeklyHours(emp.id);
+        const shifts = getEmployeeShiftsForWeek(emp.id);
+        const workingDays = new Set(shifts.map(s => s.day));
+        const workingDaysStr = dayShortNames.filter((day, i) => workingDays.has(i)).join(', ');
+        const hoursClass = weeklyHours < 12 ? 'danger' : '';
+        tableHTML += `
+          <tr>
+            <td>${escapeHtml(emp.name)}</td>
+            <td class="${hoursClass}">${String(weeklyHours).replace('.', ',')}hs</td>
+            <td>${workingDaysStr || 'Sin turnos'}</td>
+          </tr>
+        `;
+      });
+      tableHTML += `</tbody></table>`;
+      return tableHTML;
+    }
+
+    weeklySummaryContent.innerHTML = `
+      <div class="summary-grid">
+        <div>${generateTableFor(leftColumnEmployees)}</div>
+        <div>${generateTableFor(rightColumnEmployees)}</div>
+      </div>
+    `;
+  }
+
+  if (btnWeeklySummary) {
+    btnWeeklySummary.addEventListener("click", () => {
+      renderWeeklySummary();
+      weeklySummaryModal.style.display = "flex";
+    });
+  }
+
+  if (weeklySummaryModalClose) {
+    weeklySummaryModalClose.addEventListener("click", () => {
+      weeklySummaryModal.style.display = "none";
+    });
+  }
+
+  if (weeklySummaryModal) {
+    weeklySummaryModal.addEventListener("click", (e) => {
+      if (e.target === weeklySummaryModal) {
+        weeklySummaryModal.style.display = "none";
+      }
+    });
+  }
 
   /* ====== Inicialización ====== */
   await loadState();

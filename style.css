@@ -192,6 +192,11 @@ body.dark-mode .btn.secondary {
   font-size: 12px;
 }
 
+.emp-table-new td.danger {
+  color: #b91c1c;
+  font-weight: bold;
+}
+
 .day-tab-item {
   display: flex;
   flex-direction: column;
@@ -235,7 +240,27 @@ body.dark-mode .btn.secondary {
   border-radius: 8px;
   box-shadow: 0 4px 6px rgba(0,0,0,.1);
   min-width: 300px;
-  max-width: 500px;
+  max-width: 500px; /* Default max-width */
+}
+
+#weekly-summary-modal .modal-content {
+  max-width: 1200px; /* Wider for summary */
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+#weekly-summary-content {
+  padding: 20px;
+}
+
+#weekly-summary-modal .emp-table-new {
+  font-size: 13px;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
 }
 
 .employee-shift-summary {
