@@ -73,7 +73,8 @@
   }
 
   .slot.assigned {
-    background-clip: content-box;
+    /*background-clip: content-box;  */
+    background-clip: padding-box;
     border: 1px solid transparent;
     border-radius: 4px;
     overflow: hidden;
