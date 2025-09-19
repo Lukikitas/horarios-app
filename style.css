@@ -47,7 +47,7 @@
   .b-minor {background: #f59e0b; color: #fff;}
 
   /* Tabla de horario */
-  .scroller{overflow:auto;border-top:1px solid var(--border);max-height:calc(100vh - 210px);}
+  .scroller{overflow:auto;border-top:1px solid var(--border);max-height:calc(100vh - 180px);}
   .table{min-width:1200px}
   .thead{position:sticky;top:0;background:#fff;border-bottom:1px solid var(--border);z-index:10}
   .rowg{display:grid}
