@@ -576,8 +576,8 @@ const db = firebase.firestore();
     // 2. Check weekly availability (new logic)
     const dayAvailabilitySlots = employee.availability[dayIndex];
     if (!dayAvailabilitySlots || dayAvailabilitySlots.length === 0) {
-        // If no slots are defined, employee is not available on this day.
-        return { isAvailable: false, reason: `${employee.name} no tiene disponibilidad configurada para este día.` };
+        // If no slots are defined, employee is considered available for the whole day.
+        return { isAvailable: true, reason: '' };
     }
 
     let isAvailableInAnySlot = false;
@@ -709,58 +709,111 @@ const db = firebase.firestore();
   function handleUnpaintEnd(endSlotIndex) {
     if (!isUnpainting) return;
 
+    const day = state.activeDay;
+    const schedule = getActiveSchedule();
+    const shift = schedule[day]?.find(s => s.id === unpaintShiftId);
+
     // If it's a simple click (mousedown and mouseup on the same slot), do nothing here.
-    if (unpaintStartSlot === endSlotIndex) {
+    if (unpaintStartSlot === endSlotIndex || !shift) {
         isUnpainting = false;
+        unpaintShiftId = null;
         return;
     }
 
-    const day = state.activeDay;
-    const schedule = getActiveSchedule();
-    const shift = schedule[day].find(s => s.id === unpaintShiftId);
+    const tempShift = { ...shift };
+    let modified = false;
 
-    if (shift) {
-        if (unpaintStartSlot === shift.startSlot && endSlotIndex > shift.startSlot) {
-            shift.startSlot = endSlotIndex;
-        } else if (unpaintStartSlot === shift.endSlot && endSlotIndex < shift.endSlot) {
-            shift.endSlot = endSlotIndex;
+    if (unpaintStartSlot === tempShift.startSlot && endSlotIndex > tempShift.startSlot) {
+        tempShift.startSlot = endSlotIndex;
+        modified = true;
+    } else if (unpaintStartSlot === tempShift.endSlot && endSlotIndex < tempShift.endSlot) {
+        tempShift.endSlot = endSlotIndex;
+        modified = true;
+    }
+
+    if (modified && shift.employeeId) {
+        const emp = getEmployeeById(shift.employeeId);
+        if (emp) {
+            const availabilityCheck = checkEmployeeAvailability(emp, tempShift, state.activeWeek, day);
+            if (!availabilityCheck.isAvailable) {
+                if (!confirm(availabilityCheck.reason + "\n\n¿Modificar de todos modos?")) {
+                    isUnpainting = false;
+                    unpaintShiftId = null;
+                    renderTable(); // Re-render to clear visual artifacts
+                    return;
+                }
+            }
         }
+    }
+
+    // Apply changes if modified and checks passed
+    if (modified) {
+        shift.startSlot = tempShift.startSlot;
+        shift.endSlot = tempShift.endSlot;
 
         if (shift.startSlot >= shift.endSlot) {
             const index = schedule[day].findIndex(s => s.id === unpaintShiftId);
             if (index > -1) schedule[day].splice(index, 1);
         }
-
         save();
-        renderTable();
     }
 
     isUnpainting = false;
     unpaintShiftId = null;
     unpaintStartSlot = -1;
+    renderTable(); // Always re-render at the end
   }
 
   function handleSlotClick(shift, slotIndex) {
-    const { startSlot, endSlot } = shift;
+    const originalStart = shift.startSlot;
+    const originalEnd = shift.endSlot;
+    let modified = false;
+
+    // Create a temporary copy for checks
+    const tempShift = { ...shift };
 
     // Case 1: Click is on the start slot -> shorten from the start
-    if (slotIndex === startSlot && startSlot < endSlot) {
-        shift.startSlot++;
+    if (slotIndex === tempShift.startSlot && tempShift.startSlot < tempShift.endSlot) {
+        tempShift.startSlot++;
+        modified = true;
     }
     // Case 2: Click is on the end slot -> shorten from the end
-    else if (slotIndex === endSlot && endSlot > startSlot) {
-        shift.endSlot--;
+    else if (slotIndex === tempShift.endSlot && tempShift.endSlot > tempShift.startSlot) {
+        tempShift.endSlot--;
+        modified = true;
     }
     // Case 3: Click is just before the start slot -> extend to the left
-    else if (slotIndex === startSlot - 1) {
-        shift.startSlot--;
+    else if (slotIndex === tempShift.startSlot - 1) {
+        tempShift.startSlot--;
+        modified = true;
     }
     // Case 4: Click is just after the end slot -> extend to the right
-    else if (slotIndex === endSlot + 1) {
-        shift.endSlot++;
-    } else {
+    else if (slotIndex === tempShift.endSlot + 1) {
+        tempShift.endSlot++;
+        modified = true;
+    }
+
+    if (!modified) {
         return; // Do nothing for other clicks
     }
+
+    // Perform check only if an employee is assigned
+    if (shift.employeeId) {
+        const emp = getEmployeeById(shift.employeeId);
+        if (emp) {
+            const availabilityCheck = checkEmployeeAvailability(emp, tempShift, state.activeWeek, state.activeDay);
+            if (!availabilityCheck.isAvailable) {
+                if (!confirm(availabilityCheck.reason + "\n\n¿Modificar de todos modos?")) {
+                    // Revert is not needed as we haven't changed the actual shift object yet
+                    return;
+                }
+            }
+        }
+    }
+
+    // If check passes or user confirms, apply the change
+    shift.startSlot = tempShift.startSlot;
+    shift.endSlot = tempShift.endSlot;
 
     save();
     renderTable();
