@@ -60,7 +60,8 @@ const db = firebase.firestore();
     templates: {},
     projectedTickets: {},
     activeWeek: toISODateString(getMonday(new Date())),
-    activeDay:0
+    activeDay:0,
+    weeklySummarySort: 'alpha'
   };
 
   async function loadState() {
@@ -288,7 +289,9 @@ const db = firebase.firestore();
   updateShiftDuration();
 
   el("#btnExport").addEventListener("click", ()=>{
-    const blob = new Blob([JSON.stringify(state,null,2)], {type:"application/json"});
+    const activeSchedule = getActiveSchedule();
+    const shiftsToExport = activeSchedule[state.activeDay] || [];
+    const blob = new Blob([JSON.stringify(shiftsToExport,null,2)], {type:"application/json"});
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url; a.download = `planilla-horarios-${new Date().toISOString().slice(0,10)}.json`;
@@ -300,13 +303,49 @@ const db = firebase.firestore();
     r.onload = ()=>{
       try{
         const data = JSON.parse(r.result);
-        if(Array.isArray(data.employees) && typeof data.schedule === "object"){
-          state.employees = data.employees;
-          state.schedule = data.schedule || {};
-          state.activeDay = data.activeDay ?? 0;
-          save(); renderAll();
-        } else alert("Archivo inválido.");
-      }catch{ alert("Archivo inválido."); }
+
+        // Case 1: New format (array of shifts)
+        if (Array.isArray(data)) {
+            // Basic validation
+            if (data.length === 0 || (data[0].hasOwnProperty('role') && data[0].hasOwnProperty('startSlot'))) {
+                if (!confirm(`¿Importar ${data.length} turnos al día actual? Los turnos existentes en este día serán reemplazados.`)) {
+                    return;
+                }
+                const activeSchedule = getActiveSchedule();
+                const newShifts = data.map(shift => ({...shift, id: crypto.randomUUID()}));
+                activeSchedule[state.activeDay] = newShifts;
+                save();
+                renderAll();
+                alert(`Se importaron ${data.length} turnos al día actual.`);
+            } else {
+                alert("Archivo inválido. El formato de turnos no es correcto.");
+            }
+        }
+        // Case 2: Old format (full backup)
+        else if (Array.isArray(data.employees) && typeof data.schedules === "object") {
+            if (!confirm("¿Importar un archivo de respaldo completo? Esto reemplazará todos los empleados y horarios existentes.")) {
+                return;
+            }
+            state.employees = data.employees || [];
+            state.schedules = data.schedules || {};
+            state.projectedTickets = data.projectedTickets || {};
+            state.templates = data.templates || {};
+            state.activeDay = data.activeDay ?? 0;
+            state.activeWeek = data.activeWeek ?? toISODateString(getMonday(new Date()));
+            // Ensure activeWeek schedule exists
+            if (!state.schedules[state.activeWeek]) {
+              state.schedules[state.activeWeek] = {};
+            }
+            save();
+            renderAll();
+            alert("Respaldo importado con éxito.");
+        } else {
+            alert("Archivo inválido o formato no reconocido.");
+        }
+      } catch(e) {
+        console.error("Import error:", e);
+        alert("Archivo inválido o corrupto.");
+      }
     };
     r.readAsText(f);
   });
@@ -1898,22 +1937,28 @@ const db = firebase.firestore();
     printWindow.document.write(`
       <html>
         <head>
-          <title>Horario Semanal</title>
+          <title>Planilla de Horarios</title>
           <style>
-            body { font-family: sans-serif; margin: 20px; }
-            h1, h2 { text-align: center; }
-            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-            th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
+            body { font-family: sans-serif; margin: 20px; font-size: 10px; }
+            h1, h2, p { text-align: center; margin: 2px 0; }
+            table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+            th, td { border: 1px solid #ccc; padding: 5px; text-align: center; }
             th { background-color: #f2f2f2; }
             @media print {
-              body { margin: 0; }
+              @page {
+                margin: 0;
+              }
+              body {
+                margin: 0.5in;
+              }
               .no-print { display: none; }
             }
           </style>
         </head>
         <body>
           <h2>Departamento: KFC LA PLATA</h2>
-          <h1>Semana del: ${formatDate(monday)} al ${formatDate(sunday)}</h1>
+          <h1 style="font-size: 11px;">PLANILLA DE HORARIOS CONFORME AL ART. 6 DE LEY 11544</h1>
+          <p style="font-size: 11px;">Semana del: ${formatDate(monday)} al ${formatDate(sunday)}</p>
           <table>
             <thead>
               <tr>
@@ -1975,10 +2020,24 @@ const db = firebase.firestore();
         `;
       });
 
+      const headcount = calculateHeadcountPerSlot(i);
+      let headcountHeader = '';
+      headcount.forEach(count => {
+        headcountHeader += `<th>${count > 0 ? count : ''}</th>`;
+      });
+
       let timelineHeader = '';
       SLOTS.forEach(slot => {
         timelineHeader += `<th>${slot.label.split(':')[0]}</th>`;
       });
+
+      const totalHours = calculateTotalDayHours(i);
+      const weekTickets = state.projectedTickets[state.activeWeek] || {};
+      const tickets = Number(weekTickets[i] || 0);
+      let productivity = '-';
+      if (tickets > 0 && totalHours > 0) {
+          productivity = (tickets / totalHours).toFixed(1);
+      }
 
       pagesHtml += `
         <div class="page">
@@ -1986,8 +2045,19 @@ const db = firebase.firestore();
             <span>Departamento: KFC LA PLATA</span>
             <span>${formattedDate}</span>
           </div>
+          <div style="text-align: center; margin: 5px 0; font-size: 11px; padding-bottom: 5px; border-bottom: 1px solid #ccc;">
+            <span style="margin-right: 15px;">Horas Totales: <strong>${String(totalHours).replace('.',',')}hs</strong></span>
+            <span style="margin-right: 15px;">Tickets Proyectados: <strong>${tickets}</strong></span>
+            <span>Productividad: <strong>${productivity}</strong></span>
+          </div>
           <table class="daily-planning-table">
             <thead>
+              <tr>
+                <th style="width: 200px; border: none; background: none;"></th>
+                <th style="width: 100px; border: none; background: none;"></th>
+                <th style="width: 50px; border: none; background: none;"></th>
+                ${headcountHeader}
+              </tr>
               <tr>
                 <th style="width: 200px;">Empleado</th>
                 <th style="width: 100px;">Pos.</th>
@@ -2013,9 +2083,10 @@ const db = firebase.firestore();
             @media print {
               @page {
                 size: landscape;
-                margin: 0.5in;
+                margin: 0;
               }
               body {
+                margin: 0.5in;
                 -webkit-print-color-adjust: exact !important;
                 print-color-adjust: exact !important;
               }
@@ -2169,11 +2240,29 @@ const db = firebase.firestore();
     const formatDate = (d) => `${String(d.getUTCDate()).padStart(2,'0')}/${String(d.getUTCMonth()+1).padStart(2,'0')}`;
     if(weeklySummaryTitle) weeklySummaryTitle.textContent = `Semana del ${formatDate(monday)} al ${formatDate(sunday)}`;
 
-    const employees = state.employees.slice().sort((a,b) => a.name.localeCompare(b.name));
+    const sortOrder = state.weeklySummarySort || 'alpha';
+    let employees = state.employees.slice();
+
     if (employees.length === 0) {
       weeklySummaryContent.innerHTML = `<p class="muted">No hay empleados para mostrar.</p>`;
       return;
     }
+
+    // Pre-calculate data for sorting
+    const employeeData = employees.map(emp => ({
+        ...emp,
+        weeklyHours: getEmployeeWeeklyHours(emp.id),
+        workingDaysCount: new Set(getEmployeeShiftsForWeek(emp.id).map(s => s.day)).size
+    }));
+
+    if (sortOrder === 'hours') {
+        employeeData.sort((a, b) => b.weeklyHours - a.weeklyHours);
+    } else if (sortOrder === 'days') {
+        employeeData.sort((a, b) => b.workingDaysCount - a.workingDaysCount);
+    } else { // alpha
+        employeeData.sort((a, b) => a.name.localeCompare(b.name));
+    }
+    employees = employeeData;
 
     const middleIndex = Math.ceil(employees.length / 2);
     const leftColumnEmployees = employees.slice(0, middleIndex);
@@ -2187,22 +2276,27 @@ const db = firebase.firestore();
               <th>Empleado</th>
               <th>Horas Semanales</th>
               <th>Días de Trabajo</th>
+              <th>Acciones</th>
             </tr>
           </thead>
           <tbody>
       `;
       const dayShortNames = ["Lu", "Ma", "Mi", "Ju", "Vi", "Sá", "Do"];
       employeeList.forEach(emp => {
-        const weeklyHours = getEmployeeWeeklyHours(emp.id);
+        const weeklyHours = emp.weeklyHours;
         const shifts = getEmployeeShiftsForWeek(emp.id);
         const workingDays = new Set(shifts.map(s => s.day));
         const workingDaysStr = dayShortNames.filter((day, i) => workingDays.has(i)).join(', ');
         const hoursClass = weeklyHours < 12 ? 'danger' : '';
         tableHTML += `
-          <tr>
+          <tr class="employee-summary-row">
             <td>${escapeHtml(emp.name)}</td>
             <td class="${hoursClass}">${String(weeklyHours).replace('.', ',')}hs</td>
             <td>${workingDaysStr || 'Sin turnos'}</td>
+            <td><button class="btn secondary btn-details" data-employee-id="${emp.id}">Detalles</button></td>
+          </tr>
+          <tr class="details-row" id="details-row-${emp.id}" style="display: none;">
+            <td colspan="4" class="details-content"></td>
           </tr>
         `;
       });
@@ -2238,6 +2332,51 @@ const db = firebase.firestore();
       }
     });
   }
+
+  const weeklySummarySort = el("#weekly-summary-sort");
+  if (weeklySummarySort) {
+      weeklySummarySort.addEventListener("change", () => {
+          state.weeklySummarySort = weeklySummarySort.value;
+          renderWeeklySummary();
+      });
+  }
+
+  weeklySummaryContent.addEventListener('click', (e) => {
+    if (!e.target.classList.contains('btn-details')) {
+      return;
+    }
+
+    const btn = e.target;
+    const empId = btn.dataset.employeeId;
+    if (!empId) return;
+
+    const detailsRow = el(`#details-row-${empId}`);
+    if (!detailsRow) return;
+
+    const isVisible = detailsRow.style.display !== 'none';
+
+    if (isVisible) {
+      detailsRow.style.display = 'none';
+      btn.textContent = 'Detalles';
+    } else {
+      const shifts = getEmployeeShiftsForWeek(empId);
+      if (shifts.length === 0) {
+        detailsRow.querySelector('.details-content').innerHTML = '<span>No hay turnos asignados en la semana.</span>';
+      } else {
+        const dayShortNames = ["Lu", "Ma", "Mi", "Ju", "Vi", "Sá", "Do"];
+        const detailsHtml = shifts.map(s => {
+          const dayName = dayShortNames[s.day];
+          const startTime = SLOTS[s.startSlot].label;
+          const endTime = SLOTS[s.endSlot + 1] ? SLOTS[s.endSlot + 1].label : '??';
+          return `<span style="white-space:nowrap; margin-right: 10px;"><strong>${dayName}:</strong> ${escapeHtml(s.role)} (${startTime}-${endTime})</span>`;
+        }).join(' ');
+        detailsRow.querySelector('.details-content').innerHTML = detailsHtml;
+      }
+
+      detailsRow.style.display = 'table-row';
+      btn.textContent = 'Ocultar';
+    }
+  });
 
   /* ====== Inicialización ====== */
   await loadState();

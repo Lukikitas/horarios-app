@@ -270,6 +270,12 @@ body.dark-mode .btn.secondary {
   margin-top: 4px;
 }
 
+.details-content {
+  text-align: left;
+  padding: 10px;
+  background: var(--bg);
+}
+
 /* Header Rework */
 .main-menu-btn {
   padding: 6px 10px; /* smaller buttons */
