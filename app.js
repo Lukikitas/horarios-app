@@ -182,6 +182,13 @@ const db = firebase.firestore();
   const btnPrintScheduleList = el("#btn-print-schedule-list");
   const btnPrintDailyPlanning = el("#btn-print-daily-planning");
 
+  const importTextModal = el("#import-text-modal");
+  const btnImportText = el("#btn-import-text");
+  const importTextModalClose = el("#import-text-modal-close");
+  const btnImportTextCancel = el("#btn-import-text-cancel");
+  const btnImportTextProcess = el("#btn-import-text-process");
+  const importTextArea = el("#import-text-area");
+
   function showView(viewName) {
     viewScheduleEl.style.display = 'none';
     viewEmployeesEl.style.display = 'none';
@@ -2167,6 +2174,108 @@ const db = firebase.firestore();
     printDailyPlanning();
     printModal.style.display = "none";
   });
+
+  /* ====== Import from Text Modal ====== */
+  function importShiftsFromText() {
+    const text = importTextArea.value.trim();
+    if (!text) {
+      alert("El área de texto está vacía.");
+      return;
+    }
+
+    const lines = text.split('\n');
+    const newShifts = [];
+    const errors = [];
+
+    // Regex to capture HH:MM a HH:MM      ROLE
+    const timeRegex = /(\d{2}:\d{2})\s+a\s+(\d{2}:\d{2})\s+(.+)/;
+
+    lines.forEach((line, index) => {
+      line = line.trim();
+      if (!line) return; // Skip empty lines
+
+      const match = line.match(timeRegex);
+      if (!match) {
+        errors.push(`Línea ${index + 1}: Formato incorrecto. Debe ser "HH:MM a HH:MM ROL".`);
+        return;
+      }
+
+      const [, startTime, endTime, roleRaw] = match;
+      const roleName = roleRaw.trim();
+
+      // Find the role in ROLES, case-insensitive, and also trying to match without diacritics
+      let role = ROLES.find(r => r.key.toLowerCase() === roleName.toLowerCase());
+      if (!role) {
+        const normalizedRoleName = roleName.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+        role = ROLES.find(r => r.key.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() === normalizedRoleName);
+      }
+
+      if (!role) {
+        errors.push(`Línea ${index + 1}: Rol "${roleName}" no reconocido.`);
+        return;
+      }
+
+      const startSlot = timeToSlotIndex(startTime);
+      const endSlotIndex = timeToSlotIndex(endTime);
+
+      if (startSlot === -1 || endSlotIndex === -1) {
+        errors.push(`Línea ${index + 1}: Hora inválida ("${startTime}" o "${endTime}"). Use formato HH:MM.`);
+        return;
+      }
+
+      if (endSlotIndex <= startSlot) {
+        errors.push(`Línea ${index + 1}: La hora de fin debe ser posterior a la de inicio.`);
+        return;
+      }
+
+      newShifts.push({
+        id: crypto.randomUUID(),
+        role: role.key, // Use the canonical role name from ROLES
+        startSlot: startSlot,
+        endSlot: endSlotIndex - 1, // end is inclusive
+        employeeId: null
+      });
+    });
+
+    if (errors.length > 0) {
+      alert("Se encontraron errores al procesar el texto:\n\n" + errors.join("\n"));
+      return;
+    }
+
+    if (newShifts.length === 0) {
+      alert("No se encontraron turnos válidos para importar.");
+      return;
+    }
+
+    if (!confirm(`Se procesaron ${newShifts.length} turnos. ¿Desea reemplazar los turnos del día actual con estos?`)) {
+      return;
+    }
+
+    const activeSchedule = getActiveSchedule();
+    activeSchedule[state.activeDay] = newShifts;
+
+    save();
+    renderAll();
+    importTextModal.style.display = "none"; // Close modal on success
+    alert(`${newShifts.length} turnos importados con éxito.`);
+  }
+
+  btnImportText.addEventListener("click", () => {
+    importTextArea.value = '';
+    importTextModal.style.display = "flex";
+  });
+
+  const closeImportTextModal = () => {
+    importTextModal.style.display = "none";
+  };
+  importTextModalClose.addEventListener("click", closeImportTextModal);
+  btnImportTextCancel.addEventListener("click", closeImportTextModal);
+  importTextModal.addEventListener("click", (e) => {
+    if (e.target === importTextModal) {
+      closeImportTextModal();
+    }
+  });
+  btnImportTextProcess.addEventListener("click", importShiftsFromText);
 
   /* ====== Dark Mode ====== */
   const darkModeBtn = el("#btn-dark-mode");
