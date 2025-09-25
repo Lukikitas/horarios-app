@@ -198,10 +198,23 @@ body.dark-mode .btn.secondary {
 }
 
 .day-tab-item {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 4px;
+}
+
+.unassigned-indicator {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 8px;
+    height: 8px;
+    background-color: var(--c-empaque); /* Orange color for warning */
+    border-radius: 50%;
+    border: 1px solid var(--card);
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.1);
 }
 
 .day-tab-hours {
@@ -415,4 +428,57 @@ body.dark-mode .btn.secondary {
 .add-shift-btn:hover {
     transform: scale(1.1);
     box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+/* New Week Selector */
+#week-selector-container .btn {
+  padding: 6px 10px;
+  font-size: 14px;
+}
+#week-display {
+    min-width: 160px;
+    text-align: center;
+}
+
+/* Calendar Modal */
+#calendar-modal .modal-content {
+  max-width: 380px;
+}
+#calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 8px;
+  padding: 16px;
+}
+#calendar-grid .day-name {
+  font-weight: 600;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+}
+#calendar-grid .day {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  border-radius: 50%;
+  cursor: default;
+  color: var(--muted);
+}
+#calendar-grid .day.monday:not(.other-month) {
+  cursor: pointer;
+  background-color: var(--bg);
+  color: var(--ink);
+  font-weight: 600;
+}
+#calendar-grid .day.monday:not(.other-month):hover {
+  background-color: #e0e0e0;
+}
+#calendar-grid .day.selected {
+  background-color: var(--ink);
+  color: var(--card);
+  font-weight: 600;
+}
+body.dark-mode #calendar-grid .day.monday:not(.other-month):hover {
+    background-color: #4b5563;
 }

@@ -21,9 +21,11 @@
           <button id="btn-view-templates" class="btn secondary main-menu-btn">Plantillas</button>
           <button id="btn-weekly-summary" class="btn secondary main-menu-btn">Resumen semanal</button>
         </div>
-        <select id="weekSelector" class="select" title="Seleccionar semana" style="margin-left: 16px;"></select>
-        <select id="roleFilter" class="select" title="Filtrar por rol" style="margin-left: 8px;"></select>
-
+        <div id="week-selector-container" class="row" style="margin-left: 16px;">
+            <button id="btn-prev-week" class="btn secondary">◄</button>
+            <button id="week-display" class="btn secondary"></button>
+            <button id="btn-next-week" class="btn secondary">►</button>
+        </div>
         <div class="dropdown" style="margin-left: 8px;">
           <button id="btn-actions" class="btn secondary">Acciones ▾</button>
           <div id="actions-dropdown" class="dropdown-content">
@@ -190,6 +192,22 @@
             <button id="btn-import-text-cancel" class="btn secondary">Cancelar</button>
             <button id="btn-import-text-process" class="btn">Procesar</button>
           </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Calendar Modal -->
+  <div id="calendar-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-content">
+      <div class="card">
+        <div class="card-h">
+          <button id="calendar-prev-month" class="btn secondary">◄</button>
+          <strong id="calendar-month-year"></strong>
+          <button id="calendar-next-month" class="btn secondary">►</button>
+        </div>
+        <div id="calendar-grid" class="card-c">
+          <!-- Calendar grid will be generated here -->
         </div>
       </div>
     </div>

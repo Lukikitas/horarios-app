@@ -156,7 +156,6 @@ const db = firebase.firestore();
   const el = (sel)=>document.querySelector(sel);
   const empList = el("#empList");
   const empFilter = el("#empFilter");
-  const roleFilter = el("#roleFilter");
   const weekSelector = el("#weekSelector");
   const activeRole = el("#activeRole");
   const dayTabs = el("#dayTabs");
@@ -237,41 +236,6 @@ const db = firebase.firestore();
   }
 
   /* ====== Controles superiores ====== */
-  function getMondaysOfYear(year) {
-      const mondays = [];
-      let date = new Date(year, 0, 1);
-      while (date.getDay() !== 1) {
-          date.setDate(date.getDate() + 1);
-      }
-      while (date.getFullYear() === year) {
-          mondays.push(new Date(date.getTime()));
-          date.setDate(date.getDate() + 7);
-      }
-      return mondays;
-  }
-
-  function populateWeekSelector() {
-      const year = new Date().getFullYear();
-      const mondays = getMondaysOfYear(year);
-      const options = mondays.map(m => {
-          const weekKey = toISODateString(m);
-          const label = `Sem. ${String(m.getDate()).padStart(2,'0')}/${String(m.getMonth()+1).padStart(2,'0')}`;
-          return { value: weekKey, label: label };
-      });
-      optionize(weekSelector, options, o => o);
-      weekSelector.value = state.activeWeek;
-  }
-
-  weekSelector.addEventListener("change", () => {
-      state.activeWeek = weekSelector.value;
-      if (!state.schedules[state.activeWeek]) {
-          state.schedules[state.activeWeek] = {};
-      }
-      save();
-      renderAll();
-  });
-
-  optionize(roleFilter, [{key:"",name:"Todos"},...ROLES.map(r=>({key:r.key,name:r.key}))], (x)=>({value:x.key,label:x.name}));
   optionize(empFilter, [{key:"",name:"Todos"},...ROLES.map(r=>({key:r.key,name:r.key}))], (x)=>({value:x.key,label:x.name}));
   optionize(activeRole, ROLES, (r)=>({value:r.key,label:r.key}));
   activeRole.addEventListener("change", () => {
@@ -458,7 +422,7 @@ const db = firebase.firestore();
     if (index > -1) {
         schedule[day].splice(index, 1);
         save();
-        renderTable();
+        renderAll();
     }
   }
 
@@ -674,7 +638,7 @@ const db = firebase.firestore();
     ensureDay(day);
     getActiveSchedule()[day].push(newShift);
     save();
-    renderTable();
+    renderAll();
   });
 
   let isPainting = false;
@@ -733,7 +697,7 @@ const db = firebase.firestore();
       ensureDay(day);
       getActiveSchedule()[day].push(newShift);
       save();
-      renderTable();
+      renderAll();
   }
 
   window.addEventListener("mouseup", () => {
@@ -807,7 +771,7 @@ const db = firebase.firestore();
     isUnpainting = false;
     unpaintShiftId = null;
     unpaintStartSlot = -1;
-    renderTable(); // Always re-render at the end
+    renderAll(); // Always re-render at the end
   }
 
   function handleSlotClick(shift, slotIndex) {
@@ -862,7 +826,7 @@ const db = firebase.firestore();
     shift.endSlot = tempShift.endSlot;
 
     save();
-    renderTable();
+    renderAll();
   }
 
   /* ====== Render ====== */
@@ -885,6 +849,18 @@ const db = firebase.firestore();
 
       container.appendChild(b);
       container.appendChild(hoursSpan);
+
+      // Check for unassigned shifts
+      const schedule = getActiveSchedule();
+      const dayShifts = schedule[idx] || [];
+      const hasUnassigned = dayShifts.some(shift => !shift.employeeId);
+      if (hasUnassigned) {
+          const indicator = document.createElement('div');
+          indicator.className = 'unassigned-indicator';
+          indicator.title = 'Hay turnos sin asignar';
+          container.appendChild(indicator);
+      }
+
       dayTabs.appendChild(container);
     });
   }
@@ -1198,7 +1174,7 @@ const db = firebase.firestore();
                 unassignBtn.addEventListener("click", () => {
                     shift.employeeId = null;
                     save();
-                    renderTable();
+                    renderAll();
                 });
                 assignWrapper.appendChild(empName);
                 assignWrapper.appendChild(unassignBtn);
@@ -1282,6 +1258,7 @@ const db = firebase.firestore();
   }
 
   function renderAll(){
+    updateWeekDisplay();
     renderProjectedTicketsInput();
     renderDayTabs();
     renderLegend();
@@ -1642,7 +1619,7 @@ const db = firebase.firestore();
 
                 shift.employeeId = emp.id;
                 save();
-                renderTable();
+                renderAll();
                 wrap.remove();
             });
 
@@ -1751,7 +1728,7 @@ const db = firebase.firestore();
         }
 
         save();
-        renderTable();
+        renderAll();
         wrap.remove();
     });
     const cancelBtn = document.createElement("button"); cancelBtn.className="btn secondary"; cancelBtn.textContent="Cancelar";
@@ -2487,9 +2464,108 @@ const db = firebase.firestore();
     }
   });
 
+  /* ====== Week Selector & Calendar Modal ====== */
+  const weekDisplay = el("#week-display");
+  const btnPrevWeek = el("#btn-prev-week");
+  const btnNextWeek = el("#btn-next-week");
+  const calendarModal = el("#calendar-modal");
+  const calendarGrid = el("#calendar-grid");
+  const calendarMonthYear = el("#calendar-month-year");
+  const btnCalendarPrevMonth = el("#calendar-prev-month");
+  const btnCalendarNextMonth = el("#calendar-next-month");
+  let calendarDate = new Date();
+
+  function updateWeekDisplay() {
+    const monday = new Date(state.activeWeek + "T12:00:00Z");
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    const format = (d) => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
+    weekDisplay.textContent = `${format(monday)} - ${format(sunday)}`;
+  }
+
+  function changeWeek(days) {
+    const currentMonday = new Date(state.activeWeek + "T12:00:00Z");
+    currentMonday.setDate(currentMonday.getDate() + days);
+    state.activeWeek = toISODateString(getMonday(currentMonday));
+    if (!state.schedules[state.activeWeek]) {
+        state.schedules[state.activeWeek] = {};
+    }
+    save();
+    renderAll();
+  }
+
+  btnPrevWeek.addEventListener("click", () => changeWeek(-7));
+  btnNextWeek.addEventListener("click", () => changeWeek(7));
+  weekDisplay.addEventListener("click", () => {
+    calendarDate = new Date(state.activeWeek + "T12:00:00Z");
+    renderCalendar();
+    calendarModal.style.display = "flex";
+  });
+
+  function renderCalendar() {
+    calendarGrid.innerHTML = '';
+    const month = calendarDate.getMonth();
+    const year = calendarDate.getFullYear();
+    calendarMonthYear.textContent = `${new Date(year, month).toLocaleString('es-ES', { month: 'long' })} ${year}`;
+
+    const firstDayOfMonth = new Date(year, month, 1);
+    const lastDayOfMonth = new Date(year, month + 1, 0);
+    const firstDayOfWeek = (firstDayOfMonth.getDay() + 6) % 7; // 0=Monday
+    const totalDays = lastDayOfMonth.getDate();
+
+    ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'].forEach(day => {
+        const dayNameEl = document.createElement('div');
+        dayNameEl.className = 'day-name';
+        dayNameEl.textContent = day;
+        calendarGrid.appendChild(dayNameEl);
+    });
+
+    for (let i = 0; i < firstDayOfWeek; i++) {
+        const emptyEl = document.createElement('div');
+        calendarGrid.appendChild(emptyEl);
+    }
+
+    for (let day = 1; day <= totalDays; day++) {
+        const dayEl = document.createElement('div');
+        dayEl.className = 'day';
+        dayEl.textContent = day;
+        const currentDate = new Date(year, month, day);
+        if (currentDate.getDay() === 1) { // It's a Monday
+            dayEl.classList.add('monday');
+            if (toISODateString(currentDate) === state.activeWeek) {
+                dayEl.classList.add('selected');
+            }
+            dayEl.addEventListener('click', () => {
+                state.activeWeek = toISODateString(currentDate);
+                if (!state.schedules[state.activeWeek]) {
+                    state.schedules[state.activeWeek] = {};
+                }
+                save();
+                renderAll();
+                calendarModal.style.display = 'none';
+            });
+        }
+        calendarGrid.appendChild(dayEl);
+    }
+  }
+
+  btnCalendarPrevMonth.addEventListener("click", () => {
+    calendarDate.setMonth(calendarDate.getMonth() - 1);
+    renderCalendar();
+  });
+  btnCalendarNextMonth.addEventListener("click", () => {
+    calendarDate.setMonth(calendarDate.getMonth() + 1);
+    renderCalendar();
+  });
+  calendarModal.addEventListener("click", (e) => {
+    if (e.target === calendarModal) {
+      calendarModal.style.display = "none";
+    }
+  });
+
+
   /* ====== Inicialización ====== */
   await loadState();
-  populateWeekSelector();
   renderAll();
 
 })();
