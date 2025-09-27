@@ -3044,16 +3044,9 @@ const db = firebase.firestore();
     actionsButton.addEventListener("click", (e) => {
       e.stopPropagation();
       actionsDropdown.classList.toggle("show");
+      roleFilterDropdown.classList.remove("show");
     });
   }
-
-  window.addEventListener("click", (e) => {
-    if (actionsDropdown && !e.target.matches('#btn-actions') && !e.target.parentElement.matches('#btn-actions')) {
-      if (actionsDropdown.classList.contains('show')) {
-        actionsDropdown.classList.remove('show');
-      }
-    }
-  });
 
   projectedTickets.addEventListener("input", () => {
     const { activeWeek, activeDay } = state;
@@ -3372,6 +3365,7 @@ const db = firebase.firestore();
   btnRoleFilter.addEventListener("click", (e) => {
       e.stopPropagation();
       roleFilterDropdown.classList.toggle("show");
+      actionsDropdown.classList.remove("show");
   });
 
   roleFilterDropdown.addEventListener("change", (e) => {
@@ -3399,10 +3393,9 @@ const db = firebase.firestore();
 
   // Close dropdowns when clicking elsewhere
   window.addEventListener("click", (e) => {
-    if (actionsDropdown && !e.target.matches('#btn-actions') && !e.target.closest('#actions-dropdown')) {
+    // If the click is outside ANY dropdown component, close them all.
+    if (!e.target.closest('.dropdown')) {
       actionsDropdown.classList.remove('show');
-    }
-    if (roleFilterDropdown && !e.target.matches('#btn-role-filter') && !e.target.closest('#role-filter-dropdown')) {
       roleFilterDropdown.classList.remove('show');
     }
   });
