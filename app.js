@@ -67,7 +67,10 @@ const db = firebase.firestore();
     activeDetailSection: null,
     clockInSearchTerm: '',
     clockInSortOrder: 'alpha',
-    lastClockInReportData: null
+    lastClockInReportData: null,
+    clockInDateFilter: null,
+    scheduleRoleFilters: [],
+    scheduleSearchTerm: '',
   };
 
   async function loadState() {
@@ -507,34 +510,41 @@ const db = firebase.firestore();
     return totalSlots * 0.5;
   }
 
-  function countConsecutiveWorkDaysEndingBefore(employeeId, weekId, dayIndex) {
-      let consecutiveDays = 0;
-      // Use midday UTC to avoid timezone crossover issues
-      let checkDate = new Date(`${weekId}T12:00:00.000Z`);
-      checkDate.setUTCDate(checkDate.getUTCDate() + dayIndex - 1); // Start from the day before the target day
+  function calculateConsecutiveWorkDays(employeeId, weekId, dayIndex) {
+    const isWorkingOn = (date) => {
+        const dayOfWeek = date.getUTCDay() === 0 ? 6 : date.getUTCDay() - 1;
+        const weekKey = toISODateString(getMonday(date));
+        const scheduleForDay = state.schedules[weekKey] || {};
+        const dayShifts = scheduleForDay[dayOfWeek] || [];
+        return dayShifts.some(s => s.employeeId === employeeId);
+    };
 
-      for (let i = 0; i < 7; i++) { // Check up to 7 previous days is enough for a 5-day rule
-          const dayToCheck = new Date(checkDate);
+    let consecutiveDays = 1; // Start with the current day being assigned
+    const baseDate = new Date(`${weekId}T12:00:00.000Z`);
+    baseDate.setUTCDate(baseDate.getUTCDate() + dayIndex);
 
-          const mondayOfWeek = getMonday(dayToCheck);
-          const weekKey = toISODateString(mondayOfWeek);
+    // Check backwards
+    const yesterday = new Date(baseDate);
+    for (let i = 0; i < 14; i++) { // Check up to 2 weeks back is safe
+        yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+        if (isWorkingOn(new Date(yesterday))) {
+            consecutiveDays++;
+        } else {
+            break;
+        }
+    }
 
-          // dayjs: 0=Sun, 1=Mon... In our app: 0=Mon... 6=Sun
-          const dayOfWeek = dayToCheck.getUTCDay() === 0 ? 6 : dayToCheck.getUTCDay() - 1;
-
-          const schedule = state.schedules[weekKey] || {};
-          const dayShifts = schedule[dayOfWeek] || [];
-          const isWorking = dayShifts.some(s => s.employeeId === employeeId);
-
-          if (isWorking) {
-              consecutiveDays++;
-          } else {
-              break; // Streak broken
-          }
-
-          checkDate.setUTCDate(checkDate.getUTCDate() - 1);
-      }
-      return consecutiveDays;
+    // Check forwards
+    const tomorrow = new Date(baseDate);
+    for (let i = 0; i < 14; i++) { // Check up to 2 weeks forward
+        tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+        if (isWorkingOn(new Date(tomorrow))) {
+            consecutiveDays++;
+        } else {
+            break;
+        }
+    }
+    return consecutiveDays;
   }
 
   function getScheduleForDate(d) {
@@ -629,14 +639,14 @@ const db = firebase.firestore();
     }
 
     // 6. Consecutive days check
-    const consecutiveDays = countConsecutiveWorkDaysEndingBefore(employee.id, state.activeWeek, dayIndex);
-    if (consecutiveDays >= 5) {
+    const consecutiveDays = calculateConsecutiveWorkDays(employee.id, state.activeWeek, dayIndex);
+    if (consecutiveDays > 5) {
         if (!silent) {
-            if (!confirm(`Advertencia: Al asignar este turno, ${employee.name} trabajará 6 o más días seguidos. ¿Continuar de todos modos?`)) {
+            if (!confirm(`Advertencia: Al asignar este turno, ${employee.name} trabajará ${consecutiveDays} días seguidos. ¿Continuar de todos modos?`)) {
                 return { pass: false, message: "Asignación cancelada por el usuario." };
             }
         } else {
-            return { pass: false, message: "Trabajaría 6+ días seguidos." };
+            return { pass: false, message: `Trabajaría ${consecutiveDays} días seguidos.` };
         }
     }
 
@@ -1132,6 +1142,10 @@ const db = firebase.firestore();
           bAvailability.className="btn secondary"; bAvailability.textContent="Disponibilidad";
           bAvailability.onclick = () => toggleDetailPanel(e.id, 'availability');
 
+          const bExceptions = document.createElement("button");
+          bExceptions.className="btn secondary"; bExceptions.textContent="Excepciones";
+          bExceptions.onclick = () => toggleDetailPanel(e.id, 'exceptions');
+
           const bEst = document.createElement("button");
           bEst.className="btn secondary"; bEst.textContent="Estrellas";
           bEst.onclick = () => toggleDetailPanel(e.id, 'stars');
@@ -1146,6 +1160,7 @@ const db = firebase.firestore();
 
           actionsCell.appendChild(bEdit);
           actionsCell.appendChild(bAvailability);
+          actionsCell.appendChild(bExceptions);
           actionsCell.appendChild(bEst);
           actionsCell.appendChild(bMinor);
           actionsCell.appendChild(bDel);
@@ -1162,6 +1177,8 @@ const db = firebase.firestore();
               renderStarsPanel(detailCell, e.id);
           } else if (state.activeDetailSection === 'availability') {
               renderAvailabilityPanel(detailCell, e.id);
+          } else if (state.activeDetailSection === 'exceptions') {
+              renderExceptionsPanel(detailCell, e.id);
           }
       }
     });
@@ -1199,17 +1216,100 @@ const db = firebase.firestore();
     }
   }
 
+  function renderRoleFilter() {
+    const dropdown = el("#role-filter-dropdown");
+    dropdown.innerHTML = ""; // Clear existing
+
+    ROLES.forEach(role => {
+        const item = document.createElement('div');
+        item.className = 'filter-item';
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.id = `filter-${role.key}`;
+        checkbox.value = role.key;
+        checkbox.checked = state.scheduleRoleFilters.includes(role.key);
+
+        const label = document.createElement('label');
+        label.htmlFor = `filter-${role.key}`;
+        label.textContent = role.key;
+
+        item.appendChild(checkbox);
+        item.appendChild(label);
+        dropdown.appendChild(item);
+    });
+  }
+
   function renderTable() {
     renderHead();
     tbody.innerHTML = "";
     updateProjectedProductivity();
     updateActiveDayHoursDisplay();
     updateDayTitle();
+    renderRoleFilter();
 
     const day = state.activeDay;
     ensureDay(day);
     const schedule = getActiveSchedule();
-    const shifts = schedule[day] || [];
+    const allShifts = schedule[day] || [];
+
+    // --- Filtering Logic ---
+    const searchTerm = state.scheduleSearchTerm.toLowerCase().trim();
+    const roleFilters = state.scheduleRoleFilters;
+    const hasSearch = searchTerm.length > 0;
+    const hasRoleFilter = roleFilters.length > 0;
+    const hasFilters = hasSearch || hasRoleFilter;
+
+    let filteredShifts = allShifts;
+
+    if (hasRoleFilter) {
+        filteredShifts = filteredShifts.filter(shift => roleFilters.includes(shift.role));
+    }
+
+    if (hasSearch) {
+        const matchingEmployeeIds = state.employees
+            .filter(emp => emp.name.toLowerCase().includes(searchTerm))
+            .map(emp => emp.id);
+
+        filteredShifts = filteredShifts.filter(shift => {
+            if (shift.employeeId) {
+                return matchingEmployeeIds.includes(shift.employeeId);
+            }
+            // Also match on role name or the text "unassigned"
+            return shift.role.toLowerCase().includes(searchTerm) || "sin asignar".includes(searchTerm);
+        });
+    }
+    // --- End Filtering Logic ---
+
+    // --- Render no shifts message ---
+    if (allShifts.length === 0) {
+        const msgRow = document.createElement("div");
+        msgRow.style.padding = "20px";
+        msgRow.style.textAlign = "center";
+        msgRow.className = "muted";
+        msgRow.textContent = "No hay turnos creados para este día. Créalos desde el formulario de arriba.";
+        tbody.appendChild(msgRow);
+        return;
+    }
+    if (filteredShifts.length === 0 && hasFilters) {
+        const msgRow = document.createElement("div");
+        msgRow.style.padding = "20px";
+        msgRow.style.textAlign = "center";
+        msgRow.className = "muted";
+        msgRow.textContent = "No se encontraron turnos que coincidan con los filtros.";
+        tbody.appendChild(msgRow);
+        return;
+    }
+    // --- End Render no shifts message ---
+
+
+    const shiftsByRole = filteredShifts.reduce((acc, shift) => {
+        if (!acc[shift.role]) acc[shift.role] = [];
+        acc[shift.role].push(shift);
+        return acc;
+    }, {});
+
+    const sortedRoles = Object.keys(shiftsByRole).sort();
 
     const createNewShiftRow = () => {
         const newShiftRow = document.createElement("div");
@@ -1232,14 +1332,11 @@ const db = firebase.firestore();
 
     const handleAddShiftClick = (role, event) => {
         activeRole.value = role;
-
         document.querySelectorAll('.add-shift-btn').forEach(b => b.style.display = 'block');
         event.currentTarget.style.display = 'none';
 
         const existingNewShiftRow = tbody.querySelector('.new-shift-row');
-        if (existingNewShiftRow) {
-            existingNewShiftRow.remove();
-        }
+        if (existingNewShiftRow) existingNewShiftRow.remove();
 
         const newShiftRow = createNewShiftRow();
         event.currentTarget.parentElement.insertAdjacentElement('afterend', newShiftRow);
@@ -1249,26 +1346,6 @@ const db = firebase.firestore();
         newShiftNamecol.innerHTML = `<span class="muted" style="font-style: italic;">Nuevo turno para ${activeRoleName}... (pintar)</span>`;
     };
 
-    if (shifts.length === 0) {
-        const msgRow = document.createElement("div");
-        msgRow.style.padding = "20px";
-        msgRow.style.textAlign = "center";
-        msgRow.className = "muted";
-        msgRow.textContent = "No hay turnos creados para este día. Créalos desde el formulario de arriba.";
-        tbody.appendChild(msgRow);
-        return;
-    }
-
-    const shiftsByRole = shifts.reduce((acc, shift) => {
-        if (!acc[shift.role]) {
-            acc[shift.role] = [];
-        }
-        acc[shift.role].push(shift);
-        return acc;
-    }, {});
-
-    const sortedRoles = Object.keys(shiftsByRole).sort();
-
     sortedRoles.forEach(role => {
         const roleShifts = shiftsByRole[role];
         roleShifts.sort((a, b) => a.startSlot - b.startSlot);
@@ -1276,10 +1353,8 @@ const db = firebase.firestore();
         roleShifts.forEach((shift, index) => {
             const cols = `240px repeat(${SLOTS.length}, 1fr)`;
             const row = document.createElement("div");
-            row.dataset.shiftId = shift.id; // Add shift ID for highlighting
-            if (index === 0) {
-                row.style.borderTop = "2px solid #d1d5db";
-            }
+            row.dataset.shiftId = shift.id;
+            if (index === 0) row.style.borderTop = "2px solid #d1d5db";
             row.className = "rowg";
             row.style.gridTemplateColumns = cols;
             row.style.borderBottom = "1px solid var(--border)";
@@ -1388,9 +1463,7 @@ const db = firebase.firestore();
                     const roleData = ROLES.find(r => r.key === shift.role);
                     cell.className += " assigned " + (roleData ? clsFor(roleData.key) : "");
                     if(roleData && roleData.darkText) cell.className += " sandwich";
-                    if (!shift.employeeId) {
-                        cell.className += " unassigned";
-                    }
+                    if (!shift.employeeId) cell.className += " unassigned";
                     cell.addEventListener("mousedown", () => handleUnpaintStart(shift.id, i));
                     cell.addEventListener("mouseenter", () => handlePaintEnter(i));
                     cell.addEventListener("mouseup", () => handleUnpaintEnd(i));
@@ -1400,15 +1473,18 @@ const db = firebase.firestore();
             tbody.appendChild(row);
         });
 
-        const addShiftRow = document.createElement('div');
-        addShiftRow.className = 'add-shift-button-row';
-        const addButton = document.createElement('button');
-        addButton.className = 'add-shift-btn ' + clsFor(role);
-        addButton.textContent = '+';
-        addButton.title = `Añadir un nuevo turno de ${role}`;
-        addButton.addEventListener('click', (e) => handleAddShiftClick(role, e));
-        addShiftRow.appendChild(addButton);
-        tbody.appendChild(addShiftRow);
+        // Add 'Add Shift' button only if there are no active filters
+        if (!hasFilters) {
+            const addShiftRow = document.createElement('div');
+            addShiftRow.className = 'add-shift-button-row';
+            const addButton = document.createElement('button');
+            addButton.className = 'add-shift-btn ' + clsFor(role);
+            addButton.textContent = '+';
+            addButton.title = `Añadir un nuevo turno de ${role}`;
+            addButton.addEventListener('click', (e) => handleAddShiftClick(role, e));
+            addShiftRow.appendChild(addButton);
+            tbody.appendChild(addShiftRow);
+        }
     });
   }
 
@@ -1766,25 +1842,18 @@ const db = firebase.firestore();
             if (clockInData) {
                 const actualHours = (clockInData.clockOutDate - clockInData.clockInDate) / (1000 * 60 * 60);
                 reportDataByEmployee[employeeKey].records.push({
-                    date: `${dayName}, ${formatDate(d)}`, scheduled: scheduledTime, clockIn: formatTime(clockInData.clockInDate), clockOut: formatTime(clockInData.clockOutDate), actual: `${actualHours.toFixed(2).replace('.',',')}hs`, status: 'ok'
+                    isoDate: dateKey, date: `${dayName}, ${formatDate(d)}`, scheduled: scheduledTime, clockIn: formatTime(clockInData.clockInDate), clockOut: formatTime(clockInData.clockOutDate), actual: `${actualHours.toFixed(2).replace('.',',')}hs`, status: 'ok'
                 });
             } else if (scheduledShift) {
                 // Absence detected
                 reportDataByEmployee[employeeKey].records.push({
-                    date: `${dayName}, ${formatDate(d)}`, scheduled: scheduledTime, clockIn: 'Ausente', clockOut: '', actual: '0,00hs', status: 'absence'
+                    isoDate: dateKey, date: `${dayName}, ${formatDate(d)}`, scheduled: scheduledTime, clockIn: 'Ausente', clockOut: '', actual: '0,00hs', status: 'absence'
                 });
             }
         }
     }
 
-    // Calculate total hours
-    for (const key in reportDataByEmployee) {
-        reportDataByEmployee[key].totalHours = reportDataByEmployee[key].records.reduce((acc, record) => {
-            const hours = parseFloat(record.actual.replace('hs', '').replace(',', '.'));
-            return acc + (isNaN(hours) ? 0 : hours);
-        }, 0);
-    }
-
+    // No need to calculate total hours here, it will be done in render
     state.lastClockInReportData = reportDataByEmployee;
     renderClockInReport();
   }
@@ -1799,25 +1868,45 @@ const db = firebase.firestore();
         return;
     }
 
-    let employeeNames = Object.keys(reportData);
-
-    // Filter
+    const dateFilter = state.clockInDateFilter;
     const searchTerm = state.clockInSearchTerm.toLowerCase();
-    if (searchTerm) {
-        employeeNames = employeeNames.filter(name => name.toLowerCase().includes(searchTerm));
+    const filteredReportData = {};
+
+    for (const empName of Object.keys(reportData)) {
+        const originalData = reportData[empName];
+        let filteredRecords = originalData.records;
+
+        if (dateFilter) {
+            filteredRecords = originalData.records.filter(r => r.isoDate === dateFilter);
+        }
+
+        if (filteredRecords.length > 0 && (!searchTerm || empName.toLowerCase().includes(searchTerm))) {
+            const totalHours = filteredRecords.reduce((acc, record) => {
+                const hours = parseFloat(record.actual.replace('hs', '').replace(',', '.'));
+                return acc + (isNaN(hours) ? 0 : hours);
+            }, 0);
+
+            filteredReportData[empName] = {
+                ...originalData,
+                records: filteredRecords,
+                totalHours: totalHours
+            };
+        }
     }
+
+    let employeeNames = Object.keys(filteredReportData);
 
     // Sort
     if (state.clockInSortOrder === 'hours_desc') {
-        employeeNames.sort((a, b) => reportData[b].totalHours - reportData[a].totalHours);
+        employeeNames.sort((a, b) => filteredReportData[b].totalHours - filteredReportData[a].totalHours);
     } else if (state.clockInSortOrder === 'hours_asc') {
-        employeeNames.sort((a, b) => reportData[a].totalHours - reportData[b].totalHours);
+        employeeNames.sort((a, b) => filteredReportData[a].totalHours - filteredReportData[b].totalHours);
     } else {
         employeeNames.sort((a, b) => a.localeCompare(b));
     }
 
     if (employeeNames.length === 0) {
-        content.innerHTML = '<p class="muted">No se encontraron empleados que coincidan con la búsqueda.</p>';
+        content.innerHTML = '<p class="muted">No se encontraron fichadas que coincidan con los filtros.</p>';
         return;
     }
 
@@ -1825,7 +1914,7 @@ const db = firebase.firestore();
     reportContainer.className = 'clock-in-report-container';
 
     employeeNames.forEach(employeeName => {
-        const employeeData = reportData[employeeName];
+        const employeeData = filteredReportData[employeeName];
         const card = document.createElement('div');
         card.className = 'employee-clock-in-card';
         if (employeeData.status === 'error') card.classList.add('error-card');
@@ -1908,6 +1997,29 @@ const db = firebase.firestore();
       container.appendChild(panel);
   }
 
+  function findAvailabilityConflicts(employeeId) {
+    const conflicts = [];
+    const emp = getEmployeeById(employeeId);
+    if (!emp) return conflicts;
+
+    const schedule = getActiveSchedule();
+    for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
+        const dayShifts = schedule[dayIndex] || [];
+        const employeeShiftsOnDay = dayShifts.filter(s => s.employeeId === employeeId);
+
+        for (const shift of employeeShiftsOnDay) {
+            // We only check for availability, not other rules like overlap, as this is about *new* availability rules.
+            const availabilityCheck = checkEmployeeAvailability(emp, shift, state.activeWeek, dayIndex);
+            if (!availabilityCheck.isAvailable) {
+                const dayName = DAYS[dayIndex];
+                const shiftTime = `${SLOTS[shift.startSlot].label} - ${SLOTS[shift.endSlot + 1] ? SLOTS[shift.endSlot + 1].label : '??'}`;
+                conflicts.push(`Conflicto el ${dayName}: Turno de ${shift.role} (${shiftTime}) choca con la nueva disponibilidad/excepción.`);
+            }
+        }
+    }
+    return [...new Set(conflicts)]; // Return unique conflicts
+  }
+
   function renderAvailabilityPanel(container, employeeId) {
     const emp = getEmployeeById(employeeId);
     if (!emp) return;
@@ -1920,8 +2032,15 @@ const db = firebase.firestore();
       emp.availability = { "0": [], "1": [], "2": [], "3": [], "4": [], "5": [], "6": [] };
     }
 
+    const conflicts = findAvailabilityConflicts(employeeId);
+    let conflictHtml = '';
+    if (conflicts.length > 0) {
+        conflictHtml = `<div class="warning-text">${conflicts.join('<br>')}</div><div class="hr"></div>`;
+    }
+
     const content = document.createElement('div');
     content.innerHTML = `
+        ${conflictHtml}
         <div class="stack">
           <strong>Disponibilidad Semanal</strong>
           ${DAYS.map((day, dayIndex) => `
@@ -1953,24 +2072,6 @@ const db = firebase.firestore();
           `).join('')}
         </div>
         <div class="hr"></div>
-        <div class="stack">
-          <strong>Excepciones</strong>
-          <div id="exceptions-list" class="stack">
-            ${(emp.exceptions || []).map(ex => `
-              <div class="row" style="justify-content: space-between;">
-                <span>${ex.date} ${ex.start ? `de ${ex.start}` : ''} ${ex.end ? `a ${ex.end}`: (ex.start ? '' : '(Todo el día)')}</span>
-                <button class="btn secondary del remove-exception" data-date="${ex.date}">X</button>
-              </div>
-            `).join('')}
-          </div>
-          <div class="row" style="gap: 8px;">
-            <input type="date" id="exception-date" class="input" style="flex:1;">
-            <input type="time" id="exception-start" class="input" title="Hora de inicio (opcional)">
-            <input type="time" id="exception-end" class="input" title="Hora de fin (opcional)">
-            <button id="add-exception" class="btn">Añadir</button>
-          </div>
-        </div>
-        <div class="hr"></div>
         <div style="text-align: right;">
             <button class="btn" id="save-availability">Guardar y Cerrar</button>
         </div>
@@ -1980,7 +2081,15 @@ const db = firebase.firestore();
     const attachListeners = (p) => {
         p.querySelector("#save-availability").addEventListener("click", () => {
             save();
-            toggleDetailPanel(null, null);
+            // Re-check conflicts after saving
+            const conflicts = findAvailabilityConflicts(employeeId);
+            if (conflicts.length > 0) {
+                // If conflicts exist, just re-render the panel to show them
+                renderAvailabilityPanel(container, employeeId);
+            } else {
+                // If no conflicts, close the panel
+                toggleDetailPanel(null, null);
+            }
         });
 
         p.querySelectorAll(".add-availability-slot").forEach(btn => {
@@ -2014,20 +2123,88 @@ const db = firebase.firestore();
             }
           });
         });
+    };
+
+    attachListeners(panel);
+    container.appendChild(panel);
+  }
+
+  function renderExceptionsPanel(container, employeeId) {
+    const emp = getEmployeeById(employeeId);
+    if (!emp) return;
+
+    container.innerHTML = '';
+    const panel = document.createElement('div');
+    panel.className = 'employee-detail-panel';
+    emp.exceptions = emp.exceptions || [];
+
+    const conflicts = findAvailabilityConflicts(employeeId);
+    let conflictHtml = '';
+    if (conflicts.length > 0) {
+        conflictHtml = `<div class="warning-text">${conflicts.join('<br>')}</div><div class="hr"></div>`;
+    }
+
+    const formatDate = (dateStr) => {
+        const [year, month, day] = dateStr.split('-');
+        return `${day}/${month}/${year}`;
+    };
+
+    const content = document.createElement('div');
+    content.innerHTML = `
+      ${conflictHtml}
+      <div class="stack">
+        <strong>Excepciones</strong>
+        <div id="exceptions-list" class="stack">
+          ${(emp.exceptions).map(ex => `
+            <div class="row" style="justify-content: space-between;">
+              <span>${formatDate(ex.date)} ${ex.start ? `de ${ex.start}` : ''} ${ex.end ? `a ${ex.end}`: (ex.start ? '' : '(Todo el día)')}</span>
+              <button class="btn secondary del remove-exception" data-date="${ex.date}">X</button>
+            </div>
+          `).join('')}
+        </div>
+        <div class="row" style="gap: 8px;">
+          <input type="date" id="exception-date" class="input" style="flex:1;">
+          <input type="time" id="exception-start" class="input" title="Hora de inicio (opcional)">
+          <input type="time" id="exception-end" class="input" title="Hora de fin (opcional)">
+          <button id="add-exception" class="btn">Añadir</button>
+        </div>
+      </div>
+      <div class="hr"></div>
+      <div style="text-align: right;">
+          <button class="btn" id="save-exceptions">Guardar y Cerrar</button>
+      </div>
+    `;
+    panel.appendChild(content);
+
+    const attachListeners = (p) => {
+        p.querySelector("#save-exceptions").addEventListener("click", () => {
+            save();
+            // Re-check conflicts after saving
+            const conflicts = findAvailabilityConflicts(employeeId);
+            if (conflicts.length > 0) {
+                // If conflicts exist, just re-render the panel to show them
+                renderExceptionsPanel(container, employeeId);
+            } else {
+                // If no conflicts, close the panel
+                toggleDetailPanel(null, null);
+            }
+        });
+
         p.querySelector("#add-exception").addEventListener("click", () => {
           const dateInput = p.querySelector('#exception-date');
           const startInput = p.querySelector('#exception-start');
           const endInput = p.querySelector('#exception-end');
           if (dateInput.value) {
               emp.exceptions.push({ date: dateInput.value, start: startInput.value || null, end: endInput.value || null });
-              renderAvailabilityPanel(container, employeeId);
+              renderExceptionsPanel(container, employeeId);
           }
         });
+
         p.querySelectorAll(".remove-exception").forEach(btn => {
           btn.addEventListener("click", (e) => {
             const date = e.target.dataset.date;
             emp.exceptions = emp.exceptions.filter(ex => ex.date !== date);
-            renderAvailabilityPanel(container, employeeId);
+            renderExceptionsPanel(container, employeeId);
           });
         });
     };
@@ -2042,7 +2219,7 @@ const db = firebase.firestore();
     wrap.style.display="flex"; wrap.style.alignItems="center"; wrap.style.justifyContent="center"; wrap.style.padding="16px"; wrap.style.zIndex=1000;
 
     const box = document.createElement("div");
-    box.className="card"; box.style.maxWidth="400px"; box.style.width="100%";
+    box.className="card"; box.style.maxWidth="600px"; box.style.width="100%";
 
     const day = state.activeDay;
     ensureDay(day);
@@ -2053,80 +2230,130 @@ const db = firebase.firestore();
         return;
     }
 
-    const qualifiedEmployees = state.employees.filter(e => {
-        // Use the centralized validation function in "silent" mode to check for pre-requisites
-        const check = canEmployeeWorkShift(e, shift, day, { silent: true });
-        return check.pass;
-    });
-
-    const h = document.createElement("div"); h.className="card-h";
+    const h = document.createElement("div");
+    h.className="card-h";
     h.innerHTML = `<strong>Asignar empleado a ${shift.role}</strong>`;
-    const c = document.createElement("div"); c.className="card-c stack";
 
-    if (qualifiedEmployees.length === 0) {
-        c.textContent = "No hay empleados con la estrella requerida.";
+    const c = document.createElement("div");
+    c.className="card-c stack";
+
+    const listContainer = document.createElement("div");
+    listContainer.className = "assign-employee-list";
+    c.appendChild(listContainer);
+
+    const employeesWithStar = state.employees.filter(e => (e.stars || []).includes(shift.role));
+
+    if (employeesWithStar.length === 0) {
+        listContainer.textContent = "No hay empleados con la estrella requerida.";
     } else {
-        qualifiedEmployees.forEach(emp => {
-            const empContainer = document.createElement('div');
-            empContainer.style.width = '100%';
+        const available = [];
+        const withWarnings = [];
+        const unavailable = [];
+
+        employeesWithStar.forEach(emp => {
+            const minorCheck = !emp.isMinor || shift.endSlot <= MAX_SLOT_FOR_MINOR;
+            const overlapCheck = checkShiftOverlap(emp.id, shift, day, []);
+            const restCheck = checkRestTime(emp.id, shift, state.activeWeek, day);
+            const availabilityCheck = checkEmployeeAvailability(emp, shift, state.activeWeek, day);
+            const consecutiveDays = calculateConsecutiveWorkDays(emp.id, state.activeWeek, day);
+
+            let hardWarningMessage = "";
+            if (!minorCheck) hardWarningMessage = `Menor de edad no puede trabajar después de las ${SLOTS[MAX_SLOT_FOR_MINOR+1].label}.`;
+            else if (!overlapCheck.pass) hardWarningMessage = overlapCheck.message;
+            else if (!restCheck.pass) hardWarningMessage = restCheck.message;
+
+            const softWarnings = [];
+            if (!availabilityCheck.isAvailable) {
+                softWarnings.push(availabilityCheck.reason);
+            }
+            if (consecutiveDays > 5) {
+                softWarnings.push(`Advertencia: Al asignar este turno, ${emp.name} trabajará ${consecutiveDays} días seguidos.`);
+            }
+
+            const employeeData = {
+                emp,
+                isUnavailable: hardWarningMessage !== "",
+                hardWarning: hardWarningMessage,
+                softWarnings: softWarnings
+            };
+
+            if (employeeData.isUnavailable) {
+                unavailable.push(employeeData);
+            } else if (employeeData.softWarnings.length > 0) {
+                withWarnings.push(employeeData);
+            } else {
+                available.push(employeeData);
+            }
+        });
+
+        const sortByName = (a, b) => a.emp.name.localeCompare(b.emp.name);
+        available.sort(sortByName);
+        withWarnings.sort(sortByName);
+        unavailable.sort(sortByName);
+
+        const sortedEmployees = [...available, ...withWarnings, ...unavailable];
+
+        sortedEmployees.forEach(data => {
+            const { emp, isUnavailable, hardWarning, softWarnings } = data;
 
             const btn = document.createElement("button");
             btn.className = "btn secondary";
             btn.style.flexDirection = 'column';
             btn.style.alignItems = 'flex-start';
             btn.style.textAlign = 'left';
+            btn.style.width = "100%";
 
             const weeklyHours = getEmployeeWeeklyHours(emp.id);
             const hoursText = `(${String(weeklyHours).replace('.', ',')}hs)`;
-
             const mainText = document.createElement('div');
             mainText.textContent = `${emp.name} ${hoursText}`;
-
             btn.appendChild(mainText);
 
             const weekShifts = getEmployeeShiftsForWeek(emp.id);
             if (weekShifts.length > 0) {
                 const summaryText = weekShifts.map(s => {
-                    const dayName = DAYS[s.day].slice(0, 3);
+                    const dayName = DAYS[s.day].slice(0, 2);
                     const startTime = SLOTS[s.startSlot].label;
                     const endTime = SLOTS[s.endSlot + 1] ? SLOTS[s.endSlot + 1].label : '??';
                     return `${dayName} ${s.role.slice(0,3)}. ${startTime}-${endTime}`;
                 }).join(' | ');
-
                 const summaryDiv = document.createElement("div");
                 summaryDiv.className = "employee-shift-summary";
                 summaryDiv.textContent = summaryText;
                 btn.appendChild(summaryDiv);
             }
 
-            btn.style.width = "100%";
+            if (isUnavailable) {
+                btn.disabled = true;
+                btn.style.cursor = 'not-allowed';
+                const warningDiv = document.createElement('div');
+                warningDiv.className = 'warning-text';
+                warningDiv.textContent = hardWarning;
+                btn.appendChild(warningDiv);
+            } else {
+                softWarnings.forEach(warning => {
+                    // We only show the text, the confirmation will bundle them.
+                    const warningDiv = document.createElement('div');
+                    warningDiv.className = 'warning-text';
+                    warningDiv.textContent = warning.split("\n\n")[0]; // Get just the reason text
+                    btn.appendChild(warningDiv);
+                });
+            }
+
             btn.addEventListener("click", () => {
-                const consecutiveDays = countConsecutiveWorkDaysEndingBefore(emp.id, state.activeWeek, day);
-                if (consecutiveDays >= 5) {
-                    alert("Este empleado lleva 5 días trabajando seguidos.");
-                    return;
-                }
-
-                const restCheck = checkRestTime(emp.id, shift, state.activeWeek, day);
-                if (!restCheck.pass) {
-                    alert(restCheck.message);
-                    return;
-                }
-
-                const availabilityCheck = checkEmployeeAvailability(emp, shift, state.activeWeek, day);
-                if (!availabilityCheck.isAvailable) {
-                    if (!confirm(availabilityCheck.reason + "\n\n¿Asignar de todos modos?")) {
-                        return;
+                if (softWarnings.length > 0) {
+                    const fullWarningText = softWarnings.join("\n\n") + "\n\n¿Asignar de todos modos?";
+                    if (!confirm(fullWarningText)) {
+                        return; // User cancelled
                     }
                 }
-
                 shift.employeeId = emp.id;
                 save();
                 renderAll();
                 wrap.remove();
             });
 
-            c.appendChild(btn);
+            listContainer.appendChild(btn);
         });
     }
 
@@ -2137,9 +2364,10 @@ const db = firebase.firestore();
 
     box.appendChild(h); box.appendChild(c); box.appendChild(f);
     wrap.appendChild(box);
-    wrap.addEventListener("click",(e)=>{ if(e.target===wrap) wrap.remove(); });
+    // Make modal persistent by not adding the close-on-click-outside listener
+    // wrap.addEventListener("click",(e)=>{ if(e.target===wrap) wrap.remove(); });
     document.body.appendChild(wrap);
-  }
+}
 
   function openEditShiftModal(shiftId) {
     const wrap = document.createElement("div");
@@ -3107,6 +3335,11 @@ const db = firebase.firestore();
     renderClockInReport();
   });
 
+  el("#clockInDateFilter").addEventListener('change', (e) => {
+    state.clockInDateFilter = e.target.value || null; // Store as YYYY-MM-DD or null if empty
+    renderClockInReport();
+  });
+
   el("#fileImportClockIns").addEventListener("change", (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -3129,5 +3362,50 @@ const db = firebase.firestore();
     };
     reader.readAsArrayBuffer(file);
   });
+
+
+  /* ====== Schedule Filters ====== */
+  const btnRoleFilter = el("#btn-role-filter");
+  const roleFilterDropdown = el("#role-filter-dropdown");
+  const scheduleSearchInput = el("#schedule-search");
+
+  btnRoleFilter.addEventListener("click", (e) => {
+      e.stopPropagation();
+      roleFilterDropdown.classList.toggle("show");
+  });
+
+  roleFilterDropdown.addEventListener("change", (e) => {
+      if (e.target.type === 'checkbox') {
+          const role = e.target.value;
+          if (e.target.checked) {
+              if (!state.scheduleRoleFilters.includes(role)) {
+                  state.scheduleRoleFilters.push(role);
+              }
+          } else {
+              state.scheduleRoleFilters = state.scheduleRoleFilters.filter(r => r !== role);
+          }
+          renderTable(); // Re-render table to apply filter
+      }
+  });
+
+  // Prevent dropdown from closing when clicking inside
+  roleFilterDropdown.addEventListener('click', (e) => e.stopPropagation());
+
+
+  scheduleSearchInput.addEventListener("input", () => {
+      state.scheduleSearchTerm = scheduleSearchInput.value;
+      renderTable();
+  });
+
+  // Close dropdowns when clicking elsewhere
+  window.addEventListener("click", (e) => {
+    if (actionsDropdown && !e.target.matches('#btn-actions') && !e.target.closest('#actions-dropdown')) {
+      actionsDropdown.classList.remove('show');
+    }
+    if (roleFilterDropdown && !e.target.matches('#btn-role-filter') && !e.target.closest('#role-filter-dropdown')) {
+      roleFilterDropdown.classList.remove('show');
+    }
+  });
+
 
 })();

@@ -15,6 +15,11 @@
     --c-caja:#8b5cf6;          /* violeta */
     --c-anfitriona:#ec4899;    /* rosa */
     --c-descarga:#14b8a6;      /* teal */
+    --c-active-border: #9333ea; /* purple-600 */
+
+    --c-warning: #9a3412; /* amber-800 */
+    --c-warning-bg: #fffbeb; /* amber-50 */
+    --c-warning-border: #fcd34d; /* amber-300 */
   }
   *{box-sizing:border-box}
   html, body {
@@ -43,7 +48,7 @@
   .select,.input,.file{
   border:1px solid var(--border);border-radius:4px;padding:8px 10px;background:#fff;color:var(--ink)
   }
-.card{background:var(--card);border:1px solid var(--border);border-radius:6px;box-shadow:0 1px 2px rgba(0,0,0,.03);overflow:hidden}
+.card{background:var(--card);border:1px solid var(--border);border-radius:6px;box-shadow:0 1px 2px rgba(0,0,0,.03);}
   .card-h{padding:10px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
   .card-c{padding:12px}
   .stack{display:flex;flex-direction:column;gap:8px}
@@ -96,7 +101,7 @@
   .legend > div{display:flex;gap:6px;align-items:center}
   .hr{height:1px;background:var(--border);margin:8px 0}
 .pilltab{border:1px solid var(--border);background:#fff;padding:6px 6px;border-radius:4px;cursor:pointer}
-  .pilltab.active{background:#111;border-color:#111;color:#fff}
+  .pilltab.active{background:#111;border-color:#111;color:#fff; border: 2px solid var(--c-active-border); padding: 5px;}
   .muted{color:var(--muted)}
   .danger{color:#b91c1c}
   .ghost{background:#fafafa}
@@ -124,8 +129,9 @@
 
 body.dark-mode .pilltab.active {
   background: var(--ink);
-  border-color: var(--ink);
   color: var(--card);
+  border: 2px solid var(--c-active-border);
+  padding: 5px;
 }
 body.dark-mode .namecol {
   background: var(--card);
@@ -142,6 +148,10 @@ body.dark-mode {
   --ink: #ffffff;
   --muted: #99aab5;
   --border: #3a3e44;
+
+  --c-warning: #fde68a; /* amber-200 */
+  --c-warning-bg: #451a03; /* amber-950 */
+  --c-warning-border: #78350f; /* amber-800 */
 }
 
 body.dark-mode .rowg > .slot:not(.assigned)::before {
@@ -199,7 +209,7 @@ body.dark-mode .btn.secondary {
 }
 .emp-table-new .actions-cell-new {
   text-align: center; /* Centered buttons */
-  width: 450px; /* Give more space for actions */
+  width: 550px; /* Give more space for actions */
 }
 .emp-table-new .actions-cell-new .btn {
   padding: 6px 10px;
@@ -334,7 +344,7 @@ body.dark-mode .btn.secondary {
   background-color: var(--card);
   min-width: 160px;
   box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
-  z-index: 1;
+  z-index: 20; /* Increased z-index to appear above sticky header */
   border: 1px solid var(--border);
   border-radius: 4px;
   overflow: hidden;
@@ -387,6 +397,31 @@ body.dark-mode .btn.secondary {
   font-weight: 600;
   margin: 0;
   white-space: nowrap;
+}
+
+.assign-employee-list {
+  max-height: 40vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-right: 8px; /* For scrollbar */
+}
+
+.warning-text {
+  font-size: 12px;
+  font-style: normal;
+  color: var(--c-warning);
+  background-color: var(--c-warning-bg);
+  border: 1px solid var(--c-warning-border);
+  border-radius: 4px;
+  padding: 4px 8px;
+  margin-top: 4px;
+}
+
+.warning-text::before {
+  content: "⚠️ ";
+  margin-right: 4px;
 }
 
 .controls-group {
@@ -697,4 +732,43 @@ body.dark-mode #calendar-grid .day.monday:not(.other-month):hover {
 }
 .clock-in-table-internal tr:last-child td {
   border-bottom: none;
+}
+
+/* Schedule Filter Bar */
+#schedule-search {
+  width: 250px;
+}
+
+#role-filter-dropdown {
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 300px;
+    overflow-y: auto;
+    min-width: 200px; /* Wider dropdown */
+    right: auto; /* Override default right alignment */
+    left: 0; /* Align to the left */
+}
+
+#role-filter-dropdown .filter-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+}
+
+#role-filter-dropdown .filter-item:hover {
+    background-color: var(--bg);
+}
+
+#role-filter-dropdown .filter-item input {
+    cursor: pointer;
+}
+
+#role-filter-dropdown .filter-item label {
+    cursor: pointer;
+    flex-grow: 1; /* Make label take up space */
 }

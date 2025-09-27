@@ -120,6 +120,18 @@
                 </div>
             </div>
 
+        <div class="card-c" id="schedule-filter-bar">
+            <div class="row" style="justify-content: space-between; width: 100%;">
+                <div class="dropdown">
+                    <button id="btn-role-filter" class="btn secondary">Filtros ▾</button>
+                    <div id="role-filter-dropdown" class="dropdown-content">
+                        <!-- Role checkboxes will be populated by JS -->
+                    </div>
+                </div>
+                <input id="schedule-search" class="input" placeholder="Buscar por empleado...">
+            </div>
+        </div>
+
             <!-- Grilla -->
             <div class="scroller">
                 <div class="table">
@@ -149,6 +161,7 @@
                 <p class="muted" style="max-width: 400px;">Sube el archivo Excel de fichadas para compararlo con los horarios planificados.</p>
                 <div class="row">
                     <input id="clockInSearch" class="input" placeholder="Buscar empleado...">
+                    <input type="date" id="clockInDateFilter" class="input">
                     <select id="clockInSort" class="select">
                         <option value="alpha">Ordenar Alfabéticamente</option>
                         <option value="hours_desc">Ordenar por Horas (mayor a menor)</option>
