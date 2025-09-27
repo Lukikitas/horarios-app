@@ -61,7 +61,13 @@ const db = firebase.firestore();
     projectedTickets: {},
     activeWeek: toISODateString(getMonday(new Date())),
     activeDay:0,
-    weeklySummarySort: 'alpha'
+    weeklySummarySort: 'alpha',
+    editingEmployeeId: null,
+    activeDetailEmployeeId: null,
+    activeDetailSection: null,
+    clockInSearchTerm: '',
+    clockInSortOrder: 'alpha',
+    lastClockInReportData: null
   };
 
   async function loadState() {
@@ -170,9 +176,13 @@ const db = firebase.firestore();
   const viewScheduleEl = el('#view-schedule');
   const viewEmployeesEl = el('#view-employees');
   const viewTemplatesEl = el('#view-templates');
+  const viewScheduleListEl = el('#view-schedule-list');
+  const viewClockInsEl = el('#view-clock-ins');
   const btnViewSchedule = el('#btn-view-schedule');
   const btnViewEmployees = el('#btn-view-employees');
   const btnViewTemplates = el('#btn-view-templates');
+  const btnScheduleList = el('#btn-schedule-list');
+  const btnViewClockIns = el('#btn-view-clock-ins');
   const inpTemplateName = el('#inpTemplateName');
   const btnSaveTemplate = el('#btnSaveTemplate');
   const templateList = el('#templateList');
@@ -192,25 +202,37 @@ const db = firebase.firestore();
     viewScheduleEl.style.display = 'none';
     viewEmployeesEl.style.display = 'none';
     viewTemplatesEl.style.display = 'none';
-    btnViewSchedule.className = 'btn secondary';
-    btnViewEmployees.className = 'btn secondary';
-    btnViewTemplates.className = 'btn secondary';
+    viewScheduleListEl.style.display = 'none';
+    viewClockInsEl.style.display = 'none';
+    btnViewSchedule.className = 'btn secondary main-menu-btn';
+    btnViewEmployees.className = 'btn secondary main-menu-btn';
+    btnViewTemplates.className = 'btn secondary main-menu-btn';
+    btnScheduleList.className = 'btn secondary main-menu-btn';
+    btnViewClockIns.className = 'btn secondary main-menu-btn';
 
     if (viewName === 'schedule') {
         viewScheduleEl.style.display = 'block';
-        btnViewSchedule.className = 'btn';
+        btnViewSchedule.className = 'btn main-menu-btn';
     } else if (viewName === 'employees') {
         viewEmployeesEl.style.display = 'block';
-        btnViewEmployees.className = 'btn';
+        btnViewEmployees.className = 'btn main-menu-btn';
     } else if (viewName === 'templates') {
         viewTemplatesEl.style.display = 'block';
-        btnViewTemplates.className = 'btn';
+        btnViewTemplates.className = 'btn main-menu-btn';
+    } else if (viewName === 'schedule-list') {
+        viewScheduleListEl.style.display = 'block';
+        btnScheduleList.className = 'btn main-menu-btn';
+    } else if (viewName === 'clock-ins') {
+        viewClockInsEl.style.display = 'block';
+        btnViewClockIns.className = 'btn main-menu-btn';
     }
     renderAll();
   }
   btnViewSchedule.addEventListener('click', () => showView('schedule'));
   btnViewEmployees.addEventListener('click', () => showView('employees'));
   btnViewTemplates.addEventListener('click', () => showView('templates'));
+  btnScheduleList.addEventListener('click', () => showView('schedule-list'));
+  btnViewClockIns.addEventListener('click', () => showView('clock-ins'));
   el("#empFilter").addEventListener("change", renderEmpList);
   if (el("#empSearch")) {
     el("#empSearch").addEventListener("input", renderEmpList);
@@ -556,6 +578,69 @@ const db = firebase.firestore();
     }
 
     return { pass: true, message: "" };
+  }
+
+  function checkShiftOverlap(employeeId, newShift, dayIndex, shiftsToIgnore = []) {
+    const schedule = getActiveSchedule();
+    const dayShifts = schedule[dayIndex] || [];
+    const employeeShiftsOnDay = dayShifts.filter(s =>
+        s.employeeId === employeeId && !shiftsToIgnore.includes(s.id)
+    );
+
+    for (const existingShift of employeeShiftsOnDay) {
+        if (newShift.id === existingShift.id) continue;
+        // Check for overlap: (StartA <= EndB) and (EndA >= StartB)
+        if (newShift.startSlot <= existingShift.endSlot && newShift.endSlot >= existingShift.startSlot) {
+            return { pass: false, message: `El empleado ya tiene un turno asignado que se solapa en este horario.` };
+        }
+    }
+    return { pass: true, message: "" };
+  }
+
+  function canEmployeeWorkShift(employee, shift, dayIndex, options = {}) {
+    const { shiftsToIgnore = [], silent = false } = options;
+
+    // 1. Minor check
+    if (employee.isMinor && shift.endSlot > MAX_SLOT_FOR_MINOR) {
+        return { pass: false, message: `Un menor de edad no puede trabajar después de las ${SLOTS[MAX_SLOT_FOR_MINOR+1].label}.` };
+    }
+
+    // 2. Star check
+    if (!(employee.stars || []).includes(shift.role)) {
+        return { pass: false, message: `${employee.name} no tiene la estrella "${shift.role}".` };
+    }
+
+    // 3. Availability check
+    const availabilityCheck = checkEmployeeAvailability(employee, shift, state.activeWeek, dayIndex);
+    if (!availabilityCheck.isAvailable) {
+        return { pass: false, message: silent ? "No disponible" : availabilityCheck.reason };
+    }
+
+    // 4. Overlap check
+    const overlapCheck = checkShiftOverlap(employee.id, shift, dayIndex, shiftsToIgnore);
+    if (!overlapCheck.pass) {
+        return { pass: false, message: overlapCheck.message };
+    }
+
+    // 5. Rest time check
+    const restCheck = checkRestTime(employee.id, shift, state.activeWeek, dayIndex);
+    if (!restCheck.pass) {
+        return { pass: false, message: restCheck.message };
+    }
+
+    // 6. Consecutive days check
+    const consecutiveDays = countConsecutiveWorkDaysEndingBefore(employee.id, state.activeWeek, dayIndex);
+    if (consecutiveDays >= 5) {
+        if (!silent) {
+            if (!confirm(`Advertencia: Al asignar este turno, ${employee.name} trabajará 6 o más días seguidos. ¿Continuar de todos modos?`)) {
+                return { pass: false, message: "Asignación cancelada por el usuario." };
+            }
+        } else {
+            return { pass: false, message: "Trabajaría 6+ días seguidos." };
+        }
+    }
+
+    return { pass: true, message: "OK" };
   }
 
   function checkEmployeeAvailability(employee, shift, weekId, dayIndex) {
@@ -963,7 +1048,7 @@ const db = firebase.firestore();
     }
 
     const table = document.createElement("table");
-    table.className = "emp-table-new"; // Use a new class to avoid style conflicts
+    table.className = "emp-table-new";
 
     const thead = table.createTHead();
     const headRow = thead.insertRow();
@@ -972,16 +1057,27 @@ const db = firebase.firestore();
     const tbody = table.createTBody();
     filtered.forEach(e=>{
       const row = tbody.insertRow();
+      const isEditing = state.editingEmployeeId === e.id;
 
       // Name cell
       const nameCell = row.insertCell();
-      nameCell.textContent = e.name;
-      if (e.isMinor) {
-        const minorBadge = document.createElement("span");
-        minorBadge.className = "badge b-minor";
-        minorBadge.textContent = "Menor";
-        minorBadge.style.marginLeft = "8px";
-        nameCell.appendChild(minorBadge);
+      if (isEditing) {
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.value = e.name;
+          input.className = 'input';
+          input.id = `edit-input-${e.id}`;
+          nameCell.appendChild(input);
+      } else {
+          nameCell.textContent = e.name;
+          if (e.isMinor) {
+              const minorBadge = document.createElement("span");
+              minorBadge.className = "badge b-minor";
+              minorBadge.textContent = "M";
+              minorBadge.title = "Menor de edad";
+              minorBadge.style.marginLeft = "8px";
+              nameCell.appendChild(minorBadge);
+          }
       }
 
       // Stars cell
@@ -1002,29 +1098,87 @@ const db = firebase.firestore();
       const actionsCell = row.insertCell();
       actionsCell.className = "actions-cell-new";
 
-      const bAvailability = document.createElement("button");
-      bAvailability.className="btn secondary"; bAvailability.textContent="Disponibilidad";
-      bAvailability.onclick = () => openAvailabilityModal(e.id);
+      if (isEditing) {
+          const bSave = document.createElement("button");
+          bSave.className="btn"; bSave.textContent="Guardar";
+          bSave.onclick = () => {
+              const newName = el(`#edit-input-${e.id}`).value.trim();
+              if (newName) {
+                  e.name = newName;
+                  state.editingEmployeeId = null;
+                  save();
+                  renderAll();
+              }
+          };
 
-      const bEst = document.createElement("button");
-      bEst.className="btn secondary"; bEst.textContent="Estrellas";
-      bEst.onclick = () => openStarsModal(e.id, e.name);
+          const bCancel = document.createElement("button");
+          bCancel.className="btn secondary"; bCancel.textContent="Cancelar";
+          bCancel.onclick = () => {
+              state.editingEmployeeId = null;
+              renderEmpList();
+          };
+          actionsCell.appendChild(bSave);
+          actionsCell.appendChild(bCancel);
+      } else {
+          const bEdit = document.createElement("button");
+          bEdit.className="btn secondary"; bEdit.textContent="Editar";
+          bEdit.onclick = () => {
+              state.editingEmployeeId = e.id;
+              state.activeDetailEmployeeId = null;
+              renderEmpList();
+          };
 
-      const bMinor = document.createElement("button");
-      bMinor.className="btn secondary"; bMinor.textContent= e.isMinor ? "Quitar Menor" : "Hacer Menor";
-      bMinor.onclick = () => toggleIsMinor(e.id);
+          const bAvailability = document.createElement("button");
+          bAvailability.className="btn secondary"; bAvailability.textContent="Disponibilidad";
+          bAvailability.onclick = () => toggleDetailPanel(e.id, 'availability');
 
-      const bDel = document.createElement("button");
-      bDel.className="btn secondary del"; bDel.textContent="Eliminar";
-      bDel.onclick = () => removeEmployee(e.id);
+          const bEst = document.createElement("button");
+          bEst.className="btn secondary"; bEst.textContent="Estrellas";
+          bEst.onclick = () => toggleDetailPanel(e.id, 'stars');
 
-      actionsCell.appendChild(bAvailability);
-      actionsCell.appendChild(bEst);
-      actionsCell.appendChild(bMinor);
-      actionsCell.appendChild(bDel);
+          const bMinor = document.createElement("button");
+          bMinor.className="btn secondary"; bMinor.textContent= e.isMinor ? "Quitar Menor" : "Hacer Menor";
+          bMinor.onclick = () => toggleIsMinor(e.id);
+
+          const bDel = document.createElement("button");
+          bDel.className="btn secondary del"; bDel.textContent="Eliminar";
+          bDel.onclick = () => removeEmployee(e.id);
+
+          actionsCell.appendChild(bEdit);
+          actionsCell.appendChild(bAvailability);
+          actionsCell.appendChild(bEst);
+          actionsCell.appendChild(bMinor);
+          actionsCell.appendChild(bDel);
+      }
+
+      // Add detail row if this employee is active
+      if (state.activeDetailEmployeeId === e.id) {
+          const detailRow = tbody.insertRow();
+          const detailCell = detailRow.insertCell();
+          detailCell.colSpan = 3; // Span across all columns
+          detailCell.className = 'employee-detail-cell';
+
+          if (state.activeDetailSection === 'stars') {
+              renderStarsPanel(detailCell, e.id);
+          } else if (state.activeDetailSection === 'availability') {
+              renderAvailabilityPanel(detailCell, e.id);
+          }
+      }
     });
 
     empList.appendChild(table);
+  }
+
+  function toggleDetailPanel(employeeId, section) {
+      if (state.activeDetailEmployeeId === employeeId && state.activeDetailSection === section) {
+          state.activeDetailEmployeeId = null;
+          state.activeDetailSection = null;
+      } else {
+          state.activeDetailEmployeeId = employeeId;
+          state.activeDetailSection = section;
+          state.editingEmployeeId = null; // Close editing mode if open
+      }
+      renderEmpList();
   }
 
   function renderProjectedTicketsInput() {
@@ -1122,6 +1276,7 @@ const db = firebase.firestore();
         roleShifts.forEach((shift, index) => {
             const cols = `240px repeat(${SLOTS.length}, 1fr)`;
             const row = document.createElement("div");
+            row.dataset.shiftId = shift.id; // Add shift ID for highlighting
             if (index === 0) {
                 row.style.borderTop = "2px solid #d1d5db";
             }
@@ -1265,93 +1420,508 @@ const db = firebase.firestore();
     renderEmpList();
     renderTable();
     renderTemplateList();
+    if (viewScheduleListEl.style.display !== 'none') {
+      renderScheduleList();
+    }
+    if (viewClockInsEl.style.display !== 'none') {
+      renderClockInReport();
+    }
   }
 
-  /* ====== Modal Estrellas ====== */
-  function openStarsModal(empId, name){
-    const wrap = document.createElement("div");
-    wrap.style.position="fixed"; wrap.style.inset="0"; wrap.style.background="rgba(0,0,0,.35)";
-    wrap.style.display="flex"; wrap.style.alignItems="center"; wrap.style.justifyContent="center"; wrap.style.padding="16px"; wrap.style.zIndex=1000;
+  function renderScheduleList() {
+    const content = el("#schedule-list-content");
+    content.innerHTML = "";
 
-    const box = document.createElement("div");
-    box.className="card"; box.style.maxWidth="560px"; box.style.width="100%";
+    const schedule = getActiveSchedule();
+    const employees = state.employees.slice().sort((a, b) => a.name.localeCompare(b.name));
+    const unassignedShiftsExist = Object.values(schedule).some(day => day.some(s => !s.employeeId));
 
-    function renderModalContent(){
-      const emp = state.employees.find(e=>e.id===empId);
-      const stars = emp?.stars || [];
-      box.innerHTML = ""; // Limpia contenido
+    if (employees.length === 0 && !unassignedShiftsExist) {
+        content.innerHTML = `<p class="muted">No hay empleados ni turnos para mostrar.</p>`;
+        return;
+    }
 
-      const h = document.createElement("div"); h.className="card-h";
-      h.innerHTML = `<strong>Estrellas de ${escapeHtml(name)}</strong>`;
-      const c = document.createElement("div"); c.className="card-c";
-      const grid = document.createElement("div"); grid.style.display="grid"; grid.style.gridTemplateColumns="1fr 1fr"; grid.style.gap="10px";
+    const table = document.createElement("table");
+    table.className = "schedule-list-table";
+
+    const thead = table.createTHead();
+    const headerRow = thead.insertRow();
+    const weekMonday = new Date(state.activeWeek + "T12:00:00Z");
+
+    headerRow.innerHTML = `<th>Empleado</th>` + DAYS.map((dayName, dayIndex) => {
+        const dayDate = new Date(weekMonday);
+        dayDate.setDate(weekMonday.getDate() + dayIndex);
+        return `<th>${dayName}<br><span class="muted" style="font-size:11px;">${dayDate.getDate()}/${dayDate.getMonth() + 1}</span></th>`;
+    }).join('');
+
+    const tbody = table.createTBody();
+
+    // Unassigned Shifts Row (at the top)
+    const unassignedRow = tbody.insertRow();
+    unassignedRow.dataset.employeeId = "unassigned";
+    unassignedRow.insertCell().innerHTML = `<div style="font-weight: 500; font-style: italic;">Turnos sin Asignar</div>`;
+    for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
+        const dayCell = unassignedRow.insertCell();
+        dayCell.dataset.day = dayIndex;
+        const unassignedShifts = (schedule[dayIndex] || []).filter(s => !s.employeeId);
+        if (unassignedShifts.length > 0) {
+            const shiftsContainer = document.createElement('div');
+            shiftsContainer.className = 'shifts-container';
+            unassignedShifts.forEach(shift => {
+                const shiftDiv = document.createElement('div');
+                shiftDiv.className = 'schedule-list-shift unassigned-shift-item';
+                shiftDiv.dataset.shiftId = shift.id;
+                shiftDiv.dataset.dayIndex = dayIndex;
+                shiftDiv.draggable = true;
+                shiftDiv.addEventListener('dragstart', (e) => {
+                    e.dataTransfer.setData('text/plain', JSON.stringify({ shiftId: shift.id, dayIndex: dayIndex }));
+                    e.dataTransfer.effectAllowed = 'move';
+                    setTimeout(() => { shiftDiv.style.opacity = '0.5'; }, 0);
+                });
+                shiftDiv.addEventListener('dragend', () => { shiftDiv.style.opacity = '1'; });
+                const roleInfo = ROLES.find(r => r.key === shift.role);
+                if (roleInfo) {
+                    shiftDiv.style.backgroundColor = roleInfo.color;
+                    shiftDiv.style.color = roleInfo.darkText ? '#111' : '#fff';
+                }
+                const startTime = SLOTS[shift.startSlot].label;
+                const endTime = SLOTS[shift.endSlot + 1] ? SLOTS[shift.endSlot + 1].label : "02:00";
+                shiftDiv.innerHTML = `<div style="font-weight: 500;">${shift.role}</div><div style="font-size: 11px;">${startTime} - ${endTime}</div>`;
+                shiftDiv.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    showShiftContextMenu(e, shift.id, dayIndex, null);
+                });
+                shiftsContainer.appendChild(shiftDiv);
+            });
+            dayCell.appendChild(shiftsContainer);
+        }
+        addDropListeners(dayCell);
+    }
+
+    // Employee Rows
+    employees.forEach(emp => {
+        const row = tbody.insertRow();
+        row.dataset.employeeId = emp.id;
+        const weeklyHours = getEmployeeWeeklyHours(emp.id);
+        row.insertCell().innerHTML = `<div style="font-weight: 500;">${escapeHtml(emp.name)}</div><div class="muted" style="font-size: 12px;" id="weekly-hours-${emp.id}">Total: ${String(weeklyHours).replace('.', ',')}hs</div>`;
+
+        for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
+            const dayCell = row.insertCell();
+            dayCell.dataset.day = dayIndex;
+            const dayShifts = (schedule[dayIndex] || []).filter(s => s.employeeId === emp.id);
+            if (dayShifts.length > 0) {
+                const shiftsContainer = document.createElement('div');
+                shiftsContainer.className = 'shifts-container';
+                dayShifts.forEach(shift => {
+                    const shiftDiv = document.createElement('div');
+                    shiftDiv.className = 'schedule-list-shift';
+                    shiftDiv.dataset.shiftId = shift.id;
+                    shiftDiv.dataset.dayIndex = dayIndex;
+                    shiftDiv.draggable = true;
+                    shiftDiv.addEventListener('dragstart', (e) => {
+                        e.dataTransfer.setData('text/plain', JSON.stringify({ shiftId: shift.id, dayIndex: dayIndex }));
+                        e.dataTransfer.effectAllowed = 'move';
+                        setTimeout(() => { shiftDiv.style.opacity = '0.5'; }, 0);
+                    });
+                    shiftDiv.addEventListener('dragend', () => { shiftDiv.style.opacity = '1'; });
+                    const roleInfo = ROLES.find(r => r.key === shift.role);
+                    if (roleInfo) {
+                        shiftDiv.style.backgroundColor = roleInfo.color;
+                        shiftDiv.style.color = roleInfo.darkText ? '#111' : '#fff';
+                    }
+                    const startTime = SLOTS[shift.startSlot].label;
+                    const endTime = SLOTS[shift.endSlot + 1] ? SLOTS[shift.endSlot + 1].label : "02:00";
+                    shiftDiv.innerHTML = `<div style="font-weight: 500;">${shift.role}</div><div style="font-size: 11px;">${startTime} - ${endTime}</div>`;
+                    shiftDiv.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        showShiftContextMenu(e, shift.id, dayIndex, emp.id);
+                    });
+                    shiftsContainer.appendChild(shiftDiv);
+                });
+                dayCell.appendChild(shiftsContainer);
+            }
+            addDropListeners(dayCell);
+        }
+    });
+    content.appendChild(table);
+  }
+
+  function addDropListeners(dayCell) {
+    dayCell.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; });
+    dayCell.addEventListener('dragenter', (e) => { e.preventDefault(); dayCell.classList.add('drag-over'); });
+    dayCell.addEventListener('dragleave', () => { dayCell.classList.remove('drag-over'); });
+    dayCell.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dayCell.classList.remove('drag-over');
+
+        const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+        const sourceShiftId = data.shiftId;
+        const sourceDayIndex = data.dayIndex;
+
+        const targetTr = e.target.closest('tr');
+        if (!targetTr) return;
+
+        const targetEmployeeId = targetTr.dataset.employeeId;
+        const targetShiftElement = e.target.closest('.schedule-list-shift');
+        const targetDayIndex = parseInt(e.target.closest('td').dataset.day, 10);
+
+        const schedule = getActiveSchedule();
+        const sourceShift = schedule[sourceDayIndex]?.find(s => s.id === sourceShiftId);
+        if (!sourceShift) return;
+
+        // Scenario 1: Dropped on the "Unassigned" row to unassign a shift
+        if (targetEmployeeId === 'unassigned') {
+            if (!sourceShift.employeeId) return; // Already unassigned
+            sourceShift.employeeId = null;
+            save();
+            renderScheduleList();
+            return;
+        }
+
+        const targetEmployee = getEmployeeById(targetEmployeeId);
+        if (!targetEmployee) return;
+
+        // Scenario 2: Dropped on another shift (SWAP)
+        if (targetShiftElement) {
+            const targetShiftId = targetShiftElement.dataset.shiftId;
+            if (sourceShiftId === targetShiftId) return; // Dropped on itself
+
+            const targetShift = schedule[targetDayIndex]?.find(s => s.id === targetShiftId);
+            if (!targetShift || !targetShift.employeeId) return; // Cannot swap with an unassigned shift
+
+            const sourceEmployee = getEmployeeById(sourceShift.employeeId);
+            if (!sourceEmployee) {
+                alert("No se puede intercambiar un turno sin asignar. Arrástrelo a una celda vacía para asignarlo.");
+                return;
+            }
+
+            const check1 = canEmployeeWorkShift(targetEmployee, sourceShift, targetDayIndex, { shiftsToIgnore: [targetShift.id] });
+            if (!check1.pass) {
+                alert(`No se puede intercambiar: ${check1.message}`);
+                return;
+            }
+            const check2 = canEmployeeWorkShift(sourceEmployee, targetShift, sourceDayIndex, { shiftsToIgnore: [sourceShift.id] });
+            if (!check2.pass) {
+                alert(`No se puede intercambiar: ${check2.message}`);
+                return;
+            }
+            [targetShift.employeeId, sourceShift.employeeId] = [sourceShift.employeeId, targetShift.employeeId];
+        }
+        // Scenario 3: Dropped on an empty cell (MOVE / REASSIGN)
+        else {
+            const sourceEmployeeId = sourceShift.employeeId;
+            if (sourceEmployeeId === targetEmployeeId && sourceDayIndex === targetDayIndex) return;
+
+            const ignoreIds = (sourceEmployeeId === targetEmployeeId) ? [sourceShift.id] : [];
+            const check = canEmployeeWorkShift(targetEmployee, sourceShift, targetDayIndex, { shiftsToIgnore: ignoreIds });
+
+            if (!check.pass) {
+                alert(`No se puede mover/asignar el turno: ${check.message}`);
+                return;
+            }
+
+            // Re-find and splice to prevent duplication bugs
+            const originalDayShifts = schedule[sourceDayIndex];
+            const shiftIndex = originalDayShifts.findIndex(s => s.id === sourceShift.id);
+            if (shiftIndex > -1) {
+                const [shiftToMove] = originalDayShifts.splice(shiftIndex, 1);
+                shiftToMove.employeeId = targetEmployee.id;
+                ensureDay(targetDayIndex);
+                schedule[targetDayIndex].push(shiftToMove);
+            }
+        }
+
+        save();
+        renderScheduleList();
+    });
+  }
+
+  function showShiftContextMenu(event, shiftId, dayIndex, employeeId) {
+    // Remove any existing context menu
+    const existingMenu = document.querySelector('.shift-context-menu');
+    if (existingMenu) {
+        existingMenu.remove();
+    }
+
+    const menu = document.createElement('div');
+    menu.className = 'shift-context-menu';
+
+    if (employeeId) {
+        const btnUnassign = document.createElement('button');
+        btnUnassign.textContent = 'Desasignar empleado';
+        btnUnassign.onclick = () => {
+            const schedule = getActiveSchedule();
+            const shift = schedule[dayIndex]?.find(s => s.id === shiftId);
+            if (shift) {
+                shift.employeeId = null;
+                save();
+                renderScheduleList(); // Re-render the list to update hours and view
+            }
+            menu.remove();
+        };
+        menu.appendChild(btnUnassign);
+    }
+
+    const btnGoTo = document.createElement('button');
+    btnGoTo.textContent = 'Ir al turno';
+    btnGoTo.onclick = () => {
+        state.activeDay = dayIndex;
+        showView('schedule'); // Switch to the main schedule view
+
+        setTimeout(() => {
+            const shiftRow = document.querySelector(`[data-shift-id="${shiftId}"]`);
+            if (shiftRow) {
+                shiftRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                shiftRow.classList.add('highlight-shift');
+                setTimeout(() => {
+                    shiftRow.classList.remove('highlight-shift');
+                }, 2000);
+            }
+        }, 100);
+
+        menu.remove();
+    };
+
+    menu.appendChild(btnGoTo);
+
+
+    document.body.appendChild(menu);
+
+    // Position the menu
+    menu.style.left = `${event.pageX}px`;
+    menu.style.top = `${event.pageY}px`;
+
+    // Close the menu when clicking elsewhere
+    const closeListener = (e) => {
+        if (!menu.contains(e.target)) {
+            menu.remove();
+            document.removeEventListener('click', closeListener);
+        }
+    };
+    setTimeout(() => document.addEventListener('click', closeListener), 0);
+  }
+
+  function processAndCompareClockIns(data) {
+    const reportDataByEmployee = {};
+    const employeesByName = {};
+    state.employees.forEach(emp => {
+        employeesByName[emp.name.toLowerCase().trim().replace(/,/g, '').replace(/\s+/g, ' ')] = emp;
+    });
+
+    const formatDate = (d) => `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
+    const formatTime = (d) => `${two(d.getHours())}:${two(d.getMinutes())}`;
+
+    const clockInsByEmployee = {};
+    let minDate = null, maxDate = null;
+
+    // First pass: Process Excel data and find date range
+    for (let i = 1; i < data.length; i++) {
+        const row = data[i];
+        if (!row || !row[0] || !row[4] || !row[7] || !(row[4] instanceof Date)) continue;
+
+        const employeeName = row[0].toString().toLowerCase().trim().replace(/,/g, '').replace(/\s+/g, ' ');
+        const clockInDate = row[4];
+        const clockOutDate = row[7];
+        const dateKey = toISODateString(clockInDate);
+
+        if (!clockInsByEmployee[employeeName]) {
+            clockInsByEmployee[employeeName] = {};
+        }
+        clockInsByEmployee[employeeName][dateKey] = { clockInDate, clockOutDate };
+
+        if (!minDate || clockInDate < minDate) minDate = clockInDate;
+        if (!maxDate || clockInDate > maxDate) maxDate = clockInDate;
+    }
+
+    if (!minDate || !maxDate) {
+        state.lastClockInReportData = {};
+        renderClockInReport();
+        return;
+    }
+
+    // Second pass: Iterate through all employees and all days in the range
+    for (const employee of state.employees) {
+        const employeeKey = employee.name;
+        const employeeNameNormalized = employee.name.toLowerCase().trim().replace(/,/g, '').replace(/\s+/g, ' ');
+
+        for (let d = new Date(minDate); d <= maxDate; d.setDate(d.getDate() + 1)) {
+            const dateKey = toISODateString(d);
+            const scheduledShift = getScheduleForDate(d).find(s => s.employeeId === employee.id);
+            const clockInData = clockInsByEmployee[employeeNameNormalized]?.[dateKey];
+
+            if (!scheduledShift && !clockInData) continue; // Skip days with no activity
+
+            if (!reportDataByEmployee[employeeKey]) {
+                reportDataByEmployee[employeeKey] = { name: employeeKey, records: [], totalHours: 0, status: 'ok' };
+            }
+
+            const dayName = DAYS[d.getDay() === 0 ? 6 : d.getDay() - 1];
+            let scheduledTime = 'Sin turno asignado';
+            if (scheduledShift) {
+                const startTime = SLOTS[scheduledShift.startSlot].label;
+                const endTime = SLOTS[scheduledShift.endSlot + 1] ? SLOTS[scheduledShift.endSlot + 1].label : "02:00";
+                scheduledTime = `${startTime} - ${endTime} (${scheduledShift.role})`;
+            }
+
+            if (clockInData) {
+                const actualHours = (clockInData.clockOutDate - clockInData.clockInDate) / (1000 * 60 * 60);
+                reportDataByEmployee[employeeKey].records.push({
+                    date: `${dayName}, ${formatDate(d)}`, scheduled: scheduledTime, clockIn: formatTime(clockInData.clockInDate), clockOut: formatTime(clockInData.clockOutDate), actual: `${actualHours.toFixed(2).replace('.',',')}hs`, status: 'ok'
+                });
+            } else if (scheduledShift) {
+                // Absence detected
+                reportDataByEmployee[employeeKey].records.push({
+                    date: `${dayName}, ${formatDate(d)}`, scheduled: scheduledTime, clockIn: 'Ausente', clockOut: '', actual: '0,00hs', status: 'absence'
+                });
+            }
+        }
+    }
+
+    // Calculate total hours
+    for (const key in reportDataByEmployee) {
+        reportDataByEmployee[key].totalHours = reportDataByEmployee[key].records.reduce((acc, record) => {
+            const hours = parseFloat(record.actual.replace('hs', '').replace(',', '.'));
+            return acc + (isNaN(hours) ? 0 : hours);
+        }, 0);
+    }
+
+    state.lastClockInReportData = reportDataByEmployee;
+    renderClockInReport();
+  }
+
+  function renderClockInReport() {
+    const content = el("#clock-in-report-content");
+    content.innerHTML = '';
+
+    const reportData = state.lastClockInReportData;
+    if (!reportData) {
+        content.innerHTML = '<p class="muted">Sube un archivo Excel para ver el análisis de fichadas.</p>';
+        return;
+    }
+
+    let employeeNames = Object.keys(reportData);
+
+    // Filter
+    const searchTerm = state.clockInSearchTerm.toLowerCase();
+    if (searchTerm) {
+        employeeNames = employeeNames.filter(name => name.toLowerCase().includes(searchTerm));
+    }
+
+    // Sort
+    if (state.clockInSortOrder === 'hours_desc') {
+        employeeNames.sort((a, b) => reportData[b].totalHours - reportData[a].totalHours);
+    } else if (state.clockInSortOrder === 'hours_asc') {
+        employeeNames.sort((a, b) => reportData[a].totalHours - reportData[b].totalHours);
+    } else {
+        employeeNames.sort((a, b) => a.localeCompare(b));
+    }
+
+    if (employeeNames.length === 0) {
+        content.innerHTML = '<p class="muted">No se encontraron empleados que coincidan con la búsqueda.</p>';
+        return;
+    }
+
+    const reportContainer = document.createElement('div');
+    reportContainer.className = 'clock-in-report-container';
+
+    employeeNames.forEach(employeeName => {
+        const employeeData = reportData[employeeName];
+        const card = document.createElement('div');
+        card.className = 'employee-clock-in-card';
+        if (employeeData.status === 'error') card.classList.add('error-card');
+
+        const title = document.createElement('h3');
+        title.className = 'employee-card-title';
+        title.innerHTML = `<span>${employeeName}</span><span class="muted">Total: ${employeeData.totalHours.toFixed(2).replace('.',',')}hs</span>`;
+        card.appendChild(title);
+
+        const table = document.createElement('table');
+        table.className = 'clock-in-table-internal';
+        table.innerHTML = `<thead><tr><th>Día</th><th>Turno Asignado</th><th>Entrada</th><th>Salida</th><th>Hs. Hechas</th></tr></thead>`;
+
+        const tbody = table.createTBody();
+        employeeData.records.forEach(record => {
+            const row = tbody.insertRow();
+            if (record.status === 'error') {
+                row.classList.add('danger-text');
+                row.title = record.message;
+            } else if (record.status === 'absence') {
+                row.classList.add('absence-row');
+                row.title = 'El empleado tenía un turno asignado pero no hay fichada registrada.';
+            }
+            row.innerHTML = `<td>${record.date}</td><td>${record.scheduled}</td><td>${record.clockIn}</td><td>${record.clockOut}</td><td>${record.actual}</td>`;
+        });
+        card.appendChild(table);
+        reportContainer.appendChild(card);
+    });
+    content.appendChild(reportContainer);
+  }
+
+  /* ====== Detail Panels ====== */
+
+  function renderStarsPanel(container, employeeId) {
+      const emp = state.employees.find(e => e.id === employeeId);
+      if (!emp) return;
+
+      container.innerHTML = '';
+      const panel = document.createElement('div');
+      panel.className = 'employee-detail-panel';
+
+      const stars = emp.stars || [];
+      const grid = document.createElement("div");
+      grid.style.display = "grid";
+      grid.style.gridTemplateColumns = "repeat(auto-fill, minmax(150px, 1fr))";
+      grid.style.gap = "10px";
 
       const isDarkMode = document.body.classList.contains("dark-mode");
       const offBgColor = isDarkMode ? '#2c2f33' : '#ffffff';
       const offInkColor = isDarkMode ? '#ffffff' : '#171717';
       const offBorderColor = isDarkMode ? '#3a3e44' : '#e5e7eb';
 
-      ROLES.forEach(r=>{
-        const btn = document.createElement("button");
-        const isOn = stars.includes(r.key);
-        btn.className = "btn secondary";
-        btn.style.justifyContent="space-between"; btn.style.display="flex"; btn.style.width="100%";
-        btn.innerHTML = `<span>${r.key}</span><span>${isOn?"★":""}</span>`;
+      ROLES.forEach(r => {
+          const btn = document.createElement("button");
+          const isOn = stars.includes(r.key);
+          btn.className = "btn secondary";
+          btn.style.justifyContent = "space-between";
+          btn.style.display = "flex";
+          btn.style.width = "100%";
+          btn.innerHTML = `<span>${r.key}</span><span>${isOn ? "★" : ""}</span>`;
 
-        if (isOn) {
-            btn.style.background = r.color;
-            btn.style.color = r.darkText ? "#111" : "#fff";
-            btn.style.borderColor = "transparent";
-        } else {
-            btn.style.background = offBgColor;
-            btn.style.color = offInkColor;
-            btn.style.borderColor = offBorderColor;
-        }
+          if (isOn) {
+              btn.style.background = r.color;
+              btn.style.color = r.darkText ? "#111" : "#fff";
+              btn.style.borderColor = "transparent";
+          } else {
+              btn.style.background = offBgColor;
+              btn.style.color = offInkColor;
+              btn.style.borderColor = offBorderColor;
+          }
 
-        btn.addEventListener("click", ()=>{
-          toggleStar(empId, r.key);
-          renderModalContent();
-        });
-        grid.appendChild(btn);
+          btn.addEventListener("click", () => {
+              toggleStar(employeeId, r.key);
+              renderEmpList(); // Re-render the list to update the panel
+          });
+          grid.appendChild(btn);
       });
 
-      const f = document.createElement("div"); f.style.textAlign="right"; f.style.marginTop="12px";
-      const done = document.createElement("button"); done.className="btn"; done.textContent="Listo";
-      done.addEventListener("click", ()=> {
-        wrap.remove();
-        renderAll();
-      });
-      f.appendChild(done);
-
-      c.appendChild(grid); c.appendChild(f);
-      box.appendChild(h); box.appendChild(c);
-    }
-
-    renderModalContent();
-    wrap.appendChild(box);
-    wrap.addEventListener("click",(e)=>{
-        if(e.target===wrap) {
-            wrap.remove();
-            renderAll();
-        }
-    });
-    document.body.appendChild(wrap);
+      panel.appendChild(grid);
+      container.appendChild(panel);
   }
 
-  function renderAvailability(empId, box) {
-    const emp = getEmployeeById(empId);
+  function renderAvailabilityPanel(container, employeeId) {
+    const emp = getEmployeeById(employeeId);
     if (!emp) return;
 
-    // The migration in loadState should handle this, but as a fallback:
-    if (!emp.availability || Array.isArray(emp.availability)) { // check for old array format or null
+    container.innerHTML = '';
+    const panel = document.createElement('div');
+    panel.className = 'employee-detail-panel';
+
+    if (!emp.availability || Array.isArray(emp.availability)) {
       emp.availability = { "0": [], "1": [], "2": [], "3": [], "4": [], "5": [], "6": [] };
     }
 
-    box.innerHTML = `
-      <div class="card-h">
-        <strong>Disponibilidad de ${escapeHtml(emp.name)}</strong>
-      </div>
-      <div class="card-c stack">
+    const content = document.createElement('div');
+    content.innerHTML = `
         <div class="stack">
           <strong>Disponibilidad Semanal</strong>
           ${DAYS.map((day, dayIndex) => `
@@ -1400,130 +1970,70 @@ const db = firebase.firestore();
             <button id="add-exception" class="btn">Añadir</button>
           </div>
         </div>
-        <div style="text-align: right; margin-top: 12px;">
-          <button id="availability-done" class="btn">Listo</button>
+        <div class="hr"></div>
+        <div style="text-align: right;">
+            <button class="btn" id="save-availability">Guardar y Cerrar</button>
         </div>
-      </div>
     `;
-  }
+    panel.appendChild(content);
 
-  function openAvailabilityModal(empId) {
-    const emp = getEmployeeById(empId);
-    if (!emp) return;
-    // Clone availability to restore on cancel
-    const originalAvailability = JSON.parse(JSON.stringify(emp.availability));
+    const attachListeners = (p) => {
+        p.querySelector("#save-availability").addEventListener("click", () => {
+            save();
+            toggleDetailPanel(null, null);
+        });
 
-    const wrap = document.createElement("div");
-    wrap.style.position="fixed"; wrap.style.inset="0"; wrap.style.background="rgba(0,0,0,.35)";
-    wrap.style.display="flex"; wrap.style.alignItems="center"; wrap.style.justifyContent="center"; wrap.style.padding="16px"; wrap.style.zIndex=1000;
-
-    const box = document.createElement("div");
-    box.className="card availability-modal-card"; box.style.maxWidth="600px"; box.style.width="100%";
-
-    const closeModal = (shouldRevert) => {
-        if (shouldRevert) {
-            emp.availability = originalAvailability;
-        }
-        wrap.remove();
-        renderAll(); // Always re-render to ensure UI is in sync
+        p.querySelectorAll(".add-availability-slot").forEach(btn => {
+          btn.addEventListener("click", (e) => {
+            const dayIndex = e.target.dataset.day;
+            if (emp.availability[dayIndex]) {
+              emp.availability[dayIndex].push({ start: null, end: null });
+            } else {
+              emp.availability[dayIndex] = [{ start: null, end: null }];
+            }
+            renderAvailabilityPanel(container, employeeId);
+          });
+        });
+        p.querySelectorAll(".remove-availability-slot").forEach(btn => {
+          btn.addEventListener("click", (e) => {
+            const dayIndex = e.target.dataset.day;
+            const slotIndex = e.target.dataset.slot;
+            if (emp.availability[dayIndex] && emp.availability[dayIndex][slotIndex]) {
+              emp.availability[dayIndex].splice(slotIndex, 1);
+            }
+            renderAvailabilityPanel(container, employeeId);
+          });
+        });
+        p.querySelectorAll(".availability-start, .availability-end").forEach(sel => {
+          sel.addEventListener("change", (e) => {
+            const dayIndex = e.target.dataset.day;
+            const slotIndex = e.target.dataset.slot;
+            const type = e.target.classList.contains('availability-start') ? 'start' : 'end';
+            if(emp.availability[dayIndex] && emp.availability[dayIndex][slotIndex]) {
+              emp.availability[dayIndex][slotIndex][type] = e.target.value || null;
+            }
+          });
+        });
+        p.querySelector("#add-exception").addEventListener("click", () => {
+          const dateInput = p.querySelector('#exception-date');
+          const startInput = p.querySelector('#exception-start');
+          const endInput = p.querySelector('#exception-end');
+          if (dateInput.value) {
+              emp.exceptions.push({ date: dateInput.value, start: startInput.value || null, end: endInput.value || null });
+              renderAvailabilityPanel(container, employeeId);
+          }
+        });
+        p.querySelectorAll(".remove-exception").forEach(btn => {
+          btn.addEventListener("click", (e) => {
+            const date = e.target.dataset.date;
+            emp.exceptions = emp.exceptions.filter(ex => ex.date !== date);
+            renderAvailabilityPanel(container, employeeId);
+          });
+        });
     };
 
-    renderAvailability(empId, box);
-    wrap.appendChild(box);
-    document.body.appendChild(wrap);
-
-    function attachListeners() {
-      box.querySelector("#availability-done").addEventListener("click", () => {
-        // Check for conflicts before saving
-        const shiftsInWeek = getEmployeeShiftsForWeek(emp.id);
-        let conflictFound = false;
-        for (const shift of shiftsInWeek) {
-            const { isAvailable } = checkEmployeeAvailability(emp, shift, state.activeWeek, shift.day);
-            if (!isAvailable) {
-                conflictFound = true;
-                break; // Found one conflict, no need to check more
-            }
-        }
-
-        if (conflictFound) {
-            if (!confirm("Advertencia: La nueva disponibilidad entra en conflicto con al menos un turno ya asignado en la semana activa. ¿Desea guardar los cambios de todos modos?")) {
-                closeModal(true); // Revert changes
-                return;
-            }
-        }
-
-        save();
-        closeModal(false); // Don't revert, just close
-      });
-
-      // New listener for adding a slot
-      box.querySelectorAll(".add-availability-slot").forEach(btn => {
-        btn.addEventListener("click", (e) => {
-          const dayIndex = e.target.dataset.day;
-          if (emp.availability[dayIndex]) {
-            emp.availability[dayIndex].push({ start: null, end: null });
-          } else {
-            emp.availability[dayIndex] = [{ start: null, end: null }];
-          }
-          renderAvailability(empId, box);
-          attachListeners();
-        });
-      });
-
-      // New listener for removing a slot
-      box.querySelectorAll(".remove-availability-slot").forEach(btn => {
-        btn.addEventListener("click", (e) => {
-          const dayIndex = e.target.dataset.day;
-          const slotIndex = e.target.dataset.slot;
-          if (emp.availability[dayIndex] && emp.availability[dayIndex][slotIndex]) {
-            emp.availability[dayIndex].splice(slotIndex, 1);
-          }
-          renderAvailability(empId, box);
-          attachListeners();
-        });
-      });
-
-      // Updated listener for start/end selects
-      box.querySelectorAll(".availability-start, .availability-end").forEach(sel => {
-        sel.addEventListener("change", (e) => {
-          const dayIndex = e.target.dataset.day;
-          const slotIndex = e.target.dataset.slot;
-          const type = e.target.classList.contains('availability-start') ? 'start' : 'end';
-          if(emp.availability[dayIndex] && emp.availability[dayIndex][slotIndex]) {
-            emp.availability[dayIndex][slotIndex][type] = e.target.value || null;
-          }
-        });
-      });
-
-      box.querySelector("#add-exception").addEventListener("click", () => {
-        const dateInput = box.querySelector('#exception-date');
-        const startInput = box.querySelector('#exception-start');
-        const endInput = box.querySelector('#exception-end');
-
-        if (dateInput.value) {
-            emp.exceptions.push({ date: dateInput.value, start: startInput.value || null, end: endInput.value || null });
-            renderAvailability(empId, box);
-            attachListeners();
-        }
-      });
-
-      box.querySelectorAll(".remove-exception").forEach(btn => {
-        btn.addEventListener("click", (e) => {
-          const date = e.target.dataset.date;
-          emp.exceptions = emp.exceptions.filter(ex => ex.date !== date);
-          renderAvailability(empId, box);
-          attachListeners();
-        });
-      });
-    }
-
-    attachListeners();
-
-    wrap.addEventListener("click", (e) => {
-        if (e.target === wrap) {
-            wrap.remove();
-        }
-    });
+    attachListeners(panel);
+    container.appendChild(panel);
   }
 
   function openAssignEmployeeModal(shiftId) {
@@ -1544,16 +2054,9 @@ const db = firebase.firestore();
     }
 
     const qualifiedEmployees = state.employees.filter(e => {
-        const hasStar = (e.stars || []).includes(shift.role);
-        if (!hasStar) return false;
-
-        if (isEmployeeAssignedOnDay(e.id, day)) return false;
-
-        if (e.isMinor && shift.endSlot > MAX_SLOT_FOR_MINOR) {
-            return false;
-        }
-
-        return true;
+        // Use the centralized validation function in "silent" mode to check for pre-requisites
+        const check = canEmployeeWorkShift(e, shift, day, { silent: true });
+        return check.pass;
     });
 
     const h = document.createElement("div"); h.className="card-h";
@@ -1771,7 +2274,8 @@ const db = firebase.firestore();
   /* ====== Plantillas ====== */
   function renderTemplateList() {
     templateList.innerHTML = "";
-    const templateNames = Object.keys(state.templates || {}).sort();
+    const templates = state.templates || {};
+    const templateNames = Object.keys(templates).sort();
 
     if (templateNames.length === 0) {
         const p = document.createElement("div");
@@ -1781,7 +2285,10 @@ const db = firebase.firestore();
     }
 
     templateNames.forEach(name => {
-        const templateShifts = state.templates[name] || [];
+        const template = templates[name];
+        const templateShifts = Array.isArray(template) ? template : template.shifts || [];
+        const description = Array.isArray(template) ? '' : template.description || '';
+
         const shiftCount = templateShifts.length;
         let totalSlots = 0;
         templateShifts.forEach(shift => {
@@ -1790,18 +2297,33 @@ const db = firebase.firestore();
         const totalHours = totalSlots * 0.5;
 
         const card = document.createElement("div");
-        card.style.border="1px solid var(--border)"; card.style.padding="10px";
+        card.style.border="1px solid var(--border)"; card.style.padding="12px";
         card.className = "row";
         card.style.justifyContent = "space-between";
+        card.style.alignItems = "flex-start";
 
         const infoDiv = document.createElement("div");
+        infoDiv.className = "stack";
+        infoDiv.style.gap = "4px";
+
         const label = document.createElement("strong");
         label.textContent = name;
+
         const details = document.createElement("div");
         details.className = "muted";
         details.style.fontSize = "12px";
         details.textContent = `${shiftCount} turnos, ${String(totalHours).replace('.',',')}hs en total`;
+
         infoDiv.appendChild(label);
+        if (description) {
+            const descP = document.createElement("p");
+            descP.className = 'muted';
+            descP.style.fontSize = '13px';
+            descP.style.margin = '4px 0 0 0';
+            descP.style.maxWidth = '600px';
+            descP.textContent = description;
+            infoDiv.appendChild(descP);
+        }
         infoDiv.appendChild(details);
         card.appendChild(infoDiv);
 
@@ -1831,14 +2353,14 @@ const db = firebase.firestore();
       alert("Por favor, ingresa un nombre para la plantilla.");
       return;
     }
-    if (state.templates[name]) {
-      if (!confirm("Ya existe una plantilla con este nombre. ¿Deseas sobreescribirla?")) {
+    if (state.templates[name] && !confirm("Ya existe una plantilla con este nombre. ¿Deseas sobreescribirla?")) {
         return;
-      }
     }
 
     const schedule = getActiveSchedule();
     const daySchedule = schedule[state.activeDay] || [];
+    const inpTemplateDesc = el("#inpTemplateDesc");
+    const description = inpTemplateDesc.value.trim();
 
     const templateShifts = JSON.parse(JSON.stringify(daySchedule));
     templateShifts.forEach(shift => {
@@ -1846,11 +2368,15 @@ const db = firebase.firestore();
     });
 
     state.templates = state.templates || {};
-    state.templates[name] = templateShifts;
+    state.templates[name] = {
+        shifts: templateShifts,
+        description: description
+    };
 
     save();
     renderTemplateList();
     inpTemplateName.value = "";
+    inpTemplateDesc.value = "";
     alert(`Plantilla "${name}" guardada.`);
   }
 
@@ -1865,8 +2391,11 @@ const db = firebase.firestore();
       return;
     }
 
+    // Handle both old and new template formats for backward compatibility
+    const templateShifts = Array.isArray(template) ? template : template.shifts || [];
+
     // Deep copy and assign new IDs
-    const newShifts = JSON.parse(JSON.stringify(template));
+    const newShifts = JSON.parse(JSON.stringify(templateShifts));
     newShifts.forEach(shift => {
       shift.id = crypto.randomUUID();
     });
@@ -2567,5 +3096,38 @@ const db = firebase.firestore();
   /* ====== Inicialización ====== */
   await loadState();
   renderAll();
+
+  el("#clockInSearch").addEventListener('input', (e) => {
+    state.clockInSearchTerm = e.target.value;
+    renderClockInReport();
+  });
+
+  el("#clockInSort").addEventListener('change', (e) => {
+    state.clockInSortOrder = e.target.value;
+    renderClockInReport();
+  });
+
+  el("#fileImportClockIns").addEventListener("change", (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+        try {
+            const data = new Uint8Array(event.target.result);
+            const workbook = XLSX.read(data, { type: 'array', cellDates: true });
+            const sheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[sheetName];
+            const json = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+            processAndCompareClockIns(json);
+
+        } catch (err) {
+            console.error("Error processing clock-in file:", err);
+            alert("Error al procesar el archivo Excel. Asegúrese de que el formato es correcto.");
+        }
+    };
+    reader.readAsArrayBuffer(file);
+  });
 
 })();
