@@ -776,3 +776,141 @@ body.dark-mode #calendar-grid .day.monday:not(.other-month):hover {
   padding-top: 8px;
   padding-bottom: 8px;
 }
+
+/* Planilla de Turno */
+.planilla-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin-bottom: 24px;
+}
+
+.planilla-columna {
+    border: 1px solid #000;
+    padding: 16px;
+}
+
+.planilla-columna h3 {
+    text-align: center;
+    margin-top: 0;
+    font-weight: bold;
+    border-bottom: 1px solid #000;
+    padding-bottom: 8px;
+}
+
+.planilla-tabla {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.planilla-tabla th, .planilla-tabla td {
+    border: 1px solid #000;
+    padding: 8px;
+    text-align: center;
+}
+
+.planilla-tabla thead th {
+    font-weight: bold;
+}
+
+.planilla-tabla tbody td {
+    height: 2em; /* Give some space for content */
+}
+
+.planilla-tabla tfoot td {
+    font-weight: bold;
+    text-align: right;
+}
+.planilla-tabla tfoot td.total-hs-cell {
+    text-align: center;
+}
+
+#print-header-info {
+    display: none;
+}
+
+.breaks-section {
+    width: 50%;
+    margin: 0 auto;
+    border: 1px solid #000;
+    padding: 16px;
+}
+.breaks-section h3 {
+    text-align: center;
+    margin-top: 0;
+    font-weight: bold;
+}
+.breaks-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+.breaks-table th, .breaks-table td {
+    border: 1px solid #000;
+    padding: 8px;
+    text-align: center;
+}
+.breaks-table input.break-input {
+    width: 100%;
+    border: none;
+    background: transparent;
+    text-align: center;
+}
+
+@media print {
+    @page {
+        size: A4 landscape;
+        margin: 0.25in;
+    }
+    body {
+        background: #fff !important;
+        color: #000 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+    .bar, .legend-footer, #btn-edit-breaks, #btn-print-planilla, #planilla-date-picker, #btn-edit-planilla, label[for="rappi-code-input"], #rappi-code-input, #planilla-header-title, #breaks-section {
+        display: none !important;
+    }
+     #print-header-info {
+        display: block !important;
+        position: fixed;
+        top: 0.25in;
+        left: 0.25in;
+        font-weight: bold;
+    }
+    #planilla-title {
+        font-size: 1.1em;
+        margin: 0 0 15px 0;
+    }
+    .main-content {
+        padding-top: 0;
+        overflow: visible;
+    }
+    .wrap {
+        padding: 0;
+    }
+    .card {
+        border: none;
+        box-shadow: none;
+    }
+    #view-planilla-turno {
+        display: block !important;
+    }
+    .planilla-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+    .planilla-columna, .planilla-tabla th, .planilla-tabla td {
+        border-color: #000 !important;
+    }
+    .planilla-tabla {
+        font-size: 9px;
+    }
+    .planilla-tabla th, .planilla-tabla td {
+        padding: 3px;
+    }
+    /* Ensure dark mode styles are overridden for printing */
+    body.dark-mode {
+      --bg: #ffffff;
+      --card: #ffffff;
+      --ink: #000000;
+    }
+}

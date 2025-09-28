@@ -71,6 +71,30 @@ const db = firebase.firestore();
     clockInDateFilter: null,
     scheduleRoleFilters: [],
     scheduleSearchTerm: '',
+    breaks: {},
+    tempPlanillaState: null,
+    rappiCode: '',
+  };
+
+  const defaultBreaks = {
+    "9250": [
+      { "id": 1, "text": "POP + PAPAS" },
+      { "id": 2, "text": "RUSTER + PAPAS" },
+      { "id": 3, "text": "5 ALITAS + PAPAS" },
+      { "id": 4, "text": "2 PIEZAS + PAPAS" },
+      { "id": 5, "text": "ENSALADA TEAM" },
+      { "id": 6, "text": "CAFE + 3 MED" },
+      { "id": 7, "text": "TOSTADO REGULAR" }
+    ],
+    "1245": [
+      { "id": 1, "text": "ENTRENADORES" },
+      { "id": 2, "text": "SUPER PAPAS" },
+      { "id": 3, "text": "3 ALITAS + PAPAS" },
+      { "id": 8, "text": "9" },
+      { "id": 9, "text": "2 PIEZAS + PAPAS" },
+      { "id": 10, "text": "ENSALADA + PAPAS" },
+      { "id": 11, "text": "11" }
+    ]
   };
 
   async function loadState() {
@@ -80,8 +104,14 @@ const db = firebase.firestore();
       if (doc.exists) {
           const data = doc.data();
           state.employees = data.employees || [];
+          state.breaks = data.breaks || defaultBreaks;
+          state.rappiCode = data.rappiCode || '';
           // Migration for availability and exceptions
           state.employees.forEach(emp => {
+            if (!emp.displayName) {
+                const nameParts = emp.name.split(',');
+                emp.displayName = nameParts.length > 1 ? nameParts[1].trim() : emp.name.split(' ')[0];
+            }
             if (!emp.availability) {
                 // New employee or very old data
                 emp.availability = { "0": [], "1": [], "2": [], "3": [], "4": [], "5": [], "6": [] };
@@ -181,11 +211,13 @@ const db = firebase.firestore();
   const viewTemplatesEl = el('#view-templates');
   const viewScheduleListEl = el('#view-schedule-list');
   const viewClockInsEl = el('#view-clock-ins');
+  const viewPlanillaTurnoEl = el('#view-planilla-turno');
   const btnViewSchedule = el('#btn-view-schedule');
   const btnViewEmployees = el('#btn-view-employees');
   const btnViewTemplates = el('#btn-view-templates');
   const btnScheduleList = el('#btn-schedule-list');
   const btnViewClockIns = el('#btn-view-clock-ins');
+  const btnPlanillaTurno = el('#btn-planilla-turno');
   const inpTemplateName = el('#inpTemplateName');
   const btnSaveTemplate = el('#btnSaveTemplate');
   const templateList = el('#templateList');
@@ -202,16 +234,29 @@ const db = firebase.firestore();
   const importTextArea = el("#import-text-area");
 
   function showView(viewName) {
+    // Clear temporary planilla state if navigating away
+    if (viewName !== 'planilla-turno' && state.tempPlanillaState) {
+        state.tempPlanillaState = null;
+        const btn = el("#btn-edit-planilla");
+        if (btn) {
+            btn.textContent = "Editar Planilla";
+            btn.classList.remove("btn-primary");
+            btn.classList.add("btn-secondary");
+        }
+    }
+
     viewScheduleEl.style.display = 'none';
     viewEmployeesEl.style.display = 'none';
     viewTemplatesEl.style.display = 'none';
     viewScheduleListEl.style.display = 'none';
     viewClockInsEl.style.display = 'none';
+    viewPlanillaTurnoEl.style.display = 'none';
     btnViewSchedule.className = 'btn secondary main-menu-btn';
     btnViewEmployees.className = 'btn secondary main-menu-btn';
     btnViewTemplates.className = 'btn secondary main-menu-btn';
     btnScheduleList.className = 'btn secondary main-menu-btn';
     btnViewClockIns.className = 'btn secondary main-menu-btn';
+    btnPlanillaTurno.className = 'btn secondary main-menu-btn';
 
     if (viewName === 'schedule') {
         viewScheduleEl.style.display = 'block';
@@ -228,6 +273,9 @@ const db = firebase.firestore();
     } else if (viewName === 'clock-ins') {
         viewClockInsEl.style.display = 'block';
         btnViewClockIns.className = 'btn main-menu-btn';
+    } else if (viewName === 'planilla-turno') {
+        viewPlanillaTurnoEl.style.display = 'block';
+        btnPlanillaTurno.className = 'btn main-menu-btn';
     }
     renderAll();
   }
@@ -236,6 +284,7 @@ const db = firebase.firestore();
   btnViewTemplates.addEventListener('click', () => showView('templates'));
   btnScheduleList.addEventListener('click', () => showView('schedule-list'));
   btnViewClockIns.addEventListener('click', () => showView('clock-ins'));
+  btnPlanillaTurno.addEventListener('click', () => showView('planilla-turno'));
   el("#empFilter").addEventListener("change", renderEmpList);
   if (el("#empSearch")) {
     el("#empSearch").addEventListener("input", renderEmpList);
@@ -388,9 +437,12 @@ const db = firebase.firestore();
     const name = el("#inpName").value.trim();
     if(!name) return;
     const id = crypto.randomUUID();
+    const nameParts = name.split(',');
+    const displayName = (nameParts.length > 1) ? nameParts[1].trim() : name.split(' ')[0];
     state.employees.push({
       id,
       name,
+      displayName: displayName,
       stars: [],
       isMinor: false,
       availability: { "0": [], "1": [], "2": [], "3": [], "4": [], "5": [], "6": [] },
@@ -1072,12 +1124,27 @@ const db = firebase.firestore();
       // Name cell
       const nameCell = row.insertCell();
       if (isEditing) {
-          const input = document.createElement('input');
-          input.type = 'text';
-          input.value = e.name;
-          input.className = 'input';
-          input.id = `edit-input-${e.id}`;
-          nameCell.appendChild(input);
+          const nameInputContainer = document.createElement('div');
+          nameInputContainer.className = 'stack';
+          nameInputContainer.style.gap = '4px';
+
+          const nameInput = document.createElement('input');
+          nameInput.type = 'text';
+          nameInput.value = e.name;
+          nameInput.className = 'input';
+          nameInput.id = `edit-input-${e.id}`;
+          nameInput.placeholder = "Nombre completo";
+
+          const displayNameInput = document.createElement('input');
+          displayNameInput.type = 'text';
+          displayNameInput.value = e.displayName || '';
+          displayNameInput.className = 'input';
+          displayNameInput.id = `edit-display-name-input-${e.id}`;
+          displayNameInput.placeholder = "Nombre para planilla";
+
+          nameInputContainer.appendChild(nameInput);
+          nameInputContainer.appendChild(displayNameInput);
+          nameCell.appendChild(nameInputContainer);
       } else {
           nameCell.textContent = e.name;
           if (e.isMinor) {
@@ -1113,8 +1180,11 @@ const db = firebase.firestore();
           bSave.className="btn"; bSave.textContent="Guardar";
           bSave.onclick = () => {
               const newName = el(`#edit-input-${e.id}`).value.trim();
+              const newDisplayName = el(`#edit-display-name-input-${e.id}`).value.trim();
               if (newName) {
                   e.name = newName;
+                  const nameParts = newName.split(',');
+                  e.displayName = newDisplayName || (nameParts.length > 1 ? nameParts[1].trim() : newName.split(' ')[0]);
                   state.editingEmployeeId = null;
                   save();
                   renderAll();
@@ -1501,6 +1571,9 @@ const db = firebase.firestore();
     }
     if (viewClockInsEl.style.display !== 'none') {
       renderClockInReport();
+    }
+    if (viewPlanillaTurnoEl.style.display !== 'none') {
+      renderPlanillaTurno();
     }
   }
 
@@ -2021,112 +2094,116 @@ const db = firebase.firestore();
   }
 
   function renderAvailabilityPanel(container, employeeId) {
-    const emp = getEmployeeById(employeeId);
-    if (!emp) return;
+      const emp = getEmployeeById(employeeId);
+      if (!emp) return;
 
-    container.innerHTML = '';
-    const panel = document.createElement('div');
-    panel.className = 'employee-detail-panel';
+      container.innerHTML = '';
+      const panel = document.createElement('div');
+      panel.className = 'employee-detail-panel';
 
-    if (!emp.availability || Array.isArray(emp.availability)) {
-      emp.availability = { "0": [], "1": [], "2": [], "3": [], "4": [], "5": [], "6": [] };
-    }
+      if (!emp.availability || Array.isArray(emp.availability)) {
+          emp.availability = { "0": [], "1": [], "2": [], "3": [], "4": [], "5": [], "6": [] };
+      }
 
-    const conflicts = findAvailabilityConflicts(employeeId);
-    let conflictHtml = '';
-    if (conflicts.length > 0) {
-        conflictHtml = `<div class="warning-text">${conflicts.join('<br>')}</div><div class="hr"></div>`;
-    }
+      const conflicts = findAvailabilityConflicts(employeeId);
+      let conflictHtml = '';
+      if (conflicts.length > 0) {
+          conflictHtml = `<div class="warning-text">${conflicts.join('<br>')}</div><div class="hr"></div>`;
+      }
 
-    const content = document.createElement('div');
-    content.innerHTML = `
-        ${conflictHtml}
-        <div class="stack">
-          <strong>Disponibilidad Semanal</strong>
-          ${DAYS.map((day, dayIndex) => `
-            <div class="stack" style="border-top: 1px solid var(--border); padding-top: 8px; margin-top: 8px;">
-              <div class="row" style="justify-content: space-between; align-items: center;">
-                <strong>${day}</strong>
-                <button class="btn secondary add-availability-slot" data-day="${dayIndex}">Añadir horario</button>
-              </div>
-              <div class="stack" data-day-container="${dayIndex}">
-                ${(emp.availability[dayIndex] && emp.availability[dayIndex].length > 0 ? emp.availability[dayIndex].map((slot, slotIndex) => `
-                  <div class="row" style="justify-content: space-between; align-items: center;">
-                    <div class="row">
-                      <select class="select availability-start" data-day="${dayIndex}" data-slot="${slotIndex}">
-                        <option value="">--</option>
-                        ${SLOTS.map(s => `<option value="${s.label}" ${slot.start === s.label ? 'selected' : ''}>${s.label}</option>`).join('')}
-                      </select>
-                      <span>-</span>
-                      <select class="select availability-end" data-day="${dayIndex}" data-slot="${slotIndex}">
-                        <option value="">--</option>
-                        ${SLOTS.map(s => `<option value="${s.label}" ${slot.end === s.label ? 'selected' : ''}>${s.label}</option>`).join('')}
-                      </select>
-                    </div>
-                    <button class="btn secondary del remove-availability-slot" data-day="${dayIndex}" data-slot="${slotIndex}">X</button>
-                  </div>
-                `).join('') : '<span class="muted" style="font-size:12px;">Día libre / Full-time</span>')
+      const content = document.createElement('div');
+      content.innerHTML = `
+          ${conflictHtml}
+          <div class="stack">
+              <strong>Disponibilidad Semanal</strong>
+              ${DAYS.map((day, dayIndex) => {
+                  const dayAvailability = emp.availability[dayIndex] || [];
+                  const slotsHtml = dayAvailability.length > 0
+                      ? dayAvailability.map((slot, slotIndex) => `
+                          <div class="row" style="justify-content: space-between; align-items: center; width:100%;">
+                              <div class="row">
+                                  <select class="select availability-start" data-day="${dayIndex}" data-slot="${slotIndex}">
+                                      <option value="">--</option>
+                                      ${SLOTS.map(s => `<option value="${s.label}" ${slot.start === s.label ? 'selected' : ''}>${s.label}</option>`).join('')}
+                                  </select>
+                                  <span>-</span>
+                                  <select class="select availability-end" data-day="${dayIndex}" data-slot="${slotIndex}">
+                                      <option value="">--</option>
+                                      ${SLOTS.map(s => `<option value="${s.label}" ${slot.end === s.label ? 'selected' : ''}>${s.label}</option>`).join('')}
+                                  </select>
+                              </div>
+                              <button class="btn secondary del remove-availability-slot" data-day="${dayIndex}" data-slot="${slotIndex}" style="padding: 2px 6px;">X</button>
+                          </div>
+                      `).join('')
+                      : '<span class="muted" style="font-size:12px; padding-top: 8px;">Día libre / Full-time</span>';
+
+                  return `
+                      <div class="row" style="border-top: 1px solid var(--border); padding: 8px 0; align-items: flex-start;">
+                          <strong style="width: 120px; padding-top: 8px;">${day}</strong>
+                          <div class="stack" style="flex: 1; gap: 8px;">
+                              ${slotsHtml}
+                              <div style="width: 100%;">
+                                  <button class="btn secondary add-availability-slot" data-day="${dayIndex}" style="padding: 2px 8px;">+</button>
+                              </div>
+                          </div>
+                      </div>
+                  `;
+              }).join('')}
+          </div>
+          <div class="hr"></div>
+          <div style="text-align: right;">
+              <button class="btn" id="save-availability">Guardar y Cerrar</button>
+          </div>
+      `;
+      panel.appendChild(content);
+
+      const attachListeners = (p) => {
+          p.querySelector("#save-availability").addEventListener("click", () => {
+              save();
+              const newConflicts = findAvailabilityConflicts(employeeId);
+              if (newConflicts.length > 0) {
+                  renderAvailabilityPanel(container, employeeId);
+              } else {
+                  toggleDetailPanel(null, null);
               }
-              </div>
-            </div>
-          `).join('')}
-        </div>
-        <div class="hr"></div>
-        <div style="text-align: right;">
-            <button class="btn" id="save-availability">Guardar y Cerrar</button>
-        </div>
-    `;
-    panel.appendChild(content);
-
-    const attachListeners = (p) => {
-        p.querySelector("#save-availability").addEventListener("click", () => {
-            save();
-            // Re-check conflicts after saving
-            const conflicts = findAvailabilityConflicts(employeeId);
-            if (conflicts.length > 0) {
-                // If conflicts exist, just re-render the panel to show them
-                renderAvailabilityPanel(container, employeeId);
-            } else {
-                // If no conflicts, close the panel
-                toggleDetailPanel(null, null);
-            }
-        });
-
-        p.querySelectorAll(".add-availability-slot").forEach(btn => {
-          btn.addEventListener("click", (e) => {
-            const dayIndex = e.target.dataset.day;
-            if (emp.availability[dayIndex]) {
-              emp.availability[dayIndex].push({ start: null, end: null });
-            } else {
-              emp.availability[dayIndex] = [{ start: null, end: null }];
-            }
-            renderAvailabilityPanel(container, employeeId);
           });
-        });
-        p.querySelectorAll(".remove-availability-slot").forEach(btn => {
-          btn.addEventListener("click", (e) => {
-            const dayIndex = e.target.dataset.day;
-            const slotIndex = e.target.dataset.slot;
-            if (emp.availability[dayIndex] && emp.availability[dayIndex][slotIndex]) {
-              emp.availability[dayIndex].splice(slotIndex, 1);
-            }
-            renderAvailabilityPanel(container, employeeId);
-          });
-        });
-        p.querySelectorAll(".availability-start, .availability-end").forEach(sel => {
-          sel.addEventListener("change", (e) => {
-            const dayIndex = e.target.dataset.day;
-            const slotIndex = e.target.dataset.slot;
-            const type = e.target.classList.contains('availability-start') ? 'start' : 'end';
-            if(emp.availability[dayIndex] && emp.availability[dayIndex][slotIndex]) {
-              emp.availability[dayIndex][slotIndex][type] = e.target.value || null;
-            }
-          });
-        });
-    };
 
-    attachListeners(panel);
-    container.appendChild(panel);
+          p.querySelectorAll(".add-availability-slot").forEach(btn => {
+              btn.addEventListener("click", (e) => {
+                  const dayIndex = e.target.dataset.day;
+                  if (!emp.availability[dayIndex]) {
+                      emp.availability[dayIndex] = [];
+                  }
+                  emp.availability[dayIndex].push({ start: null, end: null });
+                  renderAvailabilityPanel(container, employeeId);
+              });
+          });
+
+          p.querySelectorAll(".remove-availability-slot").forEach(btn => {
+              btn.addEventListener("click", (e) => {
+                  const dayIndex = e.target.dataset.day;
+                  const slotIndex = e.target.dataset.slot;
+                  if (emp.availability[dayIndex] && emp.availability[dayIndex][slotIndex]) {
+                      emp.availability[dayIndex].splice(slotIndex, 1);
+                  }
+                  renderAvailabilityPanel(container, employeeId);
+              });
+          });
+
+          p.querySelectorAll(".availability-start, .availability-end").forEach(sel => {
+              sel.addEventListener("change", (e) => {
+                  const dayIndex = e.target.dataset.day;
+                  const slotIndex = e.target.dataset.slot;
+                  const type = e.target.classList.contains('availability-start') ? 'start' : 'end';
+                  if (emp.availability[dayIndex] && emp.availability[dayIndex][slotIndex]) {
+                      emp.availability[dayIndex][slotIndex][type] = e.target.value || null;
+                  }
+              });
+          });
+      };
+
+      attachListeners(panel);
+      container.appendChild(panel);
   }
 
   function renderExceptionsPanel(container, employeeId) {
@@ -3313,6 +3390,318 @@ const db = firebase.firestore();
     }
   });
 
+
+  function renderPlanillaTurno(isEditing = false) {
+    const rappiCodeInput = el("#rappi-code-input");
+    rappiCodeInput.value = state.rappiCode || '';
+    el("#rappi-code-print").textContent = `Cód. Rappi: ${state.rappiCode || '____'}`;
+
+    const datePicker = el("#planilla-date-picker");
+    if (!datePicker.value) {
+        datePicker.value = toISODateString(new Date());
+    }
+    const selectedDate = new Date(datePicker.value + "T12:00:00Z");
+
+    const dayName = DAYS[selectedDate.getUTCDay() === 0 ? 6 : selectedDate.getUTCDay() - 1];
+    const formattedDate = `${dayName}, ${selectedDate.getUTCDate()} de ${selectedDate.toLocaleString('es-ES', { month: 'long' })} de ${selectedDate.getUTCFullYear()}`;
+    el("#planilla-title").textContent = formattedDate;
+
+    const shifts = (state.tempPlanillaState ? state.tempPlanillaState.shifts : getScheduleForDate(selectedDate))
+        .filter(s => s.employeeId);
+    shifts.sort((a, b) => a.startSlot - b.startSlot);
+
+    const mananaTbody = el("#tabla-manana tbody");
+    const tardeTbody = el("#tabla-tarde tbody");
+    mananaTbody.innerHTML = "";
+    tardeTbody.innerHTML = "";
+
+    const slot1600 = 20; // 16:00 is the 21st slot, index 20
+    let totalSlotsManana = 0;
+    let totalSlotsTarde = 0;
+
+    shifts.forEach(shift => {
+        const emp = getEmployeeById(shift.employeeId);
+        if (!emp) return;
+
+        // Hour calculations remain the same for the totals
+        if (shift.startSlot < slot1600) {
+            const endSlotForCalc = Math.min(shift.endSlot, slot1600 - 1);
+            totalSlotsManana += (endSlotForCalc - shift.startSlot + 1);
+        }
+        if (shift.endSlot >= slot1600) {
+            const startSlotForCalc = Math.max(shift.startSlot, slot1600);
+            totalSlotsTarde += (shift.endSlot - startSlotForCalc + 1);
+        }
+
+        const tr = document.createElement("tr");
+        tr.dataset.shiftId = shift.id;
+        const shiftHours = (shift.endSlot - shift.startSlot + 1) * 0.5;
+
+        if (isEditing) {
+            const startOptions = SLOTS.map(s => `<option value="${s.index}" ${s.index === shift.startSlot ? 'selected' : ''}>${s.label}</option>`).join('');
+            const endOptions = SLOTS.map(s => `<option value="${s.index}" ${s.index === (shift.endSlot + 1) ? 'selected' : ''}>${s.label}</option>`).join('');
+            const roleOptions = ROLES.map(r => `<option value="${r.key}" ${r.key === shift.role ? 'selected' : ''}>${escapeHtml(r.key)}</option>`).join('');
+            const employeeOptions = state.employees
+                .slice()
+                .sort((a,b) => a.name.localeCompare(b.name))
+                .map(e => `<option value="${e.id}" ${e.id === emp.id ? 'selected' : ''}>${escapeHtml(e.name)}</option>`)
+                .join('');
+
+            tr.innerHTML = `
+                <td><select class="select planilla-edit-employee">${employeeOptions}</select></td>
+                <td>
+                    <select class="select planilla-edit-start">${startOptions}</select> a
+                    <select class="select planilla-edit-end">${endOptions}</select>
+                </td>
+                <td class="hs-cell">${String(shiftHours).replace('.', ',')}</td>
+                <td><select class="select planilla-edit-role">${roleOptions}</select></td>
+                <td></td>
+            `;
+
+            const updateHours = () => {
+                const start = parseInt(tr.querySelector(".planilla-edit-start").value, 10);
+                const end = parseInt(tr.querySelector(".planilla-edit-end").value, 10);
+                if (end > start) {
+                    const duration = (end - start) * 0.5;
+                    tr.querySelector('.hs-cell').textContent = String(duration).replace('.', ',');
+                } else {
+                    tr.querySelector('.hs-cell').textContent = 'Error';
+                }
+            };
+            tr.querySelector(".planilla-edit-start").addEventListener('change', updateHours);
+            tr.querySelector(".planilla-edit-end").addEventListener('change', updateHours);
+
+        } else {
+            const displayName = emp.displayName || emp.name.split(' ')[0];
+            const startTime = SLOTS[shift.startSlot].label;
+            const endTime = SLOTS[shift.endSlot + 1] ? SLOTS[shift.endSlot + 1].label : "02:00";
+            tr.innerHTML = `
+                <td>${escapeHtml(displayName)}</td>
+                <td>${startTime} a ${endTime}</td>
+                <td>${String(shiftHours).replace('.', ',')}</td>
+                <td>${escapeHtml(shift.role)}</td>
+                <td></td>
+            `;
+        }
+
+        if (shift.startSlot < slot1600) {
+            mananaTbody.appendChild(tr);
+        } else {
+            tardeTbody.appendChild(tr);
+        }
+    });
+
+    const addEmptyRows = (tbody, numRows) => {
+        const existingRows = tbody.children.length;
+        const rowsToAdd = Math.max(0, numRows - existingRows);
+        for (let i = 0; i < rowsToAdd; i++) {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+                <td>&nbsp;</td>
+                <td>&nbsp;</td>
+                <td>&nbsp;</td>
+                <td>&nbsp;</td>
+                <td>&nbsp;</td>
+            `;
+            tbody.appendChild(tr);
+        }
+    };
+
+    const totalRowsInTable = 15; // A reasonable number to fill the page
+    addEmptyRows(mananaTbody, totalRowsInTable);
+    addEmptyRows(tardeTbody, totalRowsInTable);
+
+
+    el("#total-hs-manana").textContent = String(totalSlotsManana * 0.5).replace('.', ',');
+    el("#total-hs-tarde").textContent = String(totalSlotsTarde * 0.5).replace('.', ',');
+    renderBreaksSection(); // Assumes this is not editable at the same time
+  }
+
+  function renderBreaksSection(isEditing = false) {
+      const breaksTable = el("#breaks-table");
+      breaksTable.innerHTML = "";
+      const breaks9250 = state.breaks["9250"] || [];
+      const breaks1245 = state.breaks["1245"] || [];
+      const maxRows = Math.max(breaks9250.length, breaks1245.length);
+
+      let headerHtml = `
+        <thead>
+            <tr>
+                <th colspan="2">Cod. Rappi: 9250</th>
+                <th colspan="2">1245</th>
+            </tr>
+        </thead>
+      `;
+      let bodyHtml = '<tbody>';
+
+      for (let i = 0; i < maxRows; i++) {
+          const item9250 = breaks9250[i] || { id: '', text: '' };
+          const item1245 = breaks1245[i] || { id: '', text: '' };
+          if (isEditing) {
+              bodyHtml += `
+                  <tr>
+                      <td><input type="text" class="input break-input" data-code="9250" data-index="${i}" data-field="id" value="${item9250.id}"></td>
+                      <td><input type="text" class="input break-input" data-code="9250" data-index="${i}" data-field="text" value="${item9250.text}"></td>
+                      <td><input type="text" class="input break-input" data-code="1245" data-index="${i}" data-field="id" value="${item1245.id}"></td>
+                      <td><input type="text" class="input break-input" data-code="1245" data-index="${i}" data-field="text" value="${item1245.text}"></td>
+                  </tr>`;
+          } else {
+              bodyHtml += `
+                  <tr>
+                      <td>${item9250.id}</td>
+                      <td>${item9250.text}</td>
+                      <td>${item1245.id}</td>
+                      <td>${item1245.text}</td>
+                  </tr>`;
+          }
+      }
+       if (isEditing) {
+        // Add a row for a new break
+        bodyHtml += `
+            <tr>
+                <td><input type="text" class="input break-input" data-code="9250" data-index="${breaks9250.length}" data-field="id" placeholder="ID"></td>
+                <td><input type="text" class="input break-input" data-code="9250" data-index="${breaks9250.length}" data-field="text" placeholder="Texto"></td>
+                <td><input type="text" class="input break-input" data-code="1245" data-index="${breaks1245.length}" data-field="id" placeholder="ID"></td>
+                <td><input type="text" class="input break-input" data-code="1245" data-index="${breaks1245.length}" data-field="text" placeholder="Texto"></td>
+            </tr>`;
+    }
+
+      bodyHtml += '</tbody>';
+      breaksTable.innerHTML = headerHtml + bodyHtml;
+  }
+
+  function toggleBreaksEdit() {
+      const btn = el("#btn-edit-breaks");
+      const isEditing = btn.textContent === "Guardar Breaks";
+
+      if (isEditing) {
+          // Save logic
+          const newBreaks = { "9250": [], "1245": [] };
+          const inputs = document.querySelectorAll(".break-input");
+          const items = {};
+
+          inputs.forEach(input => {
+              const { code, index, field, value } = input.dataset;
+              const key = `${code}-${index}`;
+              if (!items[key]) items[key] = {};
+              items[key][field] = value;
+          });
+
+          for (const key in items) {
+              const [code, index] = key.split('-');
+              const item = items[key];
+              if (item.id || item.text) {
+                  newBreaks[code].push({ id: item.id || '', text: item.text || '' });
+              }
+          }
+
+          state.breaks = newBreaks;
+          save();
+          renderBreaksSection(false);
+          btn.textContent = "Editar Breaks";
+          btn.classList.remove("btn-primary");
+          btn.classList.add("btn-secondary");
+
+      } else {
+          // Enter edit mode
+          renderBreaksSection(true);
+          btn.textContent = "Guardar Breaks";
+          btn.classList.remove("btn-secondary");
+          btn.classList.add("btn-primary");
+      }
+  }
+
+  el("#btn-edit-breaks").addEventListener("click", toggleBreaksEdit);
+  el("#planilla-date-picker").addEventListener("change", () => {
+      // Clear temporary state when date changes
+      state.tempPlanillaState = null;
+      const btn = el("#btn-edit-planilla");
+      if (btn) {
+          btn.textContent = "Editar Planilla";
+          btn.classList.remove("btn-primary");
+          btn.classList.add("btn-secondary");
+      }
+      renderPlanillaTurno(false);
+  });
+
+
+  function togglePlanillaEdit() {
+      const btn = el("#btn-edit-planilla");
+      const isCurrentlyEditing = btn.textContent === "Aplicar Cambios";
+
+      if (isCurrentlyEditing) {
+          // --- APPLY TEMPORARY CHANGES (from Edit to View mode) ---
+          const editedRows = document.querySelectorAll("#view-planilla-turno tbody tr[data-shift-id]");
+          let allValid = true;
+          const errors = [];
+          const updatedShifts = JSON.parse(JSON.stringify(state.tempPlanillaState.shifts));
+
+          editedRows.forEach(row => {
+              const shiftId = row.dataset.shiftId;
+              const shift = updatedShifts.find(s => s.id === shiftId);
+              if (!shift) return;
+
+              const newEmployeeId = row.querySelector(".planilla-edit-employee").value;
+              const newStart = parseInt(row.querySelector(".planilla-edit-start").value, 10);
+              const newEndIndex = parseInt(row.querySelector(".planilla-edit-end").value, 10);
+              const newRole = row.querySelector(".planilla-edit-role").value;
+
+              if (newEndIndex <= newStart) {
+                  allValid = false;
+                  const emp = getEmployeeById(newEmployeeId);
+                  errors.push(`Error en el turno de ${emp.displayName}: La hora de fin debe ser mayor que la de inicio.`);
+                  return;
+              }
+
+              shift.employeeId = newEmployeeId;
+              shift.startSlot = newStart;
+              shift.endSlot = newEndIndex - 1;
+              shift.role = newRole;
+          });
+
+          if (!allValid) {
+              alert("No se pudieron aplicar los cambios. Se encontraron los siguientes errores:\n\n" + errors.join("\n"));
+              return;
+          }
+
+          state.tempPlanillaState.shifts = updatedShifts;
+
+          renderPlanillaTurno(false);
+          btn.textContent = "Editar Planilla";
+          btn.classList.remove("btn-primary");
+          btn.classList.add("btn-secondary");
+
+      } else {
+          // --- ENTER EDIT MODE (from View to Edit mode) ---
+          if (!state.tempPlanillaState) {
+              const datePicker = el("#planilla-date-picker");
+              const selectedDate = new Date(datePicker.value + "T12:00:00Z");
+              const originalShifts = getScheduleForDate(selectedDate);
+              state.tempPlanillaState = {
+                  shifts: JSON.parse(JSON.stringify(originalShifts)),
+              };
+          }
+
+          renderPlanillaTurno(true);
+          btn.textContent = "Aplicar Cambios";
+          btn.classList.remove("btn-secondary");
+          btn.classList.add("btn-primary");
+      }
+  }
+
+  el("#btn-edit-planilla").addEventListener("click", togglePlanillaEdit);
+
+  function printPlanillaTurno() {
+    window.print();
+  }
+
+  el("#btn-print-planilla").addEventListener("click", printPlanillaTurno);
+
+  el("#rappi-code-input").addEventListener('input', () => {
+      state.rappiCode = el("#rappi-code-input").value;
+      el("#rappi-code-print").textContent = `Cód. Rappi: ${state.rappiCode || '____'}`;
+      save();
+  });
 
   /* ====== Inicialización ====== */
   await loadState();

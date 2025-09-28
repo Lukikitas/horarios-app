@@ -22,6 +22,7 @@
           <button id="btn-schedule-list" class="btn secondary main-menu-btn">Listado</button>
           <button id="btn-view-clock-ins" class="btn secondary main-menu-btn">Fichadas</button>
           <button id="btn-weekly-summary" class="btn secondary main-menu-btn">Resumen semanal</button>
+          <button id="btn-planilla-turno" class="btn secondary main-menu-btn">Planilla de Turno</button>
         </div>
         <div id="week-selector-container" class="row" style="margin-left: 16px;">
             <button id="btn-prev-week" class="btn secondary">◄</button>
@@ -187,6 +188,80 @@
     </div>
 
   </div>
+
+    <div id="view-planilla-turno" class="wrap" style="display:none; max-width: none; padding: 0 16px;">
+      <section class="card">
+        <div class="card-h">
+            <strong id="planilla-header-title">Planilla de Turno</strong>
+            <div class="row" style="margin-left: 16px;">
+                <label for="rappi-code-input" class="muted" style="font-size:12px;">Cód. Rappi:</label>
+                <input type="text" id="rappi-code-input" class="input" style="width: 80px;">
+            </div>
+            <input type="date" id="planilla-date-picker" class="input" style="margin-left: 16px;">
+            <button id="btn-edit-planilla" class="btn secondary" style="margin-left: auto;">Editar Planilla</button>
+            <button id="btn-print-planilla" class="btn" style="margin-left: 8px;">Imprimir</button>
+        </div>
+        <div class="card-c">
+            <div id="print-header-info">
+                <div id="rappi-code-print"></div>
+            </div>
+            <h2 id="planilla-title" style="text-align: center;"></h2>
+            <div id="planilla-content" class="planilla-grid">
+                <div id="planilla-manana" class="planilla-columna">
+                    <h3>TURNO MAÑANA</h3>
+                    <table id="tabla-manana" class="planilla-tabla">
+                        <thead>
+                            <tr>
+                                <th>Nombre</th>
+                                <th>Horario</th>
+                                <th>Hs</th>
+                                <th>Puesto</th>
+                                <th>BKS</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                        <tfoot>
+                            <tr>
+                                <td colspan="2">TOTAL HS:</td>
+                                <td id="total-hs-manana" class="total-hs-cell"></td>
+                                <td colspan="2"></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+                <div id="planilla-tarde" class="planilla-columna">
+                    <h3>TURNO TARDE</h3>
+                    <table id="tabla-tarde" class="planilla-tabla">
+                        <thead>
+                            <tr>
+                                <th>Nombre</th>
+                                <th>Horario</th>
+                                <th>Hs</th>
+                                <th>Puesto</th>
+                                <th>BKS</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                        <tfoot>
+                            <tr>
+                                <td colspan="2">TOTAL HS:</td>
+                                <td id="total-hs-tarde" class="total-hs-cell"></td>
+                                <td colspan="2"></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+            <div id="breaks-section" class="breaks-section">
+                <h3>BREAKS</h3>
+                <table id="breaks-table" class="breaks-table">
+                    <!-- Contenido de breaks se generará aquí -->
+                </table>
+                 <button id="btn-edit-breaks" class="btn secondary">Editar Breaks</button>
+            </div>
+        </div>
+      </section>
+    </div>
   </div>
 
   <!-- Print Modal -->
