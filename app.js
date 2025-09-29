@@ -131,6 +131,9 @@ const db = firebase.firestore();
             if (!emp.exceptions) {
               emp.exceptions = [];
             }
+            if (!emp.sanctions) {
+              emp.sanctions = [];
+            }
           });
           state.templates = data.templates || {};
           state.projectedTickets = data.projectedTickets || {};
@@ -447,6 +450,7 @@ const db = firebase.firestore();
       isMinor: false,
       availability: { "0": [], "1": [], "2": [], "3": [], "4": [], "5": [], "6": [] },
       exceptions: [],
+      sanctions: [],
     });
     el("#inpName").value = "";
     save();
@@ -1210,31 +1214,63 @@ const db = firebase.firestore();
               renderEmpList();
           };
 
-          const bAvailability = document.createElement("button");
-          bAvailability.className="btn secondary"; bAvailability.textContent="Disponibilidad";
-          bAvailability.onclick = () => toggleDetailPanel(e.id, 'availability');
-
-          const bExceptions = document.createElement("button");
-          bExceptions.className="btn secondary"; bExceptions.textContent="Excepciones";
-          bExceptions.onclick = () => toggleDetailPanel(e.id, 'exceptions');
-
           const bEst = document.createElement("button");
           bEst.className="btn secondary"; bEst.textContent="Estrellas";
           bEst.onclick = () => toggleDetailPanel(e.id, 'stars');
 
+          // Dropdown for other actions
+          const dropdownDiv = document.createElement("div");
+          dropdownDiv.className = "dropdown";
+
+          const dropdownButton = document.createElement("button");
+          dropdownButton.className = "btn secondary";
+          dropdownButton.textContent = "Gestion de empleado ▾";
+          dropdownButton.onclick = (event) => {
+              event.stopPropagation();
+              const allDropdowns = document.querySelectorAll('.dropdown-content');
+              const thisDropdown = dropdownButton.nextElementSibling;
+              allDropdowns.forEach(d => {
+                  if (d !== thisDropdown) d.classList.remove('show');
+              });
+              thisDropdown.classList.toggle("show");
+          };
+
+          const dropdownContent = document.createElement("div");
+          dropdownContent.className = "dropdown-content";
+
+          const bAvailability = document.createElement("button");
+          bAvailability.className="dropdown-item"; bAvailability.textContent="Disponibilidad";
+          bAvailability.onclick = () => { toggleDetailPanel(e.id, 'availability'); };
+
+          const bExceptions = document.createElement("button");
+          bExceptions.className="dropdown-item"; bExceptions.textContent="Excepciones";
+          bExceptions.onclick = () => { toggleDetailPanel(e.id, 'exceptions'); };
+
+          const bSanctions = document.createElement("button");
+          bSanctions.className="dropdown-item"; bSanctions.textContent="Sanciones y licencias";
+          bSanctions.onclick = () => { toggleDetailPanel(e.id, 'sanctions'); };
+
           const bMinor = document.createElement("button");
-          bMinor.className="btn secondary"; bMinor.textContent= e.isMinor ? "Quitar Menor" : "Hacer Menor";
-          bMinor.onclick = () => toggleIsMinor(e.id);
+          bMinor.className="dropdown-item"; bMinor.textContent= e.isMinor ? "Quitar Menor" : "Hacer Menor";
+          bMinor.onclick = () => {
+              toggleIsMinor(e.id);
+              dropdownContent.classList.remove("show");
+          };
+
+          dropdownContent.appendChild(bAvailability);
+          dropdownContent.appendChild(bExceptions);
+          dropdownContent.appendChild(bSanctions);
+          dropdownContent.appendChild(bMinor);
+          dropdownDiv.appendChild(dropdownButton);
+          dropdownDiv.appendChild(dropdownContent);
 
           const bDel = document.createElement("button");
           bDel.className="btn secondary del"; bDel.textContent="Eliminar";
           bDel.onclick = () => removeEmployee(e.id);
 
           actionsCell.appendChild(bEdit);
-          actionsCell.appendChild(bAvailability);
-          actionsCell.appendChild(bExceptions);
           actionsCell.appendChild(bEst);
-          actionsCell.appendChild(bMinor);
+          actionsCell.appendChild(dropdownDiv);
           actionsCell.appendChild(bDel);
       }
 
@@ -1251,6 +1287,10 @@ const db = firebase.firestore();
               renderAvailabilityPanel(detailCell, e.id);
           } else if (state.activeDetailSection === 'exceptions') {
               renderExceptionsPanel(detailCell, e.id);
+          } else if (state.activeDetailSection === 'sanctions') {
+              // This function will be created in the next step.
+              // For now, it won't render anything, but the button exists.
+              renderSanctionsPanel(detailCell, e.id);
           }
       }
     });
@@ -1457,14 +1497,23 @@ const db = firebase.firestore();
 
             if (shift.employeeId) {
                 const emp = state.employees.find(e => e.id === shift.employeeId);
-                const empName = document.createElement("span");
+                const empNameSpan = document.createElement("span");
+
                 if (emp) {
+                    let nameHtml = escapeHtml(emp.name);
+                    if (shift.replacement && shift.replacement.originalEmployeeId) {
+                        const originalEmp = getEmployeeById(shift.replacement.originalEmployeeId);
+                        if (originalEmp) {
+                            nameHtml = `${escapeHtml(emp.name)} <span class="muted" style="font-style: italic;">(cubre a ${escapeHtml(originalEmp.name)})</span>`;
+                        }
+                    }
                     const weeklyHours = getEmployeeWeeklyHours(emp.id);
-                    const hoursText = `(${String(weeklyHours).replace('.', ',')}hs)`;
-                    empName.textContent = `${emp.name} ${hoursText}`;
+                    const hoursText = ` (${String(weeklyHours).replace('.', ',')}hs)`;
+                    empNameSpan.innerHTML = nameHtml + hoursText;
                 } else {
-                    empName.textContent = "Empleado no encontrado";
+                    empNameSpan.textContent = "Empleado no encontrado";
                 }
+
                 const unassignBtn = document.createElement("button");
                 unassignBtn.className = "btn secondary del";
                 unassignBtn.innerHTML = "&times;";
@@ -1474,11 +1523,16 @@ const db = firebase.firestore();
                 unassignBtn.style.marginLeft = "8px";
                 unassignBtn.title = "Des-asignar empleado";
                 unassignBtn.addEventListener("click", () => {
-                    shift.employeeId = null;
+                    if (shift.replacement && shift.replacement.originalEmployeeId) {
+                        shift.employeeId = shift.replacement.originalEmployeeId;
+                        delete shift.replacement;
+                    } else {
+                        shift.employeeId = null;
+                    }
                     save();
                     renderAll();
                 });
-                assignWrapper.appendChild(empName);
+                assignWrapper.appendChild(empNameSpan);
                 assignWrapper.appendChild(unassignBtn);
             } else {
                 const assignBtn = document.createElement("button");
@@ -1527,6 +1581,12 @@ const db = firebase.firestore();
             namecol.appendChild(actionsDiv);
             row.appendChild(namecol);
 
+            const emp = shift.employeeId ? getEmployeeById(shift.employeeId) : null;
+            const weekMonday = new Date(state.activeWeek + "T12:00:00Z");
+            const shiftDate = new Date(weekMonday);
+            shiftDate.setUTCDate(weekMonday.getUTCDate() + day);
+            const isInConflict = emp && isDateInSanctionPeriod(shiftDate, emp.sanctions) && !shift.replacement;
+
             for (let i = 0; i < SLOTS.length; i++) {
                 const cell = document.createElement("div");
                 cell.className = "slot";
@@ -1535,7 +1595,11 @@ const db = firebase.firestore();
                     const roleData = ROLES.find(r => r.key === shift.role);
                     cell.className += " assigned " + (roleData ? clsFor(roleData.key) : "");
                     if(roleData && roleData.darkText) cell.className += " sandwich";
-                    if (!shift.employeeId) cell.className += " unassigned";
+                    if (!shift.employeeId) {
+                        cell.className += " unassigned";
+                    } else if (isInConflict) {
+                        cell.style.boxShadow = `inset 0 0 0 2px var(--c-danger)`;
+                    }
                     cell.addEventListener("mousedown", () => handleUnpaintStart(shift.id, i));
                     cell.addEventListener("mouseenter", () => handlePaintEnter(i));
                     cell.addEventListener("mouseup", () => handleUnpaintEnd(i));
@@ -1675,15 +1739,59 @@ const db = firebase.firestore();
                         setTimeout(() => { shiftDiv.style.opacity = '0.5'; }, 0);
                     });
                     shiftDiv.addEventListener('dragend', () => { shiftDiv.style.opacity = '1'; });
+
+                    // Always set role color first to fix the color bug
                     const roleInfo = ROLES.find(r => r.key === shift.role);
                     if (roleInfo) {
                         shiftDiv.style.backgroundColor = roleInfo.color;
                         shiftDiv.style.color = roleInfo.darkText ? '#111' : '#fff';
                     }
+
                     const startTime = SLOTS[shift.startSlot].label;
                     const endTime = SLOTS[shift.endSlot + 1] ? SLOTS[shift.endSlot + 1].label : "02:00";
-                    shiftDiv.innerHTML = `<div style="font-weight: 500;">${shift.role}</div><div style="font-size: 11px;">${startTime} - ${endTime}</div>`;
+                    let shiftText = `<div style="font-weight: 500;">${shift.role}</div><div style="font-size: 11px;">${startTime} - ${endTime}</div>`;
+
+                    // Display replacement info if it exists
+                    if (shift.replacement && shift.replacement.originalEmployeeId) {
+                        const originalEmp = getEmployeeById(shift.replacement.originalEmployeeId);
+                        if (originalEmp) {
+                            const originalDisplayName = originalEmp.displayName || originalEmp.name.split(' ')[0];
+                            shiftText += `<div style="font-size: 10px; font-style: italic; margin-top: 2px;">(cubre a ${escapeHtml(originalDisplayName)})</div>`;
+                        }
+                    }
+                    shiftDiv.innerHTML = shiftText;
+
+                    // Check for sanction conflicts for the assigned employee
+                    const weekMonday = new Date(state.activeWeek + "T12:00:00Z");
+                    const shiftDate = new Date(weekMonday);
+                    shiftDate.setUTCDate(weekMonday.getUTCDate() + dayIndex);
+
+                    // A conflict is only shown if the current worker is sanctioned AND it's not a replacement shift
+                    if (emp && isDateInSanctionPeriod(shiftDate, emp.sanctions) && !shift.replacement) {
+                        shiftDiv.style.border = `2px solid var(--c-danger)`;
+                        shiftDiv.title = 'Este turno está en conflicto con una sanción o licencia.';
+
+                        const replaceBtn = document.createElement('button');
+                        replaceBtn.textContent = 'Reemplazar';
+                        replaceBtn.className = 'btn secondary btn-replace';
+                        replaceBtn.dataset.shiftId = shift.id;
+                        replaceBtn.dataset.weekId = state.activeWeek;
+                        replaceBtn.dataset.dayIndex = dayIndex;
+                        replaceBtn.style.padding = '1px 5px';
+                        replaceBtn.style.fontSize = '10px';
+                        replaceBtn.style.marginTop = '4px';
+                        replaceBtn.style.backgroundColor = 'var(--c-danger-bg)';
+                        replaceBtn.style.color = 'var(--c-danger-text)';
+                        replaceBtn.onclick = (e) => {
+                            e.stopPropagation();
+                            const { shiftId, weekId, dayIndex } = e.currentTarget.dataset;
+                            openReplaceEmployeeModal(shiftId, weekId, dayIndex);
+                        };
+                        shiftDiv.appendChild(replaceBtn);
+                    }
+
                     shiftDiv.addEventListener('click', (e) => {
+                        if (e.target.classList.contains('btn-replace')) return;
                         e.stopPropagation();
                         showShiftContextMenu(e, shift.id, dayIndex, emp.id);
                     });
@@ -2095,6 +2203,77 @@ const db = firebase.firestore();
     return [...new Set(conflicts)]; // Return unique conflicts
   }
 
+  function isDateInSanctionPeriod(date, sanctions) {
+    if (!sanctions || sanctions.length === 0) {
+        return false;
+    }
+    // Sanction dates are stored as 'YYYY-MM-DD' strings.
+    // We convert the input date to the same format for direct comparison.
+    const dateString = toISODateString(date);
+
+    for (const sanction of sanctions) {
+        if (sanction.startDate && sanction.endDate) {
+            if (dateString >= sanction.startDate && dateString <= sanction.endDate) {
+                return true; // The date falls within a sanction period
+            }
+        }
+    }
+    return false;
+  }
+
+  function findSanctionConflicts(employeeId) {
+    const emp = getEmployeeById(employeeId);
+    if (!emp || !emp.sanctions || emp.sanctions.length === 0) {
+        return [];
+    }
+
+    const conflicts = [];
+
+    // Iterate over every week in the stored schedules
+    for (const weekId in state.schedules) {
+        if (Object.hasOwnProperty.call(state.schedules, weekId)) {
+            const weekSchedule = state.schedules[weekId];
+            const weekMonday = new Date(weekId + "T12:00:00Z");
+
+            // Iterate over each day of the week (0-6)
+            for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
+                const dayShifts = weekSchedule[dayIndex] || [];
+                const employeeShiftsOnDay = dayShifts.filter(s => s.employeeId === employeeId);
+
+                if (employeeShiftsOnDay.length > 0) {
+                    // Calculate the actual date of the shift
+                    const shiftDate = new Date(weekMonday);
+                    shiftDate.setUTCDate(weekMonday.getUTCDate() + dayIndex);
+
+                    // Check if this date falls into any sanction period
+                    if (isDateInSanctionPeriod(shiftDate, emp.sanctions)) {
+                        // It's a conflict. Add details for each shift on this day.
+                        for (const shift of employeeShiftsOnDay) {
+                            const dayName = DAYS[dayIndex];
+                            const shiftTime = `${SLOTS[shift.startSlot].label} - ${SLOTS[shift.endSlot + 1] ? SLOTS[shift.endSlot + 1].label : '??'}`;
+                            const formattedDate = `${dayName} ${shiftDate.getUTCDate()}/${shiftDate.getUTCMonth() + 1}`;
+
+                            conflicts.push({
+                                employeeId: emp.id,
+                                employeeName: emp.name,
+                                shiftId: shift.id,
+                                role: shift.role,
+                                shiftTime: shiftTime,
+                                date: toISODateString(shiftDate),
+                                formattedDate: formattedDate,
+                                dayIndex: dayIndex,
+                                weekId: weekId,
+                                message: `Conflicto el ${formattedDate}: Turno de ${shift.role} (${shiftTime}) durante una sanción/licencia.`
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return conflicts;
+  }
+
   function renderAvailabilityPanel(container, employeeId) {
       const emp = getEmployeeById(employeeId);
       if (!emp) return;
@@ -2292,6 +2471,137 @@ const db = firebase.firestore();
     container.appendChild(panel);
   }
 
+  function renderSanctionsPanel(container, employeeId) {
+    const emp = getEmployeeById(employeeId);
+    if (!emp) return;
+
+    container.innerHTML = '';
+    const panel = document.createElement('div');
+    panel.className = 'employee-detail-panel';
+    emp.sanctions = emp.sanctions || [];
+
+    const conflicts = findSanctionConflicts(employeeId);
+    let conflictHtml = '';
+    if (conflicts.length > 0) {
+        const conflictItems = conflicts.map(c => `
+            <div class="row" style="justify-content: space-between; align-items: center; padding: 4px 0;">
+                <span class="warning-text" style="font-size: 13px;">${c.message}</span>
+                <button class="btn secondary btn-replace" data-shift-id="${c.shiftId}" data-week-id="${c.weekId}" data-day-index="${c.dayIndex}">Reemplazar</button>
+            </div>
+        `).join('');
+        conflictHtml = `
+            <div class="stack" style="gap: 8px; border: 1px solid var(--c-danger); padding: 8px; border-radius: 4px; background-color: var(--c-danger-bg);">
+                <strong style="color: var(--c-danger-text);">Conflictos de Horarios Encontrados</strong>
+                ${conflictItems}
+            </div>
+            <div class="hr"></div>`;
+    }
+
+    const formatDate = (dateStr) => {
+        if (!dateStr) return 'N/A';
+        const [year, month, day] = dateStr.split('-');
+        return `${day}/${month}/${year}`;
+    };
+
+    const content = document.createElement('div');
+    content.innerHTML = `
+      ${conflictHtml}
+      <div class="stack">
+        <strong>Sanciones y Licencias</strong>
+        <div id="sanctions-list" class="stack">
+          ${(emp.sanctions).map((sanc, index) => `
+            <div class="row" style="justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 8px; margin-bottom: 8px;">
+              <div class="stack" style="gap: 2px;">
+                <span style="font-weight: 500;">${sanc.description || 'Sin descripción'}</span>
+                <span class="muted" style="font-size: 12px;">Del ${formatDate(sanc.startDate)} al ${formatDate(sanc.endDate)}</span>
+                ${sanc.integra ? '<span class="badge b-minor" style="font-size: 10px; padding: 2px 4px; width: fit-content;">Pasado en Integra</span>' : ''}
+              </div>
+              <button class="btn secondary del remove-sanction" data-index="${index}">X</button>
+            </div>
+          `).join('')}
+          ${emp.sanctions.length === 0 ? '<p class="muted">No hay sanciones ni licencias registradas.</p>' : ''}
+        </div>
+        <div class="hr"></div>
+        <strong>Añadir Nueva</strong>
+        <div class="row" style="gap: 8px; align-items: flex-end;">
+            <div class="stack" style="gap: 4px; flex: 1;">
+              <label class="muted" style="font-size:12px;">Descripción</label>
+              <input type="text" id="sanction-description" class="input">
+            </div>
+            <div class="stack" style="gap: 4px;">
+              <label class="muted" style="font-size:12px;">Fecha Inicio</label>
+              <input type="date" id="sanction-start-date" class="input">
+            </div>
+            <div class="stack" style="gap: 4px;">
+              <label class="muted" style="font-size:12px;">Fecha Fin</label>
+              <input type="date" id="sanction-end-date" class="input">
+            </div>
+        </div>
+        <div class="row" style="justify-content: space-between; margin-top: 8px;">
+            <div class="row" style="align-items: center; gap: 8px;">
+                <input type="checkbox" id="sanction-integra" style="width: 16px; height: 16px;">
+                <label for="sanction-integra">Pasado en Integra</label>
+            </div>
+            <button id="add-sanction" class="btn">Añadir</button>
+        </div>
+      </div>
+      <div class="hr"></div>
+      <div style="text-align: right;">
+          <button class="btn" id="save-sanctions">Guardar y Cerrar</button>
+      </div>
+    `;
+    panel.appendChild(content);
+
+    const attachListeners = (p) => {
+        p.querySelector("#save-sanctions").addEventListener("click", () => {
+            save();
+            toggleDetailPanel(null, null);
+        });
+
+        p.querySelector("#add-sanction").addEventListener("click", () => {
+          const descriptionInput = p.querySelector('#sanction-description');
+          const startDateInput = p.querySelector('#sanction-start-date');
+          const endDateInput = p.querySelector('#sanction-end-date');
+          const integraInput = p.querySelector('#sanction-integra');
+
+          if (startDateInput.value && endDateInput.value && descriptionInput.value) {
+              if (new Date(endDateInput.value) < new Date(startDateInput.value)) {
+                  alert("La fecha de fin no puede ser anterior a la fecha de inicio.");
+                  return;
+              }
+              emp.sanctions.push({
+                  id: crypto.randomUUID(),
+                  description: descriptionInput.value,
+                  startDate: startDateInput.value,
+                  endDate: endDateInput.value,
+                  integra: integraInput.checked
+              });
+              renderSanctionsPanel(container, employeeId);
+          } else {
+              alert("Por favor, complete todos los campos: descripción, fecha de inicio y fecha de fin.");
+          }
+        });
+
+        p.querySelectorAll(".remove-sanction").forEach(btn => {
+          btn.addEventListener("click", (e) => {
+            const index = e.target.dataset.index;
+            emp.sanctions.splice(index, 1);
+            renderSanctionsPanel(container, employeeId);
+          });
+        });
+
+        p.querySelectorAll(".btn-replace").forEach(btn => {
+            btn.addEventListener("click", (e) => {
+                const { shiftId, weekId, dayIndex } = e.target.dataset;
+                openReplaceEmployeeModal(shiftId, weekId, dayIndex);
+            });
+        });
+    };
+
+    attachListeners(panel);
+    container.appendChild(panel);
+}
+
   function openAssignEmployeeModal(shiftId) {
     const wrap = document.createElement("div");
     wrap.style.position="fixed"; wrap.style.inset="0"; wrap.style.background="rgba(0,0,0,.35)";
@@ -2318,6 +2628,8 @@ const db = firebase.firestore();
 
     const listContainer = document.createElement("div");
     listContainer.className = "assign-employee-list";
+    listContainer.style.maxHeight = "400px"; // Make the list taller
+    listContainer.style.overflowY = "auto";   // And scrollable
     c.appendChild(listContainer);
 
     const employeesWithStar = state.employees.filter(e => (e.stars || []).includes(shift.role));
@@ -2447,6 +2759,89 @@ const db = firebase.firestore();
     // wrap.addEventListener("click",(e)=>{ if(e.target===wrap) wrap.remove(); });
     document.body.appendChild(wrap);
 }
+
+  function openReplaceEmployeeModal(shiftId, weekId, dayIndex) {
+    const wrap = document.createElement("div");
+    wrap.style.position="fixed"; wrap.style.inset="0"; wrap.style.background="rgba(0,0,0,.35)";
+    wrap.style.display="flex"; wrap.style.alignItems="center"; wrap.style.justifyContent="center"; wrap.style.padding="16px"; wrap.style.zIndex=1001; // Higher z-index
+
+    const box = document.createElement("div");
+    box.className="card"; box.style.maxWidth="700px"; box.style.width="100%";
+
+    const schedule = state.schedules[weekId];
+    if (!schedule) { alert("Error: No se encontró la semana del turno."); return; }
+    const daySchedule = schedule[dayIndex];
+    if (!daySchedule) { alert("Error: No se encontró el día del turno."); return; }
+    const shift = daySchedule.find(s => s.id === shiftId);
+    if (!shift) { alert("Error: No se pudo encontrar el turno a reemplazar."); return; }
+
+    const originalEmployee = getEmployeeById(shift.employeeId);
+
+    const h = document.createElement("div");
+    h.className="card-h";
+    h.innerHTML = `<strong>Reemplazar a ${originalEmployee ? originalEmployee.name : 'N/A'}</strong>`;
+
+    const c = document.createElement("div");
+    c.className="card-c stack";
+    const subheader = document.createElement("p");
+    subheader.className = "muted";
+    const shiftTime = `${SLOTS[shift.startSlot].label} - ${SLOTS[shift.endSlot + 1] ? SLOTS[shift.endSlot + 1].label : '??'}`;
+    subheader.innerHTML = `Buscando reemplazo para el turno de <strong>${shift.role}</strong> (${shiftTime})`;
+    c.appendChild(subheader);
+
+
+    const listContainer = document.createElement("div");
+    listContainer.className = "assign-employee-list";
+    c.appendChild(listContainer);
+
+    // Filter for eligible employees
+    const eligibleEmployees = state.employees.filter(emp => {
+        if (emp.id === shift.employeeId) return false; // Can't replace with self
+        if (emp.isMinor && shift.endSlot > MAX_SLOT_FOR_MINOR) {
+            return false; // Minor can't work this late
+        }
+        return true;
+    }).sort((a,b) => a.name.localeCompare(b.name));
+
+
+    if (eligibleEmployees.length === 0) {
+        listContainer.textContent = "No hay empleados elegibles para este reemplazo.";
+    } else {
+        eligibleEmployees.forEach(emp => {
+            const btn = document.createElement("button");
+            btn.className = "btn secondary";
+            btn.style.width = "100%";
+            btn.textContent = emp.name;
+
+            btn.addEventListener("click", () => {
+                if (confirm(`¿Asignar a ${emp.name} como reemplazo?`)) {
+                    // If there's no replacement object yet, this is the first replacement.
+                    // We store the original employee's ID.
+                    if (!shift.replacement) {
+                        shift.replacement = { originalEmployeeId: shift.employeeId };
+                    }
+                    // The main employeeId is now the person covering the shift.
+                    shift.employeeId = emp.id;
+                    save();
+                    renderAll();
+                    wrap.remove();
+                }
+            });
+
+            listContainer.appendChild(btn);
+        });
+    }
+
+    const f = document.createElement("div"); f.style.textAlign="right"; f.style.marginTop="12px";
+    const cancel = document.createElement("button"); cancel.className="btn"; cancel.textContent="Cancelar";
+    cancel.addEventListener("click", ()=> wrap.remove());
+    f.appendChild(cancel);
+
+    box.appendChild(h); box.appendChild(c); box.appendChild(f);
+    wrap.appendChild(box);
+    wrap.addEventListener("click",(e)=>{ if(e.target===wrap) wrap.remove(); });
+    document.body.appendChild(wrap);
+  }
 
   function openEditShiftModal(shiftId) {
     const wrap = document.createElement("div");
@@ -3474,16 +3869,47 @@ const db = firebase.firestore();
             tr.querySelector(".planilla-edit-end").addEventListener('change', updateHours);
 
         } else {
-            const displayName = emp.displayName || emp.name.split(' ')[0];
+            let displayName = emp.displayName || emp.name.split(' ')[0];
+            if (shift.replacement && shift.replacement.originalEmployeeId) {
+                const originalEmp = getEmployeeById(shift.replacement.originalEmployeeId);
+                if (originalEmp) {
+                    const originalDisplayName = originalEmp.displayName || originalEmp.name.split(' ')[0];
+                    displayName = `${displayName} (cubre a ${originalDisplayName})`;
+                }
+            }
+
             const startTime = SLOTS[shift.startSlot].label;
             const endTime = SLOTS[shift.endSlot + 1] ? SLOTS[shift.endSlot + 1].label : "02:00";
+            let bksCellContent = '';
+
+            // A shift is in conflict if the assigned employee has a sanction AND it hasn't been replaced yet.
+            if (isDateInSanctionPeriod(selectedDate, emp.sanctions) && !shift.replacement) {
+                tr.style.backgroundColor = 'var(--c-danger-bg)';
+                tr.style.color = 'var(--c-danger-text)';
+                tr.title = 'Este turno está en conflicto con una sanción o licencia.';
+                const weekId = toISODateString(getMonday(selectedDate));
+                const dayIndex = selectedDate.getUTCDay() === 0 ? 6 : selectedDate.getUTCDay() - 1;
+                bksCellContent = `<button class="btn secondary btn-replace" data-shift-id="${shift.id}" data-week-id="${weekId}" data-day-index="${dayIndex}">Reemplazar</button>`;
+            }
+
             tr.innerHTML = `
                 <td>${escapeHtml(displayName)}</td>
                 <td>${startTime} a ${endTime}</td>
                 <td>${String(shiftHours).replace('.', ',')}</td>
                 <td>${escapeHtml(shift.role)}</td>
-                <td></td>
+                <td>${bksCellContent}</td>
             `;
+
+            if (bksCellContent) {
+                const btn = tr.querySelector('.btn-replace');
+                btn.style.padding = '1px 5px';
+                btn.style.fontSize = '10px';
+                btn.onclick = (e) => {
+                    e.stopPropagation();
+                    const { shiftId, weekId, dayIndex } = e.currentTarget.dataset;
+                    openReplaceEmployeeModal(shiftId, weekId, dayIndex);
+                };
+            }
         }
 
         if (shift.startSlot < slot1600) {
