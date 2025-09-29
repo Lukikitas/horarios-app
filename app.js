@@ -649,13 +649,15 @@ const db = firebase.firestore();
         s.employeeId === employeeId && !shiftsToIgnore.includes(s.id)
     );
 
-    for (const existingShift of employeeShiftsOnDay) {
-        if (newShift.id === existingShift.id) continue;
-        // Check for overlap: (StartA <= EndB) and (EndA >= StartB)
-        if (newShift.startSlot <= existingShift.endSlot && newShift.endSlot >= existingShift.startSlot) {
-            return { pass: false, message: `El empleado ya tiene un turno asignado que se solapa en este horario.` };
-        }
+    // If we find any other shift assigned to the employee on the same day, it's a conflict.
+    const hasConflict = employeeShiftsOnDay.some(
+        existingShift => existingShift.id !== newShift.id
+    );
+
+    if (hasConflict) {
+        return { pass: false, message: `El empleado ya tiene un turno asignado para este día.` };
     }
+
     return { pass: true, message: "" };
   }
 
