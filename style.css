@@ -49,6 +49,11 @@
   border:1px solid var(--border);border-radius:4px;padding:8px 10px;background:#fff;color:var(--ink)
   }
 .card{background:var(--card);border:1px solid var(--border);border-radius:6px;box-shadow:0 1px 2px rgba(0,0,0,.03);}
+#view-schedule .card {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 145px); /* header/footer/paddings */
+}
   .card-h{padding:10px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
   .card-c{padding:12px}
   .stack{display:flex;flex-direction:column;gap:8px}
@@ -64,7 +69,11 @@
   .b-minor {background: #f59e0b; color: #fff;}
 
   /* Tabla de horario */
-  .scroller{border-top:1px solid var(--border);}
+  .scroller{
+    border-top:1px solid var(--border);
+    overflow-y: auto;
+    flex-grow: 1;
+  }
   .table{min-width:1200px}
   .thead{position:sticky;top:0;background:var(--card);border-bottom:1px solid var(--border);z-index:10}
   .rowg{display:grid}

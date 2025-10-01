@@ -2644,6 +2644,9 @@ const db = firebase.firestore();
         return;
     }
 
+    const shiftDate = new Date(`${state.activeWeek}T12:00:00.000Z`);
+    shiftDate.setUTCDate(shiftDate.getUTCDate() + day);
+
     const h = document.createElement("div");
     h.className="card-h";
     h.innerHTML = `<strong>Asignar empleado a ${shift.role}</strong>`;
@@ -2672,9 +2675,11 @@ const db = firebase.firestore();
             const restCheck = checkRestTime(emp.id, shift, state.activeWeek, day);
             const availabilityCheck = checkEmployeeAvailability(emp, shift, state.activeWeek, day);
             const consecutiveDays = calculateConsecutiveWorkDays(emp.id, state.activeWeek, day);
+            const sanctionCheck = isDateInSanctionPeriod(shiftDate, emp.sanctions);
 
             let hardWarningMessage = "";
-            if (!minorCheck) hardWarningMessage = `Menor de edad no puede trabajar después de las ${SLOTS[MAX_SLOT_FOR_MINOR+1].label}.`;
+            if (sanctionCheck) hardWarningMessage = "El empleado tiene una licencia o sanción para este día.";
+            else if (!minorCheck) hardWarningMessage = `Menor de edad no puede trabajar después de las ${SLOTS[MAX_SLOT_FOR_MINOR+1].label}.`;
             else if (!overlapCheck.pass) hardWarningMessage = overlapCheck.message;
             else if (!restCheck.pass) hardWarningMessage = restCheck.message;
 
