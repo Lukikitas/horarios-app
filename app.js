@@ -665,8 +665,31 @@ const db = firebase.firestore();
     return { pass: true, message: "" };
   }
 
+  function isDateInSanctionPeriod(date, sanctions) {
+    if (!sanctions || sanctions.length === 0) {
+        return false;
+    }
+    const dateString = toISODateString(date);
+    for (const sanction of sanctions) {
+        if (sanction.startDate && sanction.endDate) {
+            if (dateString >= sanction.startDate && dateString <= sanction.endDate) {
+                return true;
+            }
+        }
+    }
+    return false;
+  }
+
   function canEmployeeWorkShift(employee, shift, dayIndex, options = {}) {
     const { shiftsToIgnore = [], silent = false } = options;
+
+    const shiftDate = new Date(`${state.activeWeek}T12:00:00.000Z`);
+    shiftDate.setUTCDate(shiftDate.getUTCDate() + dayIndex);
+
+    // 0. Sanction/Leave Check
+    if (isDateInSanctionPeriod(shiftDate, employee.sanctions)) {
+        return { pass: false, message: `${employee.name} no puede ser asignado a este turno debido a una licencia o sanción.` };
+    }
 
     // 1. Minor check
     if (employee.isMinor && shift.endSlot > MAX_SLOT_FOR_MINOR) {
@@ -1648,7 +1671,9 @@ const db = firebase.firestore();
     content.innerHTML = "";
 
     const schedule = getActiveSchedule();
-    const employees = state.employees.slice().sort((a, b) => a.name.localeCompare(b.name));
+    const employees = state.employees
+        .filter(emp => getEmployeeWeeklyHours(emp.id) > 0)
+        .sort((a, b) => a.name.localeCompare(b.name));
     const unassignedShiftsExist = Object.values(schedule).some(day => day.some(s => !s.employeeId));
 
     if (employees.length === 0 && !unassignedShiftsExist) {

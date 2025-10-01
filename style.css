@@ -35,7 +35,7 @@
   }
   .main-content {
     flex-grow: 1;
-    overflow-y: auto;
+  overflow: auto;
     padding-top: 68px; /* Offset for sticky header */
   }
   .wrap{max-width:1200px;margin:0 auto;padding:16px}
@@ -64,9 +64,9 @@
   .b-minor {background: #f59e0b; color: #fff;}
 
   /* Tabla de horario */
-  .scroller{overflow:auto;border-top:1px solid var(--border);}
+  .scroller{border-top:1px solid var(--border);}
   .table{min-width:1200px}
-  .thead{position:sticky;top:0;background:#fff;border-bottom:1px solid var(--border);z-index:10}
+  .thead{position:sticky;top:0;background:var(--card);border-bottom:1px solid var(--border);z-index:10}
   .rowg{display:grid}
   .namecol{position:sticky;left:0;background:#fff;border-right:1px solid var(--border);z-index:5;padding:6px 10px;display:flex;gap:8px;align-items:center}
   .name{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -344,7 +344,7 @@ body.dark-mode .btn.secondary {
   background-color: var(--card);
   min-width: 160px;
   box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
-  z-index: 20; /* Increased z-index to appear above sticky header */
+  z-index: 51;
   border: 1px solid var(--border);
   border-radius: 4px;
   overflow: hidden;
