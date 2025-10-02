@@ -3152,7 +3152,9 @@ const db = firebase.firestore();
   /* ====== Impresión ====== */
   function printSchedule() {
     const schedule = getActiveSchedule();
-    const employees = state.employees.slice().sort((a,b) => a.name.localeCompare(b.name));
+    const employees = state.employees
+        .filter(emp => getEmployeeWeeklyHours(emp.id) > 0)
+        .sort((a,b) => a.name.localeCompare(b.name));
 
     const monday = new Date(state.activeWeek + "T12:00:00Z");
     const sunday = new Date(monday);
