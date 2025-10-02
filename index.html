@@ -32,12 +32,10 @@
         <div class="dropdown" style="margin-left: 8px;">
           <button id="btn-actions" class="btn secondary">Acciones ▾</button>
           <div id="actions-dropdown" class="dropdown-content">
-            <button id="btnExport" class="dropdown-item">Exportar JSON</button>
             <button id="btnPrint" class="dropdown-item">Imprimir</button>
-            <label class="dropdown-item" style="cursor:pointer;">
-              Importar JSON<input id="fileImport" class="file" type="file" accept="application/json" style="display:none">
-            </label>
             <button id="btn-import-text" class="dropdown-item">Importar desde texto</button>
+            <div class="dropdown-divider"></div>
+            <button id="btn-advanced-import-export" class="dropdown-item">Importar/Exportar (Avanzado)</button>
           </div>
         </div>
         <button id="btn-dark-mode" class="btn secondary" style="margin-left:auto;">🌙</button>
@@ -344,6 +342,70 @@
       </div>
     </div>
   </div>
+
+<!-- Advanced Import/Export Modal -->
+<div id="advanced-import-export-modal" class="modal-overlay" style="display:none;">
+  <div class="modal-content" style="max-width: 700px;">
+    <div class="card">
+      <div class="card-h">
+        <strong>Importar / Exportar Datos</strong>
+        <button id="advanced-import-export-modal-close" class="btn secondary del" style="margin-left: auto;">&times;</button>
+      </div>
+      <div class="card-c stack" style="padding: 20px;">
+
+        <!-- Employees Section -->
+        <div class="import-export-section">
+          <strong class="section-title">Empleados</strong>
+          <p class="section-description">Exporta o importa la lista completa de empleados, incluyendo sus roles, disponibilidad, excepciones y licencias.</p>
+          <div class="row" style="justify-content: space-between; align-items: center;">
+            <button id="btn-export-employees" class="btn">Exportar Empleados</button>
+            <label class="btn secondary" style="cursor:pointer;">
+              Importar Empleados
+              <input id="file-import-employees" type="file" accept="application/json" style="display:none">
+            </label>
+          </div>
+        </div>
+
+        <div class="hr"></div>
+
+        <!-- Day Section -->
+        <div class="import-export-section">
+          <strong class="section-title">Día Actual</strong>
+          <p class="section-description">Exporta o importa todos los turnos del día actualmente visible, incluyendo los empleados asignados.</p>
+          <div class="row" style="justify-content: space-between; align-items: center;">
+            <button id="btn-export-day" class="btn">Exportar Día Actual</button>
+            <label class="btn secondary" style="cursor:pointer;">
+              Importar Día Actual
+              <input id="file-import-day" type="file" accept="application/json" style="display:none">
+            </label>
+          </div>
+        </div>
+
+        <div class="hr"></div>
+
+        <!-- Week Section -->
+        <div class="import-export-section">
+          <strong class="section-title">Semana Actual</strong>
+          <p class="section-description">Exporta o importa la semana completa. Puedes elegir si incluyes los empleados asignados a los turnos.</p>
+          <div class="row" style="justify-content: space-between; align-items: center;">
+            <div class="row">
+              <button id="btn-export-week" class="btn">Exportar Semana</button>
+              <div class="row" style="align-items: center; margin-left: 16px;">
+                <input type="checkbox" id="chk-include-assignments" checked>
+                <label for="chk-include-assignments" style="margin-left: 8px;">Incluir asignaciones</label>
+              </div>
+            </div>
+            <label class="btn secondary" style="cursor:pointer;">
+              Importar Semana
+              <input id="file-import-week" type="file" accept="application/json" style="display:none">
+            </label>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
 
 <script src="app.js"></script>
 </body>

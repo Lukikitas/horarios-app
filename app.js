@@ -336,68 +336,6 @@ const db = firebase.firestore();
   formEnd.addEventListener("change", updateShiftDuration);
   updateShiftDuration();
 
-  el("#btnExport").addEventListener("click", ()=>{
-    const activeSchedule = getActiveSchedule();
-    const shiftsToExport = activeSchedule[state.activeDay] || [];
-    const blob = new Blob([JSON.stringify(shiftsToExport,null,2)], {type:"application/json"});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = `planilla-horarios-${new Date().toISOString().slice(0,10)}.json`;
-    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-  });
-  el("#fileImport").addEventListener("change", (e)=>{
-    const f = e.target.files?.[0]; if(!f) return;
-    const r = new FileReader();
-    r.onload = ()=>{
-      try{
-        const data = JSON.parse(r.result);
-
-        // Case 1: New format (array of shifts)
-        if (Array.isArray(data)) {
-            // Basic validation
-            if (data.length === 0 || (data[0].hasOwnProperty('role') && data[0].hasOwnProperty('startSlot'))) {
-                if (!confirm(`¿Importar ${data.length} turnos al día actual? Los turnos existentes en este día serán reemplazados.`)) {
-                    return;
-                }
-                const activeSchedule = getActiveSchedule();
-                const newShifts = data.map(shift => ({...shift, id: crypto.randomUUID()}));
-                activeSchedule[state.activeDay] = newShifts;
-                save();
-                renderAll();
-                alert(`Se importaron ${data.length} turnos al día actual.`);
-            } else {
-                alert("Archivo inválido. El formato de turnos no es correcto.");
-            }
-        }
-        // Case 2: Old format (full backup)
-        else if (Array.isArray(data.employees) && typeof data.schedules === "object") {
-            if (!confirm("¿Importar un archivo de respaldo completo? Esto reemplazará todos los empleados y horarios existentes.")) {
-                return;
-            }
-            state.employees = data.employees || [];
-            state.schedules = data.schedules || {};
-            state.projectedTickets = data.projectedTickets || {};
-            state.templates = data.templates || {};
-            state.activeDay = data.activeDay ?? 0;
-            state.activeWeek = data.activeWeek ?? toISODateString(getMonday(new Date()));
-            // Ensure activeWeek schedule exists
-            if (!state.schedules[state.activeWeek]) {
-              state.schedules[state.activeWeek] = {};
-            }
-            save();
-            renderAll();
-            alert("Respaldo importado con éxito.");
-        } else {
-            alert("Archivo inválido o formato no reconocido.");
-        }
-      } catch(e) {
-        console.error("Import error:", e);
-        alert("Archivo inválido o corrupto.");
-      }
-    };
-    r.readAsText(f);
-  });
-
   el("#fileImportExcel").addEventListener("change", (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -3516,6 +3454,207 @@ const db = firebase.firestore();
     }
   });
   btnImportTextProcess.addEventListener("click", importShiftsFromText);
+
+  /* ====== Advanced Import/Export Modal ====== */
+  const advancedImportExportModal = el("#advanced-import-export-modal");
+  const btnAdvancedImportExport = el("#btn-advanced-import-export");
+  const advancedImportExportModalClose = el("#advanced-import-export-modal-close");
+
+  btnAdvancedImportExport.addEventListener("click", () => {
+    advancedImportExportModal.style.display = "flex";
+  });
+
+  /* ====== New Import/Export handlers ====== */
+
+  function exportEmployees() {
+    const dataStr = JSON.stringify(state.employees, null, 2);
+    const blob = new Blob([dataStr], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `empleados-${toISODateString(new Date())}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+  el("#btn-export-employees").addEventListener("click", exportEmployees);
+
+  function importEmployees(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const importedEmployees = JSON.parse(e.target.result);
+        if (!Array.isArray(importedEmployees)) {
+          alert("Error: El archivo no contiene una lista de empleados válida.");
+          return;
+        }
+
+        const existingIds = new Set(state.employees.map(emp => emp.id));
+        const newEmployees = importedEmployees.filter(emp => emp.id && !existingIds.has(emp.id));
+
+        if (newEmployees.length === 0) {
+          alert("No se encontraron nuevos empleados para importar. Todos los IDs en el archivo ya existen.");
+          return;
+        }
+
+        if (confirm(`Se encontraron ${newEmployees.length} empleados nuevos. ¿Desea importarlos?`)) {
+          state.employees.push(...newEmployees);
+          save();
+          renderAll();
+          alert(`${newEmployees.length} empleados importados con éxito.`);
+          closeAdvancedImportExportModal();
+        }
+      } catch (err) {
+        console.error("Error al importar empleados:", err);
+        alert("Error al procesar el archivo. Asegúrese de que sea un JSON válido.");
+      } finally {
+        // Reset the file input so the user can select the same file again
+        event.target.value = '';
+      }
+    };
+    reader.readAsText(file);
+  }
+  el("#file-import-employees").addEventListener("change", importEmployees);
+
+  function exportDay() {
+    const activeSchedule = getActiveSchedule();
+    const dayShifts = activeSchedule[state.activeDay] || [];
+    const dataStr = JSON.stringify(dayShifts, null, 2);
+    const blob = new Blob([dataStr], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const dayName = DAYS[state.activeDay];
+    a.download = `dia-${dayName}-${toISODateString(new Date())}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+  el("#btn-export-day").addEventListener("click", exportDay);
+
+  function importDay(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const importedShifts = JSON.parse(e.target.result);
+
+        // Basic validation
+        if (!Array.isArray(importedShifts) || (importedShifts.length > 0 && (!importedShifts[0].hasOwnProperty('role') || !importedShifts[0].hasOwnProperty('startSlot')))) {
+          alert("Error: El archivo no parece contener una lista de turnos válida para un día.");
+          return;
+        }
+
+        if (confirm(`¿Importar ${importedShifts.length} turnos al día actual? Los turnos existentes en este día serán reemplazados.`)) {
+          const activeSchedule = getActiveSchedule();
+          // Assign new IDs to prevent duplicates and issues with other features
+          const newShifts = importedShifts.map(shift => ({...shift, id: crypto.randomUUID()}));
+          activeSchedule[state.activeDay] = newShifts;
+          save();
+          renderAll();
+          alert(`Se importaron ${newShifts.length} turnos con éxito.`);
+          closeAdvancedImportExportModal();
+        }
+      } catch (err) {
+        console.error("Error al importar el día:", err);
+        alert("Error al procesar el archivo. Asegúrese de que sea un JSON válido.");
+      } finally {
+        event.target.value = '';
+      }
+    };
+    reader.readAsText(file);
+  }
+  el("#file-import-day").addEventListener("change", importDay);
+
+  function exportWeek() {
+    const includeAssignments = el("#chk-include-assignments").checked;
+    let weekSchedule = getActiveSchedule();
+
+    if (!includeAssignments) {
+      // Deep copy to avoid modifying the current state
+      weekSchedule = JSON.parse(JSON.stringify(weekSchedule));
+      for (const day in weekSchedule) {
+        weekSchedule[day].forEach(shift => {
+          shift.employeeId = null;
+        });
+      }
+    }
+
+    const dataStr = JSON.stringify(weekSchedule, null, 2);
+    const blob = new Blob([dataStr], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `semana-${state.activeWeek}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+  el("#btn-export-week").addEventListener("click", exportWeek);
+
+  function importWeek(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const importedWeek = JSON.parse(e.target.result);
+
+        // Basic validation: check if it's an object and its keys are numbers (day indices)
+        if (typeof importedWeek !== 'object' || importedWeek === null || Array.isArray(importedWeek)) {
+          alert("Error: El archivo no parece ser un objeto de semana válido.");
+          return;
+        }
+
+        if (confirm(`¿Importar esta semana? Se reemplazarán todos los turnos de la semana actual.`)) {
+          // Deep copy and assign new IDs to all shifts
+          const newWeekSchedule = JSON.parse(JSON.stringify(importedWeek));
+          for (const day in newWeekSchedule) {
+            if (Array.isArray(newWeekSchedule[day])) {
+              newWeekSchedule[day].forEach(shift => {
+                shift.id = crypto.randomUUID();
+              });
+            }
+          }
+
+          state.schedules[state.activeWeek] = newWeekSchedule;
+          save();
+          renderAll();
+          alert(`La semana se importó con éxito.`);
+          closeAdvancedImportExportModal();
+        }
+      } catch (err) {
+        console.error("Error al importar la semana:", err);
+        alert("Error al procesar el archivo. Asegúrese de que sea un JSON válido.");
+      } finally {
+        event.target.value = '';
+      }
+    };
+    reader.readAsText(file);
+  }
+  el("#file-import-week").addEventListener("change", importWeek);
+
+
+  const closeAdvancedImportExportModal = () => {
+    advancedImportExportModal.style.display = "none";
+  };
+
+  advancedImportExportModalClose.addEventListener("click", closeAdvancedImportExportModal);
+  advancedImportExportModal.addEventListener("click", (e) => {
+    if (e.target === advancedImportExportModal) {
+      closeAdvancedImportExportModal();
+    }
+  });
+
 
   /* ====== Dark Mode ====== */
   const darkModeBtn = el("#btn-dark-mode");
