@@ -57,6 +57,7 @@ const db = firebase.firestore();
   const state = {
     employees: [],
     schedules: {},
+    scheduleHistory: [],
     templates: {},
     projectedTickets: {},
     activeWeek: toISODateString(getMonday(new Date())),
@@ -173,6 +174,16 @@ const db = firebase.firestore();
   function save() {
       clearTimeout(saveTimeout);
       saveTimeout = setTimeout(saveState, 1500);
+  }
+
+  function saveWithHistory() {
+    const scheduleCopy = JSON.parse(JSON.stringify(getActiveSchedule()));
+    state.scheduleHistory.push(scheduleCopy);
+    if (state.scheduleHistory.length > 10) { // Keep last 10 changes
+        state.scheduleHistory.shift();
+    }
+    el("#btnUndo").disabled = false;
+    save();
   }
 
   async function saveState() {
@@ -430,7 +441,7 @@ const db = firebase.firestore();
             });
         }
     }
-    save(); renderAll();
+    saveWithHistory(); renderAll();
   }
 
   function deleteShift(shiftId) {
@@ -440,7 +451,7 @@ const db = firebase.firestore();
     const index = schedule[day].findIndex(s => s.id === shiftId);
     if (index > -1) {
         schedule[day].splice(index, 1);
-        save();
+        saveWithHistory();
         renderAll();
     }
   }
@@ -492,6 +503,22 @@ const db = firebase.firestore();
           }
       }
       return headcount;
+  }
+
+  function calculateHeadcountByRolePerSlot(day) {
+    const headcountByRole = SLOTS.map(() => ({}));
+    const schedule = getActiveSchedule();
+    const dayShifts = schedule[day] || [];
+
+    for (const shift of dayShifts) {
+        for (let i = shift.startSlot; i <= shift.endSlot; i++) {
+            if (!headcountByRole[i][shift.role]) {
+                headcountByRole[i][shift.role] = 0;
+            }
+            headcountByRole[i][shift.role]++;
+        }
+    }
+    return headcountByRole;
   }
 
   function calculateTotalDayHours(day) {
@@ -751,7 +778,7 @@ const db = firebase.firestore();
     const day = state.activeDay;
     ensureDay(day);
     getActiveSchedule()[day].push(newShift);
-    save();
+    saveWithHistory();
     renderAll();
   });
 
@@ -810,7 +837,7 @@ const db = firebase.firestore();
       const day = state.activeDay;
       ensureDay(day);
       getActiveSchedule()[day].push(newShift);
-      save();
+      saveWithHistory();
       renderAll();
   }
 
@@ -879,7 +906,7 @@ const db = firebase.firestore();
             const index = schedule[day].findIndex(s => s.id === unpaintShiftId);
             if (index > -1) schedule[day].splice(index, 1);
         }
-        save();
+        saveWithHistory();
     }
 
     isUnpainting = false;
@@ -939,7 +966,7 @@ const db = firebase.firestore();
     shift.startSlot = tempShift.startSlot;
     shift.endSlot = tempShift.endSlot;
 
-    save();
+    saveWithHistory();
     renderAll();
   }
 
@@ -1019,6 +1046,7 @@ const db = firebase.firestore();
 
   function renderHead(){
     const headcount = calculateHeadcountPerSlot(state.activeDay);
+    const headcountByRole = calculateHeadcountByRolePerSlot(state.activeDay);
     const cols = `240px repeat(${SLOTS.length}, 1fr)`;
     const g = document.createElement("div"); g.className="rowg"; g.style.gridTemplateColumns = cols;
 
@@ -1048,6 +1076,14 @@ const db = firebase.firestore();
 
         c.appendChild(headcountSpan);
         c.appendChild(timeLabelSpan);
+
+        if (count > 0) {
+          const tooltipText = Object.entries(headcountByRole[idx])
+              .map(([role, num]) => `${num} ${role}`)
+              .join('\n');
+          c.title = tooltipText;
+        }
+
         g.appendChild(c);
     });
 
@@ -1319,7 +1355,6 @@ const db = firebase.firestore();
     updateProjectedProductivity();
     updateActiveDayHoursDisplay();
     updateDayTitle();
-    renderRoleFilter();
 
     const day = state.activeDay;
     ensureDay(day);
@@ -1490,7 +1525,7 @@ const db = firebase.firestore();
                     } else {
                         shift.employeeId = null;
                     }
-                    save();
+                    saveWithHistory();
                     renderAll();
                 });
                 assignWrapper.appendChild(empNameSpan);
@@ -1609,8 +1644,10 @@ const db = firebase.firestore();
     content.innerHTML = "";
 
     const schedule = getActiveSchedule();
+    const searchTerm = el("#schedule-list-search").value.toLowerCase();
     const employees = state.employees
         .filter(emp => getEmployeeWeeklyHours(emp.id) > 0)
+        .filter(emp => emp.name.toLowerCase().includes(searchTerm))
         .sort((a, b) => a.name.localeCompare(b.name));
     const unassignedShiftsExist = Object.values(schedule).some(day => day.some(s => !s.employeeId));
 
@@ -1795,7 +1832,7 @@ const db = firebase.firestore();
         if (targetEmployeeId === 'unassigned') {
             if (!sourceShift.employeeId) return; // Already unassigned
             sourceShift.employeeId = null;
-            save();
+            saveWithHistory();
             renderScheduleList();
             return;
         }
@@ -1853,7 +1890,7 @@ const db = firebase.firestore();
             }
         }
 
-        save();
+        saveWithHistory();
         renderScheduleList();
     });
   }
@@ -2707,7 +2744,7 @@ const db = firebase.firestore();
                     }
                 }
                 shift.employeeId = emp.id;
-                save();
+                saveWithHistory();
                 renderAll();
                 wrap.remove();
             });
@@ -2900,7 +2937,7 @@ const db = firebase.firestore();
             }
         }
 
-        save();
+        saveWithHistory();
         renderAll();
         wrap.remove();
     });
@@ -3073,7 +3110,7 @@ const db = firebase.firestore();
     const schedule = getActiveSchedule();
     schedule[state.activeDay] = newShifts;
 
-    save();
+    saveWithHistory();
     showView('schedule');
   }
 
@@ -4346,45 +4383,29 @@ const db = firebase.firestore();
 
 
   /* ====== Schedule Filters ====== */
-  const btnRoleFilter = el("#btn-role-filter");
-  const roleFilterDropdown = el("#role-filter-dropdown");
-  const scheduleSearchInput = el("#schedule-search");
-
-  btnRoleFilter.addEventListener("click", (e) => {
-      e.stopPropagation();
-      roleFilterDropdown.classList.toggle("show");
-      actionsDropdown.classList.remove("show");
-  });
-
-  roleFilterDropdown.addEventListener("change", (e) => {
-      if (e.target.type === 'checkbox') {
-          const role = e.target.value;
-          if (e.target.checked) {
-              if (!state.scheduleRoleFilters.includes(role)) {
-                  state.scheduleRoleFilters.push(role);
-              }
-          } else {
-              state.scheduleRoleFilters = state.scheduleRoleFilters.filter(r => r !== role);
-          }
-          renderTable(); // Re-render table to apply filter
-      }
-  });
-
-  // Prevent dropdown from closing when clicking inside
-  roleFilterDropdown.addEventListener('click', (e) => e.stopPropagation());
 
 
-  scheduleSearchInput.addEventListener("input", () => {
-      state.scheduleSearchTerm = scheduleSearchInput.value;
-      renderTable();
-  });
+  el("#schedule-list-search").addEventListener("input", renderScheduleList);
+
+  function undoLastAction() {
+    if (state.scheduleHistory.length > 0) {
+        const lastState = state.scheduleHistory.pop();
+        state.schedules[state.activeWeek] = lastState;
+        save(); // Save the reverted state without adding to history
+        renderAll();
+    }
+    if (state.scheduleHistory.length === 0) {
+        el("#btnUndo").disabled = true;
+    }
+  }
+
+  el("#btnUndo").addEventListener("click", undoLastAction);
 
   // Close dropdowns when clicking elsewhere
   window.addEventListener("click", (e) => {
     // If the click is outside ANY dropdown component, close them all.
     if (!e.target.closest('.dropdown')) {
       actionsDropdown.classList.remove('show');
-      roleFilterDropdown.classList.remove('show');
     }
   });
 
