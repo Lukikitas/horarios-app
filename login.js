@@ -71,32 +71,34 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     try {
-      const employeesRef = db.collection("employees");
-      const querySnapshot = await employeesRef.where("dni", "==", dni).limit(1).get();
+      const doc = await db.collection("schedules").doc("main").get();
+      if (!doc.exists) {
+          alert("Error: No se encontró la configuración principal.");
+          return;
+      }
+      const allEmployees = doc.data().employees || [];
+      const employee = allEmployees.find(emp => emp.dni === dni);
 
-      if (querySnapshot.empty) {
+      if (!employee) {
         alert("No se encontró ningún empleado con ese DNI.");
         return;
       }
-
-      const employeeDoc = querySnapshot.docs[0];
-      const employee = employeeDoc.data();
-
-      if (!employee.email) {
+      if (!employee.mail) {
         alert("Este empleado no tiene un email registrado. Contacta al administrador.");
         return;
       }
 
       const actionCodeSettings = {
-        url: window.location.href, // URL to redirect to after password reset
+        url: 'https://horarios-data.web.app/portal/index.html', // URL to redirect to after login
         handleCodeInApp: true,
       };
 
-      await auth.sendPasswordResetEmail(employee.email, actionCodeSettings);
-      alert('Se ha enviado un enlace a tu correo electrónico para que crees tu contraseña.');
+      await auth.sendSignInLinkToEmail(employee.mail, actionCodeSettings);
+      window.localStorage.setItem('emailForSignIn', employee.mail);
+      alert('Se ha enviado un enlace a tu correo electrónico para que inicies sesión.');
 
     } catch (error) {
-      console.error("Error sending password reset email:", error);
+      console.error("Error sending sign in email:", error);
       alert(`Error: ${error.message}`);
     }
   });

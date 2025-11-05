@@ -388,6 +388,8 @@ const auth = firebase.auth();
 
   function addEmployee(){
     const name = el("#inpName").value.trim();
+    const dni = el("#inpDni").value.trim();
+    const mail = el("#inpMail").value.trim();
     if(!name) return;
     const id = crypto.randomUUID();
     const nameParts = name.split(',');
@@ -396,6 +398,8 @@ const auth = firebase.auth();
       id,
       name,
       displayName: displayName,
+      dni: dni,
+      mail: mail,
       stars: [],
       isMinor: false,
       availability: { "0": [], "1": [], "2": [], "3": [], "4": [], "5": [], "6": [] },
@@ -403,6 +407,8 @@ const auth = firebase.auth();
       sanctions: [],
     });
     el("#inpName").value = "";
+    el("#inpDni").value = "";
+    el("#inpMail").value = "";
     save();
     renderEmpList();
   }
@@ -1118,7 +1124,7 @@ const auth = firebase.auth();
 
     const thead = table.createTHead();
     const headRow = thead.insertRow();
-    headRow.innerHTML = "<th>Nombre</th><th>Estrellas</th><th>Acciones</th>";
+    headRow.innerHTML = "<th>Nombre</th><th>DNI/Mail</th><th>Estrellas</th><th>Acciones</th>";
 
     const tbody = table.createTBody();
     filtered.forEach(e=>{
@@ -1146,8 +1152,24 @@ const auth = firebase.auth();
           displayNameInput.id = `edit-display-name-input-${e.id}`;
           displayNameInput.placeholder = "Nombre para planilla";
 
+          const dniInput = document.createElement('input');
+          dniInput.type = 'text';
+          dniInput.value = e.dni || '';
+          dniInput.className = 'input';
+          dniInput.id = `edit-dni-input-${e.id}`;
+          dniInput.placeholder = "DNI";
+
+          const mailInput = document.createElement('input');
+          mailInput.type = 'text';
+          mailInput.value = e.mail || '';
+          mailInput.className = 'input';
+          mailInput.id = `edit-mail-input-${e.id}`;
+          mailInput.placeholder = "Mail";
+
           nameInputContainer.appendChild(nameInput);
           nameInputContainer.appendChild(displayNameInput);
+          nameInputContainer.appendChild(dniInput);
+          nameInputContainer.appendChild(mailInput);
           nameCell.appendChild(nameInputContainer);
       } else {
           nameCell.textContent = e.name;
@@ -1159,6 +1181,12 @@ const auth = firebase.auth();
               minorBadge.style.marginLeft = "8px";
               nameCell.appendChild(minorBadge);
           }
+      }
+
+      // DNI/Mail cell
+      const dniMailCell = row.insertCell();
+      if (!isEditing) {
+        dniMailCell.innerHTML = `<div>${e.dni || '-'}</div><div class="muted" style="font-size:12px;">${e.mail || '-'}</div>`;
       }
 
       // Stars cell
@@ -1185,8 +1213,12 @@ const auth = firebase.auth();
           bSave.onclick = () => {
               const newName = el(`#edit-input-${e.id}`).value.trim();
               const newDisplayName = el(`#edit-display-name-input-${e.id}`).value.trim();
+              const newDni = el(`#edit-dni-input-${e.id}`).value.trim();
+              const newMail = el(`#edit-mail-input-${e.id}`).value.trim();
               if (newName) {
                   e.name = newName;
+                  e.dni = newDni;
+                  e.mail = newMail;
                   const nameParts = newName.split(',');
                   e.displayName = newDisplayName || (nameParts.length > 1 ? nameParts[1].trim() : newName.split(' ')[0]);
                   state.editingEmployeeId = null;
@@ -1276,7 +1308,7 @@ const auth = firebase.auth();
       if (state.activeDetailEmployeeId === e.id) {
           const detailRow = tbody.insertRow();
           const detailCell = detailRow.insertCell();
-          detailCell.colSpan = 3; // Span across all columns
+          detailCell.colSpan = 4; // Span across all columns
           detailCell.className = 'employee-detail-cell';
 
           if (state.activeDetailSection === 'stars') {

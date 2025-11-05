@@ -5,21 +5,41 @@ const auth = firebase.auth();
 const db = firebase.firestore();
 
 document.addEventListener('DOMContentLoaded', () => {
-  auth.onAuthStateChanged(async (user) => {
-    if (user) {
-      const idTokenResult = await user.getIdTokenResult();
-      if (idTokenResult.claims.role !== 'employee') {
-        // Not an employee, redirect to login
-        window.location.href = '../index.html';
-      } else {
-        // User is an employee, render the portal
-        renderPortal(user, idTokenResult.claims.employeeId);
-      }
-    } else {
-      // No user logged in, redirect to login
-      window.location.href = '../index.html';
+  if (auth.isSignInWithEmailLink(window.location.href)) {
+    let email = window.localStorage.getItem('emailForSignIn');
+    if (!email) {
+      email = window.prompt('Please provide your email for confirmation');
     }
-  });
+    auth.signInWithEmailLink(email, window.location.href)
+      .then(async (result) => {
+        window.localStorage.removeItem('emailForSignIn');
+        const user = result.user;
+        const idTokenResult = await user.getIdTokenResult();
+        if (idTokenResult.claims.role !== 'employee') {
+          window.location.href = '../index.html';
+        } else {
+          renderPortal(user, idTokenResult.claims.employeeId);
+        }
+      })
+      .catch((error) => {
+        console.error("Sign in with email link error:", error);
+        alert(`Error al iniciar sesión: ${error.message}`);
+        window.location.href = '../index.html';
+      });
+  } else {
+    auth.onAuthStateChanged(async (user) => {
+      if (user) {
+        const idTokenResult = await user.getIdTokenResult();
+        if (idTokenResult.claims.role !== 'employee') {
+          window.location.href = '../index.html';
+        } else {
+          renderPortal(user, idTokenResult.claims.employeeId);
+        }
+      } else {
+        window.location.href = '../index.html';
+      }
+    });
+  }
 });
 
 function renderPortal(user, employeeId) {
