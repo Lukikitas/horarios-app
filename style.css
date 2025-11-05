@@ -68,6 +68,12 @@
   .b-descarga{background:var(--c-descarga)}
   .b-minor {background: #f59e0b; color: #fff;}
 
+.status-pending { background-color: #f59e0b; color: white; }
+.status-approved { background-color: #10b981; color: white; }
+.status-rejected { background-color: #ef4444; color: white; }
+.status-cancelled { background-color: #6b7280; color: white; }
+.status-manager_review { background-color: #3b82f6; color: white; }
+
   /* Tabla de horario */
   .scroller{
     border-top:1px solid var(--border);

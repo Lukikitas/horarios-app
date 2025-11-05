@@ -1,16 +1,20 @@
-const firebaseConfig = {
-  apiKey: "AIzaSyBbMWJbE6VWqPg4LeKBO7WUz3H6e8GcPQw",
-  authDomain: "horarios-data.firebaseapp.com",
-  projectId: "horarios-data",
-  storageBucket: "horarios-data.appspot.com",
-  messagingSenderId: "246551180733",
-  appId: "1:246551180733:web:98d9f2187f245f37f20ed4"
-};
+import { firebaseConfig, SLOTS } from './src/config.js';
 
 const app = firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
+const auth = firebase.auth();
 
 (async function(){
+  // auth.onAuthStateChanged(async (user) => {
+  //   if (user) {
+  //     const idTokenResult = await user.getIdTokenResult();
+  //     if (idTokenResult.claims.role !== 'manager') {
+  //       window.location.href = 'index.html';
+  //     }
+  //   } else {
+  //     window.location.href = 'index.html';
+  //   }
+  // });
   /* ====== Date Helpers ====== */
   function toISODateString(date) {
       const d = new Date(date);
@@ -41,17 +45,6 @@ const db = firebase.firestore();
   ];
   const DAYS = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"];
   const MAX_SLOT_FOR_MINOR = 27; // up to 19:30-20:00 inclusive. Cannot work 20:00 onwards.
-
-  function generateTimeSlots(){
-    const out = [];
-    let h=6, m=0;                 // 06:00
-    for(let i=0;i<40;i++){        // hasta 02:00 del siguiente (20 horas = 40 medias horas)
-      out.push({index:i,label:two(h)+":"+two(m),h,m});
-      m+=30; if(m>=60){m=0; h++; if(h===24) h=0;}
-    }
-    return out;
-  }
-  const SLOTS = generateTimeSlots();
 
   /* ====== Estado (Firestore) ====== */
   const state = {
@@ -224,11 +217,13 @@ const db = firebase.firestore();
   const viewEmployeesEl = el('#view-employees');
   const viewTemplatesEl = el('#view-templates');
   const viewScheduleListEl = el('#view-schedule-list');
+  const viewRequestsEl = el('#view-requests');
   const viewClockInsEl = el('#view-clock-ins');
   const viewPlanillaTurnoEl = el('#view-planilla-turno');
   const btnViewSchedule = el('#btn-view-schedule');
   const btnViewEmployees = el('#btn-view-employees');
   const btnViewTemplates = el('#btn-view-templates');
+  const btnViewRequests = el('#btn-view-requests');
   const btnScheduleList = el('#btn-schedule-list');
   const btnViewClockIns = el('#btn-view-clock-ins');
   const btnPlanillaTurno = el('#btn-planilla-turno');
@@ -263,11 +258,13 @@ const db = firebase.firestore();
     viewEmployeesEl.style.display = 'none';
     viewTemplatesEl.style.display = 'none';
     viewScheduleListEl.style.display = 'none';
+    viewRequestsEl.style.display = 'none';
     viewClockInsEl.style.display = 'none';
     viewPlanillaTurnoEl.style.display = 'none';
     btnViewSchedule.className = 'btn secondary main-menu-btn';
     btnViewEmployees.className = 'btn secondary main-menu-btn';
     btnViewTemplates.className = 'btn secondary main-menu-btn';
+    btnViewRequests.className = 'btn secondary main-menu-btn';
     btnScheduleList.className = 'btn secondary main-menu-btn';
     btnViewClockIns.className = 'btn secondary main-menu-btn';
     btnPlanillaTurno.className = 'btn secondary main-menu-btn';
@@ -281,6 +278,9 @@ const db = firebase.firestore();
     } else if (viewName === 'templates') {
         viewTemplatesEl.style.display = 'block';
         btnViewTemplates.className = 'btn main-menu-btn';
+    } else if (viewName === 'requests') {
+        viewRequestsEl.style.display = 'block';
+        btnViewRequests.className = 'btn main-menu-btn';
     } else if (viewName === 'schedule-list') {
         viewScheduleListEl.style.display = 'block';
         btnScheduleList.className = 'btn main-menu-btn';
@@ -296,6 +296,7 @@ const db = firebase.firestore();
   btnViewSchedule.addEventListener('click', () => showView('schedule'));
   btnViewEmployees.addEventListener('click', () => showView('employees'));
   btnViewTemplates.addEventListener('click', () => showView('templates'));
+  btnViewRequests.addEventListener('click', () => showView('requests'));
   btnScheduleList.addEventListener('click', () => showView('schedule-list'));
   btnViewClockIns.addEventListener('click', () => showView('clock-ins'));
   btnPlanillaTurno.addEventListener('click', () => showView('planilla-turno'));
@@ -1630,6 +1631,9 @@ const db = firebase.firestore();
     renderTemplateList();
     if (viewScheduleListEl.style.display !== 'none') {
       renderScheduleList();
+    }
+    if (viewRequestsEl.style.display !== 'none') {
+      renderRequests();
     }
     if (viewClockInsEl.style.display !== 'none') {
       renderClockInReport();
@@ -4409,5 +4413,82 @@ const db = firebase.firestore();
     }
   });
 
+  async function renderRequests() {
+    const content = el("#requests-content");
+    content.innerHTML = "<p>Cargando solicitudes...</p>";
+
+    try {
+      const requestsSnapshot = await db.collection("requests").where("type", "==", "timeOff").orderBy("createdAt", "desc").get();
+      if (requestsSnapshot.empty) {
+        content.innerHTML = "<p>No hay solicitudes pendientes.</p>";
+        return;
+      }
+
+      let requestsHtml = `<table class="emp-table-new">
+        <thead>
+          <tr>
+            <th>Empleado</th>
+            <th>Fecha Solicitada</th>
+            <th>Motivo</th>
+            <th>Estado</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>`;
+
+      for (const doc of requestsSnapshot.docs) {
+        const request = doc.data();
+        const employee = state.employees.find(e => e.id === request.employeeId);
+        const requestDate = new Date(request.date + 'T00:00:00');
+        const formattedDate = requestDate.toLocaleDateString('es-ES', { year: 'numeric', month: 'long', day: 'numeric' });
+
+        requestsHtml += `
+          <tr>
+            <td>${employee ? escapeHtml(employee.name) : 'Desconocido'}</td>
+            <td>${formattedDate}</td>
+            <td>${escapeHtml(request.reason || '-')}</td>
+            <td><span class="badge status-${request.status.toLowerCase()}">${request.status}</span></td>
+            <td>
+              ${request.status === 'PENDING' ? `
+                <button class="btn approve-request" data-id="${doc.id}">Aprobar</button>
+                <button class="btn secondary del reject-request" data-id="${doc.id}">Rechazar</button>
+              ` : ''}
+            </td>
+          </tr>
+        `;
+      }
+      requestsHtml += `</tbody></table>`;
+      content.innerHTML = requestsHtml;
+
+      content.querySelectorAll('.approve-request').forEach(button => {
+        button.addEventListener('click', async (e) => {
+          const requestId = e.target.dataset.id;
+          const requestDoc = await db.collection('requests').doc(requestId).get();
+          const request = requestDoc.data();
+
+          // Find and clear the shift
+          const shiftsSnapshot = await db.collection('shifts').where('employeeId', '==', request.employeeId).where('date', '==', request.date).get();
+          shiftsSnapshot.forEach(doc => {
+            doc.ref.update({ employeeId: null });
+          });
+
+          await db.collection('requests').doc(requestId).update({ status: 'APPROVED' });
+          renderRequests();
+        });
+      });
+
+      content.querySelectorAll('.reject-request').forEach(button => {
+        button.addEventListener('click', async (e) => {
+          const requestId = e.target.dataset.id;
+          await db.collection('requests').doc(requestId).update({ status: 'REJECTED' });
+          renderRequests();
+        });
+      });
+
+    } catch (error) {
+      console.error("Error fetching requests:", error);
+      content.innerHTML = "<p>Error al cargar las solicitudes.</p>";
+    }
+  }
 
 })();
