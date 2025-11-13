@@ -193,7 +193,9 @@ const auth = firebase.auth();
 
   function getActiveSchedule() {
     if (!state.schedules[state.activeWeek]) {
-        state.schedules[state.activeWeek] = {};
+        state.schedules[state.activeWeek] = {
+            isLocked: false
+        };
     }
     return state.schedules[state.activeWeek];
   }
@@ -402,6 +404,7 @@ const auth = firebase.auth();
       mail: mail,
       stars: [],
       isMinor: false,
+      isAllStar: false,
       availability: { "0": [], "1": [], "2": [], "3": [], "4": [], "5": [], "6": [] },
       exceptions: [],
       sanctions: [],
@@ -424,6 +427,14 @@ const auth = firebase.auth();
     const i = emp.stars.indexOf(roleKey);
     if(i>=0) emp.stars.splice(i,1); else emp.stars.push(roleKey);
     save();
+  }
+
+  function toggleIsAllStar(empId) {
+    const emp = state.employees.find(e=>e.id===empId);
+    if(!emp) return;
+    emp.isAllStar = !emp.isAllStar;
+    save();
+    renderEmpList();
   }
 
   function toggleIsMinor(empId) {
@@ -500,13 +511,19 @@ const auth = firebase.auth();
   }
 
   function calculateHeadcountPerSlot(day) {
-      const headcount = new Array(SLOTS.length).fill(0);
+      const headcount = SLOTS.map(() => ({ total: 0, allStars: 0 }));
       const schedule = getActiveSchedule();
       const dayShifts = schedule[day] || [];
 
       for (const shift of dayShifts) {
+          const emp = shift.employeeId ? getEmployeeById(shift.employeeId) : null;
+          const isAllStar = emp ? emp.isAllStar : false;
+
           for (let i = shift.startSlot; i <= shift.endSlot; i++) {
-              headcount[i]++;
+              headcount[i].total++;
+              if (isAllStar) {
+                  headcount[i].allStars++;
+              }
           }
       }
       return headcount;
@@ -1075,13 +1092,21 @@ const auth = firebase.auth();
         const headcountSpan = document.createElement("span");
         headcountSpan.style.fontWeight = "bold";
         headcountSpan.style.fontSize = "12px";
-        const count = headcount[idx];
+        const count = headcount[idx].total;
         headcountSpan.textContent = count > 0 ? count : "";
+
+        const allStarSpan = document.createElement("div");
+        allStarSpan.className = "all-star-indicator";
+        const allStarCount = headcount[idx].allStars;
+        if (allStarCount > 0) {
+          allStarSpan.innerHTML = `★ <span class="all-star-count">${allStarCount > 1 ? allStarCount : ''}</span>`;
+        }
 
         const timeLabelSpan = document.createElement("span");
         timeLabelSpan.textContent = s.label;
 
         c.appendChild(headcountSpan);
+        c.appendChild(allStarSpan);
         c.appendChild(timeLabelSpan);
 
         if (count > 0) {
@@ -1173,6 +1198,14 @@ const auth = firebase.auth();
           nameCell.appendChild(nameInputContainer);
       } else {
           nameCell.textContent = e.name;
+          if (e.isAllStar) {
+            const allStarBadge = document.createElement("span");
+            allStarBadge.className = "badge b-all-star";
+            allStarBadge.textContent = "★";
+            allStarBadge.title = "All Star";
+            allStarBadge.style.marginLeft = "8px";
+            nameCell.appendChild(allStarBadge);
+          }
           if (e.isMinor) {
               const minorBadge = document.createElement("span");
               minorBadge.className = "badge b-minor";
@@ -1280,6 +1313,13 @@ const auth = firebase.auth();
           bSanctions.className="dropdown-item"; bSanctions.textContent="Sanciones y licencias";
           bSanctions.onclick = () => { toggleDetailPanel(e.id, 'sanctions'); };
 
+          const bAllStar = document.createElement("button");
+          bAllStar.className="dropdown-item"; bAllStar.textContent = e.isAllStar ? "Quitar All Star" : "Hacer All Star";
+          bAllStar.onclick = () => {
+              toggleIsAllStar(e.id);
+              dropdownContent.classList.remove("show");
+          };
+
           const bMinor = document.createElement("button");
           bMinor.className="dropdown-item"; bMinor.textContent= e.isMinor ? "Quitar Menor" : "Hacer Menor";
           bMinor.onclick = () => {
@@ -1290,6 +1330,7 @@ const auth = firebase.auth();
           dropdownContent.appendChild(bAvailability);
           dropdownContent.appendChild(bExceptions);
           dropdownContent.appendChild(bSanctions);
+          dropdownContent.appendChild(bAllStar);
           dropdownContent.appendChild(bMinor);
           dropdownDiv.appendChild(dropdownButton);
           dropdownDiv.appendChild(dropdownContent);
@@ -1654,6 +1695,17 @@ const auth = firebase.auth();
   }
 
   function renderAll(){
+    const schedule = getActiveSchedule();
+    const isLocked = schedule.isLocked;
+    const lockButton = el("#btn-lock-week");
+    if (isLocked) {
+        lockButton.textContent = "🔒";
+        lockButton.title = "Semana bloqueada";
+    } else {
+        lockButton.textContent = "🔓";
+        lockButton.title = "Semana desbloqueada";
+    }
+
     updateWeekDisplay();
     renderProjectedTicketsInput();
     renderDayTabs();
@@ -1673,7 +1725,30 @@ const auth = firebase.auth();
     if (viewPlanillaTurnoEl.style.display !== 'none') {
       renderPlanillaTurno();
     }
+    updateLockUI();
   }
+
+  function updateLockUI() {
+    const schedule = getActiveSchedule();
+    const isLocked = schedule.isLocked;
+
+    const elementsToDisable = [
+        ...document.querySelectorAll('.main-content button'),
+        ...document.querySelectorAll('.main-content input'),
+        ...document.querySelectorAll('.main-content select'),
+        ...document.querySelectorAll('.main-content textarea'),
+    ];
+
+    elementsToDisable.forEach(el => {
+        el.disabled = isLocked;
+    });
+
+    if (isLocked) {
+        tbody.style.pointerEvents = 'none';
+    } else {
+        tbody.style.pointerEvents = 'auto';
+    }
+}
 
   function renderScheduleList() {
     const content = el("#schedule-list-content");
@@ -3964,6 +4039,16 @@ const auth = firebase.auth();
 
   btnPrevWeek.addEventListener("click", () => changeWeek(-7));
   btnNextWeek.addEventListener("click", () => changeWeek(7));
+
+  function toggleWeekLock() {
+    const schedule = getActiveSchedule();
+    schedule.isLocked = !schedule.isLocked;
+    save();
+    renderAll();
+  }
+
+  el("#btn-lock-week").addEventListener("click", toggleWeekLock);
+
   weekDisplay.addEventListener("click", () => {
     calendarDate = new Date(state.activeWeek + "T12:00:00Z");
     renderCalendar();
