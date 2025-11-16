@@ -1,4 +1,5 @@
 import { firebaseConfig, SLOTS } from './src/config.js';
+import { HistoryManager } from './src/history.js';
 
 const app = firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
@@ -50,7 +51,6 @@ const auth = firebase.auth();
   const state = {
     employees: [],
     schedules: {},
-    scheduleHistory: [],
     templates: {},
     projectedTickets: {},
     activeWeek: toISODateString(getMonday(new Date())),
@@ -169,14 +169,15 @@ const auth = firebase.auth();
       saveTimeout = setTimeout(saveState, 1500);
   }
 
-  function saveWithHistory() {
-    const scheduleCopy = JSON.parse(JSON.stringify(getActiveSchedule()));
-    state.scheduleHistory.push(scheduleCopy);
-    if (state.scheduleHistory.length > 10) { // Keep last 10 changes
-        state.scheduleHistory.shift();
-    }
-    el("#btnUndo").disabled = false;
-    save();
+  const historyManager = new HistoryManager();
+
+  function commitChange(action) {
+      const currentSchedule = getActiveSchedule();
+      historyManager.push(currentSchedule);
+      action();
+      el("#btnUndo").disabled = !historyManager.canUndo();
+      save();
+      renderAll();
   }
 
   async function saveState() {
@@ -219,13 +220,13 @@ const auth = firebase.auth();
   const viewEmployeesEl = el('#view-employees');
   const viewTemplatesEl = el('#view-templates');
   const viewScheduleListEl = el('#view-schedule-list');
-  const viewRequestsEl = el('#view-requests');
+  const viewFrancosEl = el('#view-francos');
   const viewClockInsEl = el('#view-clock-ins');
   const viewPlanillaTurnoEl = el('#view-planilla-turno');
   const btnViewSchedule = el('#btn-view-schedule');
   const btnViewEmployees = el('#btn-view-employees');
   const btnViewTemplates = el('#btn-view-templates');
-  const btnViewRequests = el('#btn-view-requests');
+  const btnViewFrancos = el('#btn-view-francos');
   const btnScheduleList = el('#btn-schedule-list');
   const btnViewClockIns = el('#btn-view-clock-ins');
   const btnPlanillaTurno = el('#btn-planilla-turno');
@@ -260,13 +261,13 @@ const auth = firebase.auth();
     viewEmployeesEl.style.display = 'none';
     viewTemplatesEl.style.display = 'none';
     viewScheduleListEl.style.display = 'none';
-    viewRequestsEl.style.display = 'none';
+    viewFrancosEl.style.display = 'none';
     viewClockInsEl.style.display = 'none';
     viewPlanillaTurnoEl.style.display = 'none';
     btnViewSchedule.className = 'btn secondary main-menu-btn';
     btnViewEmployees.className = 'btn secondary main-menu-btn';
     btnViewTemplates.className = 'btn secondary main-menu-btn';
-    btnViewRequests.className = 'btn secondary main-menu-btn';
+    btnViewFrancos.className = 'btn secondary main-menu-btn';
     btnScheduleList.className = 'btn secondary main-menu-btn';
     btnViewClockIns.className = 'btn secondary main-menu-btn';
     btnPlanillaTurno.className = 'btn secondary main-menu-btn';
@@ -280,9 +281,9 @@ const auth = firebase.auth();
     } else if (viewName === 'templates') {
         viewTemplatesEl.style.display = 'block';
         btnViewTemplates.className = 'btn main-menu-btn';
-    } else if (viewName === 'requests') {
-        viewRequestsEl.style.display = 'block';
-        btnViewRequests.className = 'btn main-menu-btn';
+    } else if (viewName === 'francos') {
+        viewFrancosEl.style.display = 'block';
+        btnViewFrancos.className = 'btn main-menu-btn';
     } else if (viewName === 'schedule-list') {
         viewScheduleListEl.style.display = 'block';
         btnScheduleList.className = 'btn main-menu-btn';
@@ -298,7 +299,7 @@ const auth = firebase.auth();
   btnViewSchedule.addEventListener('click', () => showView('schedule'));
   btnViewEmployees.addEventListener('click', () => showView('employees'));
   btnViewTemplates.addEventListener('click', () => showView('templates'));
-  btnViewRequests.addEventListener('click', () => showView('requests'));
+  btnViewFrancos.addEventListener('click', () => showView('francos'));
   btnScheduleList.addEventListener('click', () => showView('schedule-list'));
   btnViewClockIns.addEventListener('click', () => showView('clock-ins'));
   btnPlanillaTurno.addEventListener('click', () => showView('planilla-turno'));
@@ -451,15 +452,18 @@ const auth = firebase.auth();
     // Remove employee from any shifts they were assigned to in ANY week
     for (const weekKey in state.schedules) {
         const schedule = state.schedules[weekKey];
-        for(const day in schedule){
-            schedule[day].forEach(shift => {
-                if(shift.employeeId === empId){
-                    shift.employeeId = null;
-                }
-            });
+        for (const day in schedule) {
+            // Check if the property is an array (a day's schedule) before iterating
+            if (Array.isArray(schedule[day])) {
+                schedule[day].forEach(shift => {
+                    if (shift.employeeId === empId) {
+                        shift.employeeId = null;
+                    }
+                });
+            }
         }
     }
-    saveWithHistory(); renderAll();
+    commitChange(() => {});
   }
 
   function deleteShift(shiftId) {
@@ -468,9 +472,9 @@ const auth = firebase.auth();
     ensureDay(day);
     const index = schedule[day].findIndex(s => s.id === shiftId);
     if (index > -1) {
-        schedule[day].splice(index, 1);
-        saveWithHistory();
-        renderAll();
+        commitChange(() => {
+            schedule[day].splice(index, 1);
+        });
     }
   }
 
@@ -496,10 +500,13 @@ const auth = firebase.auth();
     // Ensure we iterate through days in order
     const sortedDays = Object.keys(schedule).sort((a, b) => a - b);
     for (const day of sortedDays) {
-        const dayShifts = schedule[day] || [];
-        for (const shift of dayShifts) {
-            if (shift.employeeId === employeeId) {
-                shifts.push({ ...shift, day: parseInt(day, 10) });
+        const dayShifts = schedule[day];
+        // Ensure dayShifts is an array before iterating
+        if (Array.isArray(dayShifts)) {
+            for (const shift of dayShifts) {
+                if (shift.employeeId === employeeId) {
+                    shifts.push({ ...shift, day: parseInt(day, 10) });
+                }
             }
         }
     }
@@ -803,9 +810,9 @@ const auth = firebase.auth();
 
     const day = state.activeDay;
     ensureDay(day);
-    getActiveSchedule()[day].push(newShift);
-    saveWithHistory();
-    renderAll();
+    commitChange(() => {
+        getActiveSchedule()[day].push(newShift);
+    });
   });
 
   let isPainting = false;
@@ -862,9 +869,9 @@ const auth = firebase.auth();
 
       const day = state.activeDay;
       ensureDay(day);
-      getActiveSchedule()[day].push(newShift);
-      saveWithHistory();
-      renderAll();
+      commitChange(() => {
+          getActiveSchedule()[day].push(newShift);
+      });
   }
 
   window.addEventListener("mouseup", () => {
@@ -928,17 +935,19 @@ const auth = firebase.auth();
         shift.startSlot = tempShift.startSlot;
         shift.endSlot = tempShift.endSlot;
 
-        if (shift.startSlot >= shift.endSlot) {
-            const index = schedule[day].findIndex(s => s.id === unpaintShiftId);
-            if (index > -1) schedule[day].splice(index, 1);
-        }
-        saveWithHistory();
+        commitChange(() => {
+            if (shift.startSlot >= shift.endSlot) {
+                const index = schedule[day].findIndex(s => s.id === unpaintShiftId);
+                if (index > -1) schedule[day].splice(index, 1);
+            }
+        });
+    } else {
+        renderAll(); // Re-render to clear visual artifacts if no change was made
     }
 
     isUnpainting = false;
     unpaintShiftId = null;
     unpaintStartSlot = -1;
-    renderAll(); // Always re-render at the end
   }
 
   function handleSlotClick(shift, slotIndex) {
@@ -989,11 +998,10 @@ const auth = firebase.auth();
     }
 
     // If check passes or user confirms, apply the change
-    shift.startSlot = tempShift.startSlot;
-    shift.endSlot = tempShift.endSlot;
-
-    saveWithHistory();
-    renderAll();
+    commitChange(() => {
+        shift.startSlot = tempShift.startSlot;
+        shift.endSlot = tempShift.endSlot;
+    });
   }
 
   /* ====== Render ====== */
@@ -1595,14 +1603,14 @@ const auth = firebase.auth();
                 unassignBtn.style.marginLeft = "8px";
                 unassignBtn.title = "Des-asignar empleado";
                 unassignBtn.addEventListener("click", () => {
-                    if (shift.replacement && shift.replacement.originalEmployeeId) {
-                        shift.employeeId = shift.replacement.originalEmployeeId;
-                        delete shift.replacement;
-                    } else {
-                        shift.employeeId = null;
-                    }
-                    saveWithHistory();
-                    renderAll();
+                    commitChange(() => {
+                        if (shift.replacement && shift.replacement.originalEmployeeId) {
+                            shift.employeeId = shift.replacement.originalEmployeeId;
+                            delete shift.replacement;
+                        } else {
+                            shift.employeeId = null;
+                        }
+                    });
                 });
                 assignWrapper.appendChild(empNameSpan);
                 assignWrapper.appendChild(unassignBtn);
@@ -1718,8 +1726,8 @@ const auth = firebase.auth();
     if (viewScheduleListEl.style.display !== 'none') {
       renderScheduleList();
     }
-    if (viewRequestsEl.style.display !== 'none') {
-      renderRequests();
+    if (viewFrancosEl.style.display !== 'none') {
+      renderFrancos();
     }
     if (viewClockInsEl.style.display !== 'none') {
       renderClockInReport();
@@ -1954,70 +1962,67 @@ const auth = firebase.auth();
         const sourceShift = schedule[sourceDayIndex]?.find(s => s.id === sourceShiftId);
         if (!sourceShift) return;
 
-        // Scenario 1: Dropped on the "Unassigned" row to unassign a shift
-        if (targetEmployeeId === 'unassigned') {
-            if (!sourceShift.employeeId) return; // Already unassigned
-            sourceShift.employeeId = null;
-            saveWithHistory();
-            renderScheduleList();
-            return;
-        }
-
-        const targetEmployee = getEmployeeById(targetEmployeeId);
-        if (!targetEmployee) return;
-
-        // Scenario 2: Dropped on another shift (SWAP)
-        if (targetShiftElement) {
-            const targetShiftId = targetShiftElement.dataset.shiftId;
-            if (sourceShiftId === targetShiftId) return; // Dropped on itself
-
-            const targetShift = schedule[targetDayIndex]?.find(s => s.id === targetShiftId);
-            if (!targetShift || !targetShift.employeeId) return; // Cannot swap with an unassigned shift
-
-            const sourceEmployee = getEmployeeById(sourceShift.employeeId);
-            if (!sourceEmployee) {
-                alert("No se puede intercambiar un turno sin asignar. Arrástrelo a una celda vacía para asignarlo.");
+        commitChange(() => {
+            // Scenario 1: Dropped on the "Unassigned" row to unassign a shift
+            if (targetEmployeeId === 'unassigned') {
+                if (!sourceShift.employeeId) return; // Already unassigned
+                sourceShift.employeeId = null;
                 return;
             }
 
-            const check1 = canEmployeeWorkShift(targetEmployee, sourceShift, targetDayIndex, { shiftsToIgnore: [targetShift.id] });
-            if (!check1.pass) {
-                alert(`No se puede intercambiar: ${check1.message}`);
-                return;
-            }
-            const check2 = canEmployeeWorkShift(sourceEmployee, targetShift, sourceDayIndex, { shiftsToIgnore: [sourceShift.id] });
-            if (!check2.pass) {
-                alert(`No se puede intercambiar: ${check2.message}`);
-                return;
-            }
-            [targetShift.employeeId, sourceShift.employeeId] = [sourceShift.employeeId, targetShift.employeeId];
-        }
-        // Scenario 3: Dropped on an empty cell (MOVE / REASSIGN)
-        else {
-            const sourceEmployeeId = sourceShift.employeeId;
-            if (sourceEmployeeId === targetEmployeeId && sourceDayIndex === targetDayIndex) return;
+            const targetEmployee = getEmployeeById(targetEmployeeId);
+            if (!targetEmployee) return;
 
-            const ignoreIds = (sourceEmployeeId === targetEmployeeId) ? [sourceShift.id] : [];
-            const check = canEmployeeWorkShift(targetEmployee, sourceShift, targetDayIndex, { shiftsToIgnore: ignoreIds });
+            // Scenario 2: Dropped on another shift (SWAP)
+            if (targetShiftElement) {
+                const targetShiftId = targetShiftElement.dataset.shiftId;
+                if (sourceShiftId === targetShiftId) return; // Dropped on itself
 
-            if (!check.pass) {
-                alert(`No se puede mover/asignar el turno: ${check.message}`);
-                return;
+                const targetShift = schedule[targetDayIndex]?.find(s => s.id === targetShiftId);
+                if (!targetShift || !targetShift.employeeId) return; // Cannot swap with an unassigned shift
+
+                const sourceEmployee = getEmployeeById(sourceShift.employeeId);
+                if (!sourceEmployee) {
+                    alert("No se puede intercambiar un turno sin asignar. Arrástrelo a una celda vacía para asignarlo.");
+                    return;
+                }
+
+                const check1 = canEmployeeWorkShift(targetEmployee, sourceShift, targetDayIndex, { shiftsToIgnore: [targetShift.id] });
+                if (!check1.pass) {
+                    alert(`No se puede intercambiar: ${check1.message}`);
+                    return;
+                }
+                const check2 = canEmployeeWorkShift(sourceEmployee, targetShift, sourceDayIndex, { shiftsToIgnore: [sourceShift.id] });
+                if (!check2.pass) {
+                    alert(`No se puede intercambiar: ${check2.message}`);
+                    return;
+                }
+                [targetShift.employeeId, sourceShift.employeeId] = [sourceShift.employeeId, targetShift.employeeId];
             }
+            // Scenario 3: Dropped on an empty cell (MOVE / REASSIGN)
+            else {
+                const sourceEmployeeId = sourceShift.employeeId;
+                if (sourceEmployeeId === targetEmployeeId && sourceDayIndex === targetDayIndex) return;
 
-            // Re-find and splice to prevent duplication bugs
-            const originalDayShifts = schedule[sourceDayIndex];
-            const shiftIndex = originalDayShifts.findIndex(s => s.id === sourceShift.id);
-            if (shiftIndex > -1) {
-                const [shiftToMove] = originalDayShifts.splice(shiftIndex, 1);
-                shiftToMove.employeeId = targetEmployee.id;
-                ensureDay(targetDayIndex);
-                schedule[targetDayIndex].push(shiftToMove);
+                const ignoreIds = (sourceEmployeeId === targetEmployeeId) ? [sourceShift.id] : [];
+                const check = canEmployeeWorkShift(targetEmployee, sourceShift, targetDayIndex, { shiftsToIgnore: ignoreIds });
+
+                if (!check.pass) {
+                    alert(`No se puede mover/asignar el turno: ${check.message}`);
+                    return;
+                }
+
+                // Re-find and splice to prevent duplication bugs
+                const originalDayShifts = schedule[sourceDayIndex];
+                const shiftIndex = originalDayShifts.findIndex(s => s.id === sourceShift.id);
+                if (shiftIndex > -1) {
+                    const [shiftToMove] = originalDayShifts.splice(shiftIndex, 1);
+                    shiftToMove.employeeId = targetEmployee.id;
+                    ensureDay(targetDayIndex);
+                    schedule[targetDayIndex].push(shiftToMove);
+                }
             }
-        }
-
-        saveWithHistory();
-        renderScheduleList();
+        });
     });
   }
 
@@ -2869,9 +2874,9 @@ const auth = firebase.auth();
                         return; // User cancelled
                     }
                 }
-                shift.employeeId = emp.id;
-                saveWithHistory();
-                renderAll();
+                commitChange(() => {
+                    shift.employeeId = emp.id;
+                });
                 wrap.remove();
             });
 
@@ -3051,20 +3056,19 @@ const auth = firebase.auth();
             }
         }
 
-        shift.role = newRole;
-        shift.startSlot = newStart;
-        shift.endSlot = newEndSlot;
+        commitChange(() => {
+            shift.role = newRole;
+            shift.startSlot = newStart;
+            shift.endSlot = newEndSlot;
 
-        if (shift.employeeId) {
-            const emp = state.employees.find(e => e.id === shift.employeeId);
-            if (emp && !(emp.stars || []).includes(newRole)) {
-                alert(`El empleado asignado (${emp.name}) no tiene la estrella "${newRole}", por lo que será des-asignado.`);
-                shift.employeeId = null;
+            if (shift.employeeId) {
+                const emp = state.employees.find(e => e.id === shift.employeeId);
+                if (emp && !(emp.stars || []).includes(newRole)) {
+                    alert(`El empleado asignado (${emp.name}) no tiene la estrella "${newRole}", por lo que será des-asignado.`);
+                    shift.employeeId = null;
+                }
             }
-        }
-
-        saveWithHistory();
-        renderAll();
+        });
         wrap.remove();
     });
     const cancelBtn = document.createElement("button"); cancelBtn.className="btn secondary"; cancelBtn.textContent="Cancelar";
@@ -3233,10 +3237,10 @@ const auth = firebase.auth();
       shift.id = crypto.randomUUID();
     });
 
-    const schedule = getActiveSchedule();
-    schedule[state.activeDay] = newShifts;
-
-    saveWithHistory();
+    commitChange(() => {
+        const schedule = getActiveSchedule();
+        schedule[state.activeDay] = newShifts;
+    });
     showView('schedule');
   }
 
@@ -3986,6 +3990,30 @@ const auth = firebase.auth();
   }
 
   weeklySummaryContent.addEventListener('click', (e) => {
+    if (e.target.classList.contains('btn-go-to-shift')) {
+      const btn = e.target;
+      const shiftId = btn.dataset.shiftId;
+      const dayIndex = parseInt(btn.dataset.dayIndex, 10);
+
+      state.activeDay = dayIndex;
+      weeklySummaryModal.style.display = 'none'; // Close the modal
+      showView('schedule');
+
+      // Use a short timeout to ensure the view has rendered before scrolling
+      setTimeout(() => {
+        const shiftRow = document.querySelector(`[data-shift-id="${shiftId}"]`);
+        if (shiftRow) {
+          shiftRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          shiftRow.classList.add('highlight-shift');
+          setTimeout(() => {
+            shiftRow.classList.remove('highlight-shift');
+          }, 2000); // Highlight for 2 seconds
+        }
+      }, 100);
+
+      return;
+    }
+
     if (!e.target.classList.contains('btn-details')) {
       return;
     }
@@ -4012,9 +4040,14 @@ const auth = firebase.auth();
           const dayName = dayShortNames[s.day];
           const startTime = SLOTS[s.startSlot].label;
           const endTime = SLOTS[s.endSlot + 1] ? SLOTS[s.endSlot + 1].label : '??';
-          return `<span style="white-space:nowrap; margin-right: 10px;"><strong>${dayName}:</strong> ${escapeHtml(s.role)} (${startTime}-${endTime})</span>`;
-        }).join(' ');
-        detailsRow.querySelector('.details-content').innerHTML = detailsHtml;
+          return `
+            <div class="shift-detail-item">
+              <span><strong>${dayName}:</strong> ${escapeHtml(s.role)} (${startTime}-${endTime})</span>
+              <button class="btn secondary btn-go-to-shift" data-shift-id="${s.id}" data-day-index="${s.day}" style="padding: 1px 6px; font-size: 11px; margin-left: 8px;">Ir</button>
+            </div>
+          `;
+        }).join('');
+        detailsRow.querySelector('.details-content').innerHTML = `<div class="shift-detail-container">${detailsHtml}</div>`;
       }
 
       detailsRow.style.display = 'table-row';
@@ -4524,15 +4557,13 @@ const auth = firebase.auth();
   el("#schedule-list-search").addEventListener("input", renderScheduleList);
 
   function undoLastAction() {
-    if (state.scheduleHistory.length > 0) {
-        const lastState = state.scheduleHistory.pop();
+    if (historyManager.canUndo()) {
+        const lastState = historyManager.pop();
         state.schedules[state.activeWeek] = lastState;
-        save(); // Save the reverted state without adding to history
+        save();
         renderAll();
     }
-    if (state.scheduleHistory.length === 0) {
-        el("#btnUndo").disabled = true;
-    }
+    el("#btnUndo").disabled = !historyManager.canUndo();
   }
 
   el("#btnUndo").addEventListener("click", undoLastAction);
@@ -4545,82 +4576,58 @@ const auth = firebase.auth();
     }
   });
 
-  async function renderRequests() {
-    const content = el("#requests-content");
-    content.innerHTML = "<p>Cargando solicitudes...</p>";
+  function renderFrancos() {
+    const content = el("#francos-content");
+    content.innerHTML = "";
 
-    try {
-      const requestsSnapshot = await db.collection("requests").where("type", "==", "timeOff").orderBy("createdAt", "desc").get();
-      if (requestsSnapshot.empty) {
-        content.innerHTML = "<p>No hay solicitudes pendientes.</p>";
+    const schedule = getActiveSchedule();
+    const employees = state.employees.slice().sort((a, b) => a.name.localeCompare(b.name));
+
+    if (employees.length === 0) {
+        content.innerHTML = `<p class="muted">No hay empleados para mostrar.</p>`;
         return;
-      }
-
-      let requestsHtml = `<table class="emp-table-new">
-        <thead>
-          <tr>
-            <th>Empleado</th>
-            <th>Fecha Solicitada</th>
-            <th>Motivo</th>
-            <th>Estado</th>
-            <th>Acciones</th>
-          </tr>
-        </thead>
-        <tbody>`;
-
-      for (const doc of requestsSnapshot.docs) {
-        const request = doc.data();
-        const employee = state.employees.find(e => e.id === request.employeeId);
-        const requestDate = new Date(request.date + 'T00:00:00');
-        const formattedDate = requestDate.toLocaleDateString('es-ES', { year: 'numeric', month: 'long', day: 'numeric' });
-
-        requestsHtml += `
-          <tr>
-            <td>${employee ? escapeHtml(employee.name) : 'Desconocido'}</td>
-            <td>${formattedDate}</td>
-            <td>${escapeHtml(request.reason || '-')}</td>
-            <td><span class="badge status-${request.status.toLowerCase()}">${request.status}</span></td>
-            <td>
-              ${request.status === 'PENDING' ? `
-                <button class="btn approve-request" data-id="${doc.id}">Aprobar</button>
-                <button class="btn secondary del reject-request" data-id="${doc.id}">Rechazar</button>
-              ` : ''}
-            </td>
-          </tr>
-        `;
-      }
-      requestsHtml += `</tbody></table>`;
-      content.innerHTML = requestsHtml;
-
-      content.querySelectorAll('.approve-request').forEach(button => {
-        button.addEventListener('click', async (e) => {
-          const requestId = e.target.dataset.id;
-          const requestDoc = await db.collection('requests').doc(requestId).get();
-          const request = requestDoc.data();
-
-          // Find and clear the shift
-          const shiftsSnapshot = await db.collection('shifts').where('employeeId', '==', request.employeeId).where('date', '==', request.date).get();
-          shiftsSnapshot.forEach(doc => {
-            doc.ref.update({ employeeId: null });
-          });
-
-          await db.collection('requests').doc(requestId).update({ status: 'APPROVED' });
-          renderRequests();
-        });
-      });
-
-      content.querySelectorAll('.reject-request').forEach(button => {
-        button.addEventListener('click', async (e) => {
-          const requestId = e.target.dataset.id;
-          await db.collection('requests').doc(requestId).update({ status: 'REJECTED' });
-          renderRequests();
-        });
-      });
-
-    } catch (error) {
-      console.error("Error fetching requests:", error);
-      content.innerHTML = "<p>Error al cargar las solicitudes.</p>";
     }
-  }
 
+    const table = document.createElement("table");
+    table.className = "schedule-list-table"; // Re-use existing styles
+
+    const thead = table.createTHead();
+    const headerRow = thead.insertRow();
+    const weekMonday = new Date(state.activeWeek + "T12:00:00Z");
+
+    headerRow.innerHTML = DAYS.map((dayName, dayIndex) => {
+        const dayDate = new Date(weekMonday);
+        dayDate.setDate(weekMonday.getDate() + dayIndex);
+        return `<th>${dayName}<br><span class="muted" style="font-size:11px;">${dayDate.getDate()}/${dayDate.getMonth() + 1}</span></th>`;
+    }).join('');
+
+    const tbody = table.createTBody();
+    const maxRowsPerDay = [0, 0, 0, 0, 0, 0, 0];
+    const employeesByDay = [[], [], [], [], [], [], []];
+
+    // First, find which employees have a day off on which day
+    for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
+        const dayShifts = schedule[dayIndex] || [];
+        const assignedEmployeeIds = new Set(dayShifts.map(s => s.employeeId));
+
+        employees.forEach(emp => {
+            if (!assignedEmployeeIds.has(emp.id)) {
+                employeesByDay[dayIndex].push(emp.name);
+            }
+        });
+        maxRowsPerDay[dayIndex] = employeesByDay[dayIndex].length;
+    }
+
+    const maxRows = Math.max(...maxRowsPerDay);
+
+    for (let i = 0; i < maxRows; i++) {
+        const row = tbody.insertRow();
+        for (let j = 0; j < 7; j++) {
+            const cell = row.insertCell();
+            cell.textContent = employeesByDay[j][i] || '';
+        }
+    }
+
+    content.appendChild(table);
+  }
 })();
