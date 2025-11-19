@@ -3879,6 +3879,7 @@ const auth = firebase.auth();
   const weeklySummaryModalClose = el("#weekly-summary-modal-close");
   const weeklySummaryContent = el("#weekly-summary-content");
   const weeklySummaryTitle = el("#weekly-summary-title");
+  const btnPrintWeeklySummary = el("#btn-print-weekly-summary");
 
   function renderWeeklySummary() {
     // Set title
@@ -3960,11 +3961,118 @@ const auth = firebase.auth();
     `;
   }
 
+  function printWeeklySummary() {
+    const sortOrder = state.weeklySummarySort || 'alpha';
+    let employees = state.employees.slice();
+
+    const employeeData = employees.map(emp => ({
+        ...emp,
+        weeklyHours: getEmployeeWeeklyHours(emp.id),
+        workingDaysCount: new Set(getEmployeeShiftsForWeek(emp.id).map(s => s.day)).size
+    })).filter(emp => emp.weeklyHours > 0); // Filter out employees with 0 hours
+
+    if (sortOrder === 'hours') {
+        employeeData.sort((a, b) => b.weeklyHours - a.weeklyHours);
+    } else if (sortOrder === 'days') {
+        employeeData.sort((a, b) => b.workingDaysCount - a.workingDaysCount);
+    } else { // alpha
+        employeeData.sort((a, b) => a.name.localeCompare(b.name));
+    }
+    employees = employeeData;
+
+    const middleIndex = Math.ceil(employees.length / 2);
+    const leftColumnEmployees = employees.slice(0, middleIndex);
+    const rightColumnEmployees = employees.slice(middleIndex);
+
+    const monday = new Date(state.activeWeek + "T12:00:00Z");
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    const formatDate = (d) => `${String(d.getUTCDate()).padStart(2,'0')}/${String(d.getUTCMonth()+1).padStart(2,'0')}`;
+    const weekTitle = `Semana del ${formatDate(monday)} al ${formatDate(sunday)}`;
+
+
+    const generateTableFor = (employeeList) => {
+        let tableHTML = `<table class="summary-print-table">
+            <thead>
+                <tr>
+                    <th>Empleado</th>
+                    <th>Horas</th>
+                    <th>Días</th>
+                </tr>
+            </thead>
+            <tbody>`;
+        const dayShortNames = ["Lu", "Ma", "Mi", "Ju", "Vi", "Sá", "Do"];
+        employeeList.forEach(emp => {
+            const weeklyHours = emp.weeklyHours;
+            const shifts = getEmployeeShiftsForWeek(emp.id);
+            const workingDays = new Set(shifts.map(s => s.day));
+            const workingDaysStr = dayShortNames.filter((day, i) => workingDays.has(i)).join(', ');
+            tableHTML += `
+                <tr>
+                    <td>${escapeHtml(emp.name)}</td>
+                    <td>${String(weeklyHours).replace('.', ',')}hs</td>
+                    <td>${workingDaysStr || 'Sin turnos'}</td>
+                </tr>`;
+        });
+        tableHTML += `</tbody></table>`;
+        return tableHTML;
+    };
+
+    const printWindow = window.open('', '', 'height=800,width=1200');
+    printWindow.document.write(`
+        <html>
+            <head>
+                <title>Resumen Semanal - ${weekTitle}</title>
+                <style>
+                    body { font-family: sans-serif; margin: 20px; font-size: 10px; }
+                    h1 { text-align: center; font-size: 14px; margin-bottom: 15px; }
+                    .summary-print-container {
+                        display: grid;
+                        grid-template-columns: 1fr 1fr;
+                        gap: 20px;
+                        width: 100%;
+                    }
+                    .summary-print-table {
+                        width: 100%;
+                        border-collapse: collapse;
+                    }
+                    .summary-print-table th, .summary-print-table td {
+                        border: 1px solid #ccc;
+                        padding: 4px;
+                        text-align: left;
+                    }
+                    .summary-print-table th {
+                        background-color: #f2f2f2;
+                    }
+                    @media print {
+                        body { margin: 0.5in; }
+                    }
+                </style>
+            </head>
+            <body>
+                <h1>Resumen Semanal - ${weekTitle}</h1>
+                <div class="summary-print-container">
+                    <div>${generateTableFor(leftColumnEmployees)}</div>
+                    <div>${generateTableFor(rightColumnEmployees)}</div>
+                </div>
+                <script>
+                    setTimeout(() => { window.print(); }, 250);
+                </script>
+            </body>
+        </html>
+    `);
+    printWindow.document.close();
+  }
+
   if (btnWeeklySummary) {
     btnWeeklySummary.addEventListener("click", () => {
       renderWeeklySummary();
       weeklySummaryModal.style.display = "flex";
     });
+  }
+
+  if (btnPrintWeeklySummary) {
+    btnPrintWeeklySummary.addEventListener("click", printWeeklySummary);
   }
 
   if (weeklySummaryModalClose) {
