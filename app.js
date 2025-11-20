@@ -128,6 +128,9 @@ const auth = firebase.auth();
             if (!emp.sanctions) {
               emp.sanctions = [];
             }
+            if (!emp.priority) {
+              emp.priority = 'medium';
+            }
           });
           state.templates = data.templates || {};
           state.projectedTickets = data.projectedTickets || {};
@@ -406,6 +409,7 @@ const auth = firebase.auth();
       stars: [],
       isMinor: false,
       isAllStar: false,
+      priority: 'medium', // 'high', 'medium', 'low'
       availability: { "0": [], "1": [], "2": [], "3": [], "4": [], "5": [], "6": [] },
       exceptions: [],
       sanctions: [],
@@ -785,6 +789,76 @@ const auth = firebase.auth();
     }
   }
 
+  function autoAssignShifts() {
+      const schedule = getActiveSchedule();
+      let assignedCount = 0;
+      let skippedCount = 0;
+      const totalUnassigned = [];
+
+      // Collect all unassigned shifts across the week
+      for (let day = 0; day < 7; day++) {
+          const dayShifts = schedule[day] || [];
+          dayShifts.forEach(shift => {
+              if (!shift.employeeId) {
+                  totalUnassigned.push({ shift, day });
+              }
+          });
+      }
+
+      if (totalUnassigned.length === 0) {
+          alert("No hay turnos vacíos para asignar.");
+          return;
+      }
+
+      if (!confirm(`Se encontraron ${totalUnassigned.length} turnos vacíos en la semana visible.\n\nEl sistema intentará asignarlos priorizando empleados:\n1. Alta prioridad\n2. Menor carga horaria semanal\n\n¿Desea continuar?`)) {
+          return;
+      }
+
+      commitChange(() => {
+          // Iterate day by day to respect daily constraints sequentially
+          for (let day = 0; day < 7; day++) {
+              const dayShifts = schedule[day] || [];
+              const unassignedInDay = dayShifts.filter(s => !s.employeeId);
+
+              unassignedInDay.forEach(shift => {
+                  // Find eligible candidates
+                  const eligibleCandidates = state.employees.filter(emp => {
+                      const result = canEmployeeWorkShift(emp, shift, day, { silent: true });
+                      return result.pass;
+                  });
+
+                  if (eligibleCandidates.length === 0) {
+                      skippedCount++;
+                      return;
+                  }
+
+                  // Sort candidates
+                  // Priority: High (3) > Medium (2) > Low (1)
+                  // Tie-breaker: Weekly Hours (Ascending)
+                  eligibleCandidates.sort((a, b) => {
+                      const priorityMap = { 'high': 3, 'medium': 2, 'low': 1 };
+                      const pA = priorityMap[a.priority || 'medium'];
+                      const pB = priorityMap[b.priority || 'medium'];
+
+                      if (pA !== pB) {
+                          return pB - pA; // Higher priority first
+                      }
+
+                      const hoursA = getEmployeeWeeklyHours(a.id);
+                      const hoursB = getEmployeeWeeklyHours(b.id);
+                      return hoursA - hoursB; // Lower hours first
+                  });
+
+                  // Assign best candidate
+                  shift.employeeId = eligibleCandidates[0].id;
+                  assignedCount++;
+              });
+          }
+      });
+
+      alert(`Proceso completado.\n\n- Asignados: ${assignedCount}\n- Sin candidato válido: ${skippedCount}`);
+  }
+
   /* ====== Horarios ====== */
   function ensureDay(d){
     const schedule = getActiveSchedule();
@@ -1159,7 +1233,7 @@ const auth = firebase.auth();
 
     const thead = table.createTHead();
     const headRow = thead.insertRow();
-    headRow.innerHTML = "<th>Nombre</th><th>DNI/Mail</th><th>Estrellas</th><th>Acciones</th>";
+    headRow.innerHTML = "<th>Nombre</th><th>DNI/Mail</th><th>Prioridad</th><th>Estrellas</th><th>Acciones</th>";
 
     const tbody = table.createTBody();
     filtered.forEach(e=>{
@@ -1232,6 +1306,32 @@ const auth = firebase.auth();
         dniMailCell.innerHTML = `<div>${e.dni || '-'}</div><div class="muted" style="font-size:12px;">${e.mail || '-'}</div>`;
       }
 
+      // Priority cell
+      const priorityCell = row.insertCell();
+      if (isEditing) {
+          const prioritySelect = document.createElement('select');
+          prioritySelect.className = 'select';
+          prioritySelect.id = `edit-priority-input-${e.id}`;
+          const priorities = [
+              {value: 'high', label: 'Alta'},
+              {value: 'medium', label: 'Media'},
+              {value: 'low', label: 'Baja'}
+          ];
+          priorities.forEach(p => {
+              const opt = document.createElement('option');
+              opt.value = p.value;
+              opt.textContent = p.label;
+              if (e.priority === p.value) opt.selected = true;
+              prioritySelect.appendChild(opt);
+          });
+          priorityCell.appendChild(prioritySelect);
+      } else {
+          const priorityMap = { 'high': 'Alta', 'medium': 'Media', 'low': 'Baja' };
+          priorityCell.textContent = priorityMap[e.priority] || 'Media';
+          if (e.priority === 'high') priorityCell.style.fontWeight = 'bold';
+          if (e.priority === 'low') priorityCell.className = 'muted';
+      }
+
       // Stars cell
       const starsCell = row.insertCell();
       if (e.stars && e.stars.length > 0) {
@@ -1258,10 +1358,12 @@ const auth = firebase.auth();
               const newDisplayName = el(`#edit-display-name-input-${e.id}`).value.trim();
               const newDni = el(`#edit-dni-input-${e.id}`).value.trim();
               const newMail = el(`#edit-mail-input-${e.id}`).value.trim();
+              const newPriority = el(`#edit-priority-input-${e.id}`).value;
               if (newName) {
                   e.name = newName;
                   e.dni = newDni;
                   e.mail = newMail;
+                  e.priority = newPriority;
                   const nameParts = newName.split(',');
                   e.displayName = newDisplayName || (nameParts.length > 1 ? nameParts[1].trim() : newName.split(' ')[0]);
                   state.editingEmployeeId = null;
@@ -1359,7 +1461,7 @@ const auth = firebase.auth();
       if (state.activeDetailEmployeeId === e.id) {
           const detailRow = tbody.insertRow();
           const detailCell = detailRow.insertCell();
-          detailCell.colSpan = 4; // Span across all columns
+          detailCell.colSpan = 5; // Span across all columns
           detailCell.className = 'employee-detail-cell';
 
           if (state.activeDetailSection === 'stars') {
@@ -3851,6 +3953,15 @@ const auth = firebase.auth();
   /* ====== Dropdown ====== */
   const actionsButton = el("#btn-actions");
   const actionsDropdown = el("#actions-dropdown");
+
+  // Auto-Assign Button Logic
+  const btnAutoAssign = el("#btn-auto-assign");
+  if (btnAutoAssign) {
+      btnAutoAssign.addEventListener("click", () => {
+          autoAssignShifts();
+          actionsDropdown.classList.remove('show');
+      });
+  }
 
   if(actionsButton) {
     actionsButton.addEventListener("click", (e) => {
