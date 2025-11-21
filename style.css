@@ -938,3 +938,241 @@ body.dark-mode #calendar-grid .day.monday:not(.other-month):hover {
       --ink: #000000;
     }
 }
+
+/* --- Responsive Styles (Mobile) --- */
+@media (max-width: 768px) {
+  /* Layout Basics */
+  .wrap {
+    padding: 8px;
+    width: 100%;
+    min-width: 0; /* Override min-width: 1200px */
+  }
+
+  /* Allow body to scroll if content overflows height */
+  body {
+    height: auto; /* Let it grow */
+    min-height: 100vh;
+    overflow: auto; /* Main scroll is on body for mobile usually better */
+  }
+
+  .main-content {
+      overflow: visible; /* Let body handle scroll */
+      flex-grow: 0; /* Don't force flex grow */
+  }
+
+  html, body {
+      overflow: auto; /* Override hidden */
+  }
+
+  /* Header / Navigation */
+  .bar {
+      position: relative; /* Unstick header on mobile to save space? Or keep sticky? Sticky is better for tools. */
+      position: sticky;
+  }
+
+  .bar-inner {
+    flex-direction: column;
+    padding: 8px 12px;
+    gap: 8px;
+    align-items: stretch;
+  }
+
+  /* Header Top Row (Title + Dark Mode) */
+  .bar-inner > .row:first-child {
+      width: 100%;
+      justify-content: space-between;
+      flex-wrap: wrap;
+  }
+
+  h1 {
+      font-size: 16px;
+  }
+
+  /* Main Menu - Horizontal Scroll */
+  #main-menu {
+    width: 100%;
+    margin-left: 0 !important;
+    overflow-x: auto;
+    white-space: nowrap;
+    padding-bottom: 8px; /* Space for touch scroll */
+    display: flex;
+    gap: 8px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  #main-menu::-webkit-scrollbar {
+      height: 4px;
+  }
+  #main-menu::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 2px;
+  }
+
+  /* Week Selector - Stacked */
+  #week-selector-container {
+      margin-left: 0 !important;
+      width: 100%;
+      justify-content: center;
+      margin-top: 4px;
+      order: 3;
+  }
+
+  .dropdown {
+      margin-left: 0 !important;
+  }
+
+  /* Schedule View Card Height */
+  #view-schedule .card {
+      height: 600px; /* Fixed height for mobile or auto? */
+      height: 75vh; /* Use viewport height */
+      min-height: 500px;
+  }
+
+  /* Schedule Controls - Stacked */
+  .card-h-controls {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    padding: 12px 8px;
+  }
+
+  .controls-left, .controls-right {
+      width: 100%;
+      display: flex;
+      justify-content: center;
+  }
+
+  .controls-center {
+      grid-column: 1;
+      order: -1; /* Date on top */
+      width: 100%;
+  }
+
+  .controls-group {
+      justify-content: center;
+      width: 100%;
+  }
+
+  #dayTabs {
+      justify-content: flex-start;
+      overflow-x: auto;
+      padding-bottom: 4px;
+      width: 100%;
+      flex-wrap: nowrap !important; /* Force horizontal scroll */
+  }
+
+  .day-tab-item {
+      flex: 0 0 auto;
+  }
+
+  /* Input adjustments */
+  .control-item {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 2px;
+  }
+
+  .control-item label {
+      font-size: 10px;
+  }
+
+  /* Table Container */
+  .table {
+    min-width: 1000px; /* Keep table wide so it scrolls */
+  }
+
+  .scroller {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Employee List adjustments */
+  #view-employees .card-c .row {
+      flex-wrap: wrap;
+  }
+
+  #inpName, #inpDni, #inpMail {
+      flex: 1 1 100%; /* Full width inputs */
+  }
+
+  #btnAddEmp {
+      width: 100%;
+      margin-top: 4px;
+  }
+
+  /* Employee Table Responsive */
+  .emp-table-new th, .emp-table-new td {
+      padding: 8px;
+      font-size: 13px;
+  }
+
+  .emp-table-new .actions-cell-new {
+      width: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+  }
+
+  .emp-table-new .actions-cell-new .btn {
+      width: 100%;
+  }
+
+  /* Modals */
+  .modal-content {
+      width: 95% !important;
+      max-width: 95% !important;
+      margin: 10px;
+      max-height: 85vh;
+      display: flex;
+      flex-direction: column;
+  }
+
+  .modal-content .card {
+      display: flex;
+      flex-direction: column;
+      max-height: 100%;
+      border: none;
+      box-shadow: none;
+  }
+
+  .modal-content .card-c {
+      overflow-y: auto;
+  }
+
+  /* Legend Footer */
+  .legend-footer .legend {
+      gap: 8px;
+      justify-content: flex-start;
+      overflow-x: auto;
+      white-space: nowrap;
+      padding-bottom: 4px;
+  }
+
+  /* Planilla Turno Grid */
+  .planilla-grid {
+      grid-template-columns: 1fr;
+      gap: 16px;
+  }
+
+  .breaks-section {
+      width: 100%;
+  }
+
+  /* Fix for Schedule List View on Mobile */
+  #schedule-list-content {
+    overflow-x: auto;
+    display: block;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .schedule-list-table {
+    min-width: 900px; /* Force table to be wide so it doesn't squish */
+  }
+
+  /* Fix for Clock-in Report Table on Mobile */
+  .employee-clock-in-card {
+      overflow-x: auto;
+  }
+  .clock-in-table-internal {
+      min-width: 600px;
+  }
+}
