@@ -128,6 +128,9 @@ const auth = firebase.auth();
             if (!emp.sanctions) {
               emp.sanctions = [];
             }
+            if (!emp.priority) {
+              emp.priority = 'medium';
+            }
           });
           state.templates = data.templates || {};
           state.projectedTickets = data.projectedTickets || {};
@@ -406,6 +409,7 @@ const auth = firebase.auth();
       stars: [],
       isMinor: false,
       isAllStar: false,
+      priority: 'medium', // 'very-high', 'high', 'medium', 'low', 'very-low'
       availability: { "0": [], "1": [], "2": [], "3": [], "4": [], "5": [], "6": [] },
       exceptions: [],
       sanctions: [],
@@ -783,6 +787,103 @@ const auth = firebase.auth();
         const availableRanges = dayAvailabilitySlots.map(s => `${s.start || 'Apertura'} a ${s.end || 'Cierre'}`).join(', ');
         return { isAvailable: false, reason: `El horario del turno no coincide con la disponibilidad de ${employee.name} para este día: ${availableRanges}.` };
     }
+  }
+
+  function autoAssignShifts() {
+      const schedule = getActiveSchedule();
+      let assignedCount = 0;
+      let skippedCount = 0;
+      const totalUnassigned = [];
+
+      // Collect all unassigned shifts across the week
+      for (let day = 0; day < 7; day++) {
+          const dayShifts = schedule[day] || [];
+          dayShifts.forEach(shift => {
+              if (!shift.employeeId) {
+                  totalUnassigned.push({ shift, day });
+              }
+          });
+      }
+
+      if (totalUnassigned.length === 0) {
+          alert("No hay turnos vacíos para asignar.");
+          return;
+      }
+
+      if (!confirm(`Se encontraron ${totalUnassigned.length} turnos vacíos.\n\nEl sistema asignará turnos respetando:\n1. Mínimo de 14hs semanales.\n2. Prioridad (Muy Alta > Muy Baja).\n3. Menor carga horaria actual.\n\n¿Continuar?`)) {
+          return;
+      }
+
+      const PRIORITY_MAP = {
+          'very-high': 5,
+          'high': 4,
+          'medium': 3,
+          'low': 2,
+          'very-low': 1
+      };
+
+      commitChange(() => {
+          // Two-Pass Strategy:
+          // Pass 1: Assign to employees with < 14 hours (Safety Net)
+          // Pass 2: Assign remaining using standard priority logic (Merit)
+
+          const processShift = (shift, day, onlyUnder14) => {
+              // Find eligible candidates
+              let eligibleCandidates = state.employees.filter(emp => {
+                  const result = canEmployeeWorkShift(emp, shift, day, { silent: true });
+                  return result.pass;
+              });
+
+              if (onlyUnder14) {
+                  eligibleCandidates = eligibleCandidates.filter(emp => getEmployeeWeeklyHours(emp.id) < 14);
+              }
+
+              if (eligibleCandidates.length === 0) return false;
+
+              // Sort candidates: Priority Desc -> Hours Asc
+              eligibleCandidates.sort((a, b) => {
+                  const pA = PRIORITY_MAP[a.priority || 'medium'];
+                  const pB = PRIORITY_MAP[b.priority || 'medium'];
+
+                  if (pA !== pB) {
+                      return pB - pA; // Higher priority first
+                  }
+
+                  const hoursA = getEmployeeWeeklyHours(a.id);
+                  const hoursB = getEmployeeWeeklyHours(b.id);
+                  return hoursA - hoursB; // Lower hours first
+              });
+
+              // Assign best candidate
+              shift.employeeId = eligibleCandidates[0].id;
+              assignedCount++;
+              return true;
+          };
+
+          // Iterate day by day to keep sequential logic
+          for (let day = 0; day < 7; day++) {
+              const dayShifts = schedule[day] || [];
+              let unassignedInDay = dayShifts.filter(s => !s.employeeId);
+
+              // Pass 1: Under 14h
+              unassignedInDay.forEach(shift => {
+                 if (shift.employeeId) return; // Already filled (shouldn't happen in this loop but safe)
+                 processShift(shift, day, true);
+              });
+
+              // Refetch unassigned for Pass 2
+              unassignedInDay = dayShifts.filter(s => !s.employeeId);
+
+              // Pass 2: General
+              unassignedInDay.forEach(shift => {
+                  if (!processShift(shift, day, false)) {
+                      skippedCount++;
+                  }
+              });
+          }
+      });
+
+      alert(`Proceso completado.\n\n- Asignados: ${assignedCount}\n- Sin candidato válido: ${skippedCount}`);
   }
 
   /* ====== Horarios ====== */
@@ -1205,6 +1306,28 @@ const auth = firebase.auth();
           nameInputContainer.appendChild(displayNameInput);
           nameInputContainer.appendChild(dniInput);
           nameInputContainer.appendChild(mailInput);
+
+          // Add Priority Select to name input container for compact editing
+          const prioritySelect = document.createElement('select');
+          prioritySelect.className = 'select';
+          prioritySelect.style.marginTop = '4px';
+          prioritySelect.id = `edit-priority-input-${e.id}`;
+          const priorities = [
+              {value: 'very-high', label: 'Muy Alta'},
+              {value: 'high', label: 'Alta'},
+              {value: 'medium', label: 'Media'},
+              {value: 'low', label: 'Baja'},
+              {value: 'very-low', label: 'Muy Baja'}
+          ];
+          priorities.forEach(p => {
+              const opt = document.createElement('option');
+              opt.value = p.value;
+              opt.textContent = p.label;
+              if ((e.priority || 'medium') === p.value) opt.selected = true;
+              prioritySelect.appendChild(opt);
+          });
+          nameInputContainer.appendChild(prioritySelect);
+
           nameCell.appendChild(nameInputContainer);
       } else {
           nameCell.textContent = e.name;
@@ -1258,10 +1381,12 @@ const auth = firebase.auth();
               const newDisplayName = el(`#edit-display-name-input-${e.id}`).value.trim();
               const newDni = el(`#edit-dni-input-${e.id}`).value.trim();
               const newMail = el(`#edit-mail-input-${e.id}`).value.trim();
+              const newPriority = el(`#edit-priority-input-${e.id}`).value;
               if (newName) {
                   e.name = newName;
                   e.dni = newDni;
                   e.mail = newMail;
+                  e.priority = newPriority;
                   const nameParts = newName.split(',');
                   e.displayName = newDisplayName || (nameParts.length > 1 ? nameParts[1].trim() : newName.split(' ')[0]);
                   state.editingEmployeeId = null;
@@ -1359,7 +1484,7 @@ const auth = firebase.auth();
       if (state.activeDetailEmployeeId === e.id) {
           const detailRow = tbody.insertRow();
           const detailCell = detailRow.insertCell();
-          detailCell.colSpan = 4; // Span across all columns
+          detailCell.colSpan = 5; // Span across all columns
           detailCell.className = 'employee-detail-cell';
 
           if (state.activeDetailSection === 'stars') {
@@ -3748,9 +3873,11 @@ const auth = firebase.auth();
       // Deep copy to avoid modifying the current state
       weekSchedule = JSON.parse(JSON.stringify(weekSchedule));
       for (const day in weekSchedule) {
-        weekSchedule[day].forEach(shift => {
-          shift.employeeId = null;
-        });
+        if (Array.isArray(weekSchedule[day])) {
+          weekSchedule[day].forEach(shift => {
+            shift.employeeId = null;
+          });
+        }
       }
     }
 
@@ -3851,6 +3978,15 @@ const auth = firebase.auth();
   /* ====== Dropdown ====== */
   const actionsButton = el("#btn-actions");
   const actionsDropdown = el("#actions-dropdown");
+
+  // Auto-Assign Button Logic
+  const btnAutoAssign = el("#btn-auto-assign");
+  if (btnAutoAssign) {
+      btnAutoAssign.addEventListener("click", () => {
+          autoAssignShifts();
+          actionsDropdown.classList.remove('show');
+      });
+  }
 
   if(actionsButton) {
     actionsButton.addEventListener("click", (e) => {
