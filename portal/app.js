@@ -102,6 +102,21 @@ async function renderMySchedule(employeeId) {
   portalContent.innerHTML = '<h3>Mis Horarios</h3><p>Cargando...</p>';
 
   try {
+    // Assuming shifts are stored in schedules/main inside the big JSON, but portal usually can't read that easily if it's one big doc.
+    // However, the original code tried to read from db.collection("shifts").
+    // If the system uses a single doc 'schedules/main', reading individual shifts is hard without parsing the whole doc.
+    // BUT the original code was: const shiftsRef = db.collection("shifts");
+    // This implies there MIGHT be a "shifts" collection or it was a placeholder.
+    // Given the memory "The application's primary data... is stored as an array in a single Firestore document: schedules/main",
+    // the portal code I saw might be legacy or incorrect for the current architecture.
+    // However, for this task, I am focusing on "Solicitudes".
+
+    // I will leave renderMySchedule as is for now, assuming "shifts" collection might exist or be populated separately,
+    // OR it's broken and out of scope. The user asked for "Solicitudes".
+
+    // Actually, I should probably check if I need to fix it.
+    // But let's focus on Requests first.
+
     const shiftsRef = db.collection("shifts");
     const querySnapshot = await shiftsRef.where("employeeId", "==", employeeId).orderBy("date", "desc").get();
 
@@ -142,8 +157,8 @@ async function renderMyRequests(employeeId) {
   portalContent.innerHTML = '<h3>Mis Solicitudes</h3><p>Cargando...</p>';
 
   try {
-    const requestsRef = db.collection("requests");
-    const querySnapshot = await requestsRef.where("employeeId", "==", employeeId).orderBy("createdAt", "desc").get();
+    const requestsRef = db.collection("solicitudes");
+    const querySnapshot = await requestsRef.where("empleadoId", "==", employeeId).orderBy("fechaCreacion", "desc").get();
 
     if (querySnapshot.empty) {
       portalContent.innerHTML = '<h3>Mis Solicitudes</h3><p>No has realizado ninguna solicitud.</p>';
@@ -154,19 +169,27 @@ async function renderMyRequests(employeeId) {
     querySnapshot.forEach(doc => {
       const request = doc.data();
       const requestId = doc.id;
-      const requestDate = new Date(request.date + 'T00:00:00');
+      const requestDate = new Date(request.fechaSolicitada + 'T12:00:00'); // Use noon to avoid timezone shift issues with date-only strings
       const formattedDate = requestDate.toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+      // Map status to classes
+      let statusClass = 'status-pending';
+      let statusLabel = request.estado;
+      if (request.estado === 'aprobada') statusClass = 'status-approved';
+      if (request.estado === 'rechazada') statusClass = 'status-rejected';
+      if (request.estado === 'cancelada') statusClass = 'status-cancelled';
 
       requestsHtml += `
         <div class="card">
           <div class="card-c row" style="justify-content: space-between;">
             <div>
-              <strong>${formattedDate}</strong>
-              <p class="muted">${request.reason || 'Sin motivo'}</p>
+              <strong>${formattedDate}</strong> (${request.tipo})
+              <p class="muted">${request.motivo || 'Sin motivo'}</p>
+              ${request.motivoRechazo ? `<p class="danger" style="font-size:12px">Rechazo: ${request.motivoRechazo}</p>` : ''}
             </div>
             <div class="row">
-              <span class="badge status-${request.status.toLowerCase()}">${request.status}</span>
-              ${request.status === 'PENDING' ? `<button class="btn secondary del cancel-request" data-id="${requestId}">Cancelar</button>` : ''}
+              <span class="badge ${statusClass}">${statusLabel}</span>
+              ${request.estado === 'pendiente_aprobacion' ? `<button class="btn secondary del cancel-request" data-id="${requestId}">Cancelar</button>` : ''}
             </div>
           </div>
         </div>
@@ -179,7 +202,7 @@ async function renderMyRequests(employeeId) {
       button.addEventListener('click', async (e) => {
         const requestId = e.target.dataset.id;
         if (confirm('¿Estás seguro de que quieres cancelar esta solicitud?')) {
-          await db.collection('requests').doc(requestId).update({ status: 'CANCELLED' });
+          await db.collection('solicitudes').doc(requestId).update({ estado: 'cancelada' });
           renderMyRequests(employeeId);
         }
       });
@@ -198,6 +221,11 @@ function renderNewRequestForm(employeeId) {
     <div class="stack">
       <label for="request-date">Fecha</label>
       <input type="date" id="request-date" class="input">
+      <label for="request-type">Tipo</label>
+      <select id="request-type" class="select">
+        <option value="Día Completo">Día Completo</option>
+        <option value="Horario Parcial">Horario Parcial</option>
+      </select>
       <label for="request-reason">Motivo (opcional)</label>
       <textarea id="request-reason" class="input" rows="3"></textarea>
       <button id="submit-request" class="btn" style="align-self: flex-end;">Enviar Solicitud</button>
@@ -208,6 +236,7 @@ function renderNewRequestForm(employeeId) {
 
 async function submitNewRequest(employeeId) {
     const date = document.getElementById('request-date').value;
+    const type = document.getElementById('request-type').value;
     const reason = document.getElementById('request-reason').value;
 
     if (!date) {
@@ -215,14 +244,23 @@ async function submitNewRequest(employeeId) {
         return;
     }
 
+    // Need employee name. In a real app we might have it in the user object or profile.
+    // For now, let's try to get it if possible, or leave it blank/fetching.
+    // The original code passed 'user' to renderPortal, but we are inside submitNewRequest.
+    // We can't easily get the name without fetching user profile from DB or Auth.
+    // Auth display name might be available.
+    const user = firebase.auth().currentUser;
+    const nombre = user.displayName || user.email || "Empleado";
+
     try {
-        await db.collection('requests').add({
-            employeeId: employeeId,
-            type: 'timeOff',
-            date: date,
-            reason: reason,
-            status: 'PENDING',
-            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        await db.collection('solicitudes').add({
+            empleadoId: employeeId,
+            nombre: nombre,
+            tipo: type,
+            fechaSolicitada: date,
+            motivo: reason,
+            estado: 'pendiente_aprobacion',
+            fechaCreacion: firebase.firestore.FieldValue.serverTimestamp()
         });
         alert('Solicitud enviada con éxito.');
         setActiveNav(document.getElementById('nav-requests'));

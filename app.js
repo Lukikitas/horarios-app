@@ -226,12 +226,14 @@ const auth = firebase.auth();
   const viewFrancosEl = el('#view-francos');
   const viewClockInsEl = el('#view-clock-ins');
   const viewPlanillaTurnoEl = el('#view-planilla-turno');
+  const viewRequestsEl = el('#view-requests');
   const btnViewSchedule = el('#btn-view-schedule');
   const btnViewEmployees = el('#btn-view-employees');
   const btnViewTemplates = el('#btn-view-templates');
   const btnViewFrancos = el('#btn-view-francos');
   const btnScheduleList = el('#btn-schedule-list');
   const btnViewClockIns = el('#btn-view-clock-ins');
+  const btnViewRequests = el('#btn-view-requests');
   const btnPlanillaTurno = el('#btn-planilla-turno');
   const inpTemplateName = el('#inpTemplateName');
   const btnSaveTemplate = el('#btnSaveTemplate');
@@ -267,12 +269,14 @@ const auth = firebase.auth();
     viewFrancosEl.style.display = 'none';
     viewClockInsEl.style.display = 'none';
     viewPlanillaTurnoEl.style.display = 'none';
+    viewRequestsEl.style.display = 'none';
     btnViewSchedule.className = 'btn secondary main-menu-btn';
     btnViewEmployees.className = 'btn secondary main-menu-btn';
     btnViewTemplates.className = 'btn secondary main-menu-btn';
     btnViewFrancos.className = 'btn secondary main-menu-btn';
     btnScheduleList.className = 'btn secondary main-menu-btn';
     btnViewClockIns.className = 'btn secondary main-menu-btn';
+    btnViewRequests.className = 'btn secondary main-menu-btn';
     btnPlanillaTurno.className = 'btn secondary main-menu-btn';
 
     if (viewName === 'schedule') {
@@ -296,6 +300,10 @@ const auth = firebase.auth();
     } else if (viewName === 'planilla-turno') {
         viewPlanillaTurnoEl.style.display = 'block';
         btnPlanillaTurno.className = 'btn main-menu-btn';
+    } else if (viewName === 'requests') {
+        viewRequestsEl.style.display = 'block';
+        btnViewRequests.className = 'btn main-menu-btn';
+        renderRequests();
     }
     renderAll();
   }
@@ -305,6 +313,7 @@ const auth = firebase.auth();
   btnViewFrancos.addEventListener('click', () => showView('francos'));
   btnScheduleList.addEventListener('click', () => showView('schedule-list'));
   btnViewClockIns.addEventListener('click', () => showView('clock-ins'));
+  btnViewRequests.addEventListener('click', () => showView('requests'));
   btnPlanillaTurno.addEventListener('click', () => showView('planilla-turno'));
   el("#empFilter").addEventListener("change", renderEmpList);
   if (el("#empSearch")) {
@@ -396,6 +405,7 @@ const auth = firebase.auth();
     const name = el("#inpName").value.trim();
     const dni = el("#inpDni").value.trim();
     const mail = el("#inpMail").value.trim();
+    const celular = el("#inpCell").value.trim();
     if(!name) return;
     const id = crypto.randomUUID();
     const nameParts = name.split(',');
@@ -406,6 +416,7 @@ const auth = firebase.auth();
       displayName: displayName,
       dni: dni,
       mail: mail,
+      celular: celular,
       stars: [],
       isMinor: false,
       isAllStar: false,
@@ -417,6 +428,7 @@ const auth = firebase.auth();
     el("#inpName").value = "";
     el("#inpDni").value = "";
     el("#inpMail").value = "";
+    el("#inpCell").value = "";
     save();
     renderEmpList();
   }
@@ -1260,7 +1272,7 @@ const auth = firebase.auth();
 
     const thead = table.createTHead();
     const headRow = thead.insertRow();
-    headRow.innerHTML = "<th>Nombre</th><th>DNI/Mail</th><th>Estrellas</th><th>Acciones</th>";
+    headRow.innerHTML = "<th>Nombre</th><th>DNI/Mail/Cel</th><th>Estrellas</th><th>Acciones</th>";
 
     const tbody = table.createTBody();
     filtered.forEach(e=>{
@@ -1302,10 +1314,18 @@ const auth = firebase.auth();
           mailInput.id = `edit-mail-input-${e.id}`;
           mailInput.placeholder = "Mail";
 
+          const cellInput = document.createElement('input');
+          cellInput.type = 'text';
+          cellInput.value = e.celular || '';
+          cellInput.className = 'input';
+          cellInput.id = `edit-cell-input-${e.id}`;
+          cellInput.placeholder = "Celular";
+
           nameInputContainer.appendChild(nameInput);
           nameInputContainer.appendChild(displayNameInput);
           nameInputContainer.appendChild(dniInput);
           nameInputContainer.appendChild(mailInput);
+          nameInputContainer.appendChild(cellInput);
 
           // Add Priority Select to name input container for compact editing
           const prioritySelect = document.createElement('select');
@@ -1352,7 +1372,7 @@ const auth = firebase.auth();
       // DNI/Mail cell
       const dniMailCell = row.insertCell();
       if (!isEditing) {
-        dniMailCell.innerHTML = `<div>${e.dni || '-'}</div><div class="muted" style="font-size:12px;">${e.mail || '-'}</div>`;
+        dniMailCell.innerHTML = `<div>${e.dni || '-'}</div><div class="muted" style="font-size:12px;">${e.mail || '-'}</div><div class="muted" style="font-size:12px;">${e.celular || '-'}</div>`;
       }
 
       // Stars cell
@@ -1381,11 +1401,13 @@ const auth = firebase.auth();
               const newDisplayName = el(`#edit-display-name-input-${e.id}`).value.trim();
               const newDni = el(`#edit-dni-input-${e.id}`).value.trim();
               const newMail = el(`#edit-mail-input-${e.id}`).value.trim();
+              const newCel = el(`#edit-cell-input-${e.id}`).value.trim();
               const newPriority = el(`#edit-priority-input-${e.id}`).value;
               if (newName) {
                   e.name = newName;
                   e.dni = newDni;
                   e.mail = newMail;
+                  e.celular = newCel;
                   e.priority = newPriority;
                   const nameParts = newName.split(',');
                   e.displayName = newDisplayName || (nameParts.length > 1 ? nameParts[1].trim() : newName.split(' ')[0]);
@@ -4770,6 +4792,170 @@ const auth = firebase.auth();
     state.clockInDateFilter = e.target.value || null; // Store as YYYY-MM-DD or null if empty
     renderClockInReport();
   });
+
+  /* ====== Requests Logic ====== */
+  async function renderRequests() {
+      const list = el("#requests-list");
+      list.innerHTML = "<p>Cargando solicitudes...</p>";
+
+      try {
+          const snapshot = await db.collection("solicitudes")
+                                   .where("estado", "==", "pendiente_aprobacion")
+                                   .orderBy("fechaCreacion", "desc") // requires index usually
+                                   .get();
+
+          list.innerHTML = "";
+          if(snapshot.empty){
+              list.innerHTML = `<div class="muted">No hay solicitudes pendientes.</div>`;
+              return;
+          }
+
+          snapshot.forEach(doc => {
+              const req = doc.data();
+              const card = document.createElement("div");
+              card.className = "card";
+              card.style.marginBottom = "8px";
+
+              const reqDate = new Date(req.fechaSolicitada + 'T12:00:00');
+              const fmtDate = reqDate.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+
+              card.innerHTML = `
+                  <div class="card-c row" style="align-items:flex-start; justify-content:space-between">
+                      <div class="stack" style="gap:4px">
+                          <strong>${escapeHtml(req.nombre || 'Desconocido')}</strong>
+                          <div>${fmtDate} <span class="badge" style="background:#eee;color:#333">${req.tipo}</span></div>
+                          <div class="muted" style="font-style:italic">${escapeHtml(req.motivo || 'Sin motivo')}</div>
+                      </div>
+                      <div class="stack">
+                          <button class="btn" style="background:var(--c-lobby);border:none">✅ Aprobar</button>
+                          <button class="btn" style="background:var(--c-cocina);border:none">❌ Rechazar</button>
+                      </div>
+                  </div>
+              `;
+
+              const [btnApprove, btnReject] = card.querySelectorAll("button");
+              btnApprove.onclick = () => approveRequest(doc.id, req);
+              btnReject.onclick = () => rejectRequest(doc.id);
+
+              list.appendChild(card);
+          });
+      } catch (e) {
+          console.error(e);
+          list.innerHTML = `<p class="danger">Error al cargar solicitudes. Verifica la consola.</p>`;
+          // It might fail if index is missing. Retry without order if failed? Or just log.
+      }
+  }
+
+  async function approveRequest(reqId, req) {
+      if(!confirm("¿Aprobar solicitud?")) return;
+
+      try {
+          const batch = db.batch();
+
+          // 1. Update request status
+          const reqRef = db.collection("solicitudes").doc(reqId);
+          batch.update(reqRef, { estado: "aprobada" });
+
+          // 2. Add exception to employee (affects schedule)
+          // We need to find the employee in our local state to update UI immediately,
+          // but more importantly, we assume the 'schedules/main' doc is where employees live.
+          // Wait, we need to update 'schedules/main' in Firestore too.
+          // Since 'state.employees' is loaded from there, we should update the array in that doc.
+          // But that doc is large. It's better to update our local state and save() everything?
+          // NO, the requirement says "Crear un NUEVO documento en la colección excepciones...".
+          // WAIT: "Crear un NUEVO documento en la colección excepciones (o asistencias) con los datos de la fecha y el empleado, para que impacte en su calendario."
+          // But my app uses `state.employees` with an `exceptions` array inside `schedules/main`.
+          // If I create a document in a NEW collection 'exceptions', I need to modify `loadState` to read from there too?
+          // OR, does the user mean "add an exception record" which in my app means updating the employee object?
+          // "Impacte en su calendario" implies it should work with existing logic.
+          // Existing logic reads `employee.exceptions` from `schedules/main`.
+          // If I create a doc in `exceptions` collection, my app won't see it unless I change `loadState`.
+          // The prompt says: "Crear un NUEVO documento en la colección excepciones (o asistencias)..."
+          // This implies I should start using a collection for this?
+          // OR, maybe the prompt assumes a different architecture?
+          // "Contexto de Datos (Firestore)" was specific about `solicitudes`.
+          // But for approval it says "Crear un NUEVO documento en la colección excepciones".
+          // If I do that, I MUST update `loadState` to fetch that collection and merge it into `state.employees`.
+          // ALTERNATIVELY, since I am the engineer, I can interpret "Crear un NUEVO documento..." as "Make sure the exception is recorded".
+          // BUT, if I strictly follow "Crear un NUEVO documento en la colección excepciones", I have to implement that collection reading.
+
+          // Decision: I will strictly follow the instruction to create a document in `excepciones` collection.
+          // AND I will update `loadState` (or a new listener) to load these exceptions.
+          // HOWEVER, to avoid "breaking nothing existing", I should also perhaps keep the old array-based exceptions working?
+          // Actually, the easiest way to "impacte en su calendario" given the CURRENT code is to update the `schedules/main` document's employee list.
+          // But the prompt is explicit about a "batch... B) Create a NEW document in exceptions collection".
+          // So I will do exactly that: write to `excepciones`.
+          // AND I will add a logic to load these exceptions into the app state so they appear in the calendar.
+
+          const newExceptionRef = db.collection("excepciones").doc();
+          batch.set(newExceptionRef, {
+              employeeId: req.empleadoId,
+              date: req.fechaSolicitada,
+              type: req.tipo, // 'Día Completo' or 'Horario Parcial' - My app expects start/end or full day.
+              // If 'Horario Parcial', I might need times. The current request schema doesn't have start/end times!
+              // The request schema says: tipo ('Día Completo' | 'Horario Parcial'), fechaSolicitada.
+              // It does NOT listed start/end times in the prompt schema.
+              // If it is 'Horario Parcial' without times, what does it mean?
+              // Maybe I should just save it and let the UI handle it?
+              // Or maybe 'Horario Parcial' implies I should have asked for times?
+              // The prompt for UI requirements says "Nombre, Tipo, Fecha, Motivo".
+              // It does NOT mention times.
+              // I will assume 'Día Completo' means full day exception.
+              // 'Horario Parcial' might need to be handled carefully.
+              // For now, I will save `start: null, end: null` if full day.
+              // If partial, I don't have times. I'll default to full day for safety or just store the type.
+              // My app's `checkEmployeeAvailability` checks `exception.start` and `exception.end`.
+              // If they are null/undefined, it treats as full day.
+              // So I will just store them.
+              createdAt: firebase.firestore.FieldValue.serverTimestamp()
+          });
+
+          await batch.commit();
+
+          // Now, update local state so the UI reflects the change immediately without reload?
+          // Fetching the new exception or just pushing it to local state.
+          const emp = state.employees.find(e => e.id === req.empleadoId);
+          if(emp) {
+              if(!emp.exceptions) emp.exceptions = [];
+              emp.exceptions.push({
+                  date: req.fechaSolicitada,
+                  type: req.tipo // Storing this might be useful, though current app only uses start/end properties.
+                  // I'll leave start/end undefined so it blocks the whole day, which is safer.
+              });
+              save(); // Save local state (which updates schedules/main).
+              // WAIT! If I save local state, I am writing the exception to `schedules/main` AS WELL.
+              // This is actually GOOD for redundancy if the prompt wanted `excepciones` collection for some other reason (audit?).
+              // But if I rely on `excepciones` collection, I should load from there.
+              // Given "Asegurate que esta adición no rompa nada ya existente", keeping the data in `schedules/main` (via `state.employees`) ensures the calendar keeps working as is.
+              // The `excepciones` collection write becomes a "log" or "source of truth" for the request system.
+              // So I will do both: Write to collection (as requested) AND update local state (to update calendar).
+          }
+
+          renderRequests();
+          alert("Solicitud aprobada.");
+
+      } catch (e) {
+          console.error(e);
+          alert("Error al aprobar.");
+      }
+  }
+
+  async function rejectRequest(reqId) {
+      const reason = prompt("Motivo de rechazo:");
+      if(reason === null) return; // Cancelled
+      if(!reason.trim()) { alert("Debe ingresar un motivo."); return; }
+
+      try {
+          await db.collection("solicitudes").doc(reqId).update({
+              estado: "rechazada",
+              motivoRechazo: reason
+          });
+          renderRequests();
+      } catch (e) {
+          console.error(e);
+          alert("Error al rechazar.");
+      }
+  }
 
   el("#fileImportClockIns").addEventListener("change", (e) => {
     const file = e.target.files?.[0];
