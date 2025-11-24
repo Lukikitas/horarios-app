@@ -107,11 +107,22 @@ const auth = firebase.auth();
 
       if (doc.exists) {
           const data = doc.data();
-          // Use the fetched employees array. If empty, fallback to data.employees ONLY if not in collection (migration phase handling)
-          // If employeesSnapshot is not empty, we use it. If empty, we check data.employees (legacy).
-          // However, if migration is "done", we should rely on collection.
-          // For robustness:
-          state.employees = employeesArray.length > 0 ? employeesArray : (data.employees || []);
+
+          // Si hay datos en la colección nueva, úsalos.
+          // Si no, usa los datos viejos PERO conviértelos a Array usando Object.values()
+          let legacyEmployees = [];
+          if (doc.exists && doc.data().employees) {
+              // Detectamos si es array u objeto y normalizamos
+              const rawEmps = doc.data().employees;
+              legacyEmployees = Array.isArray(rawEmps) ? rawEmps : Object.values(rawEmps);
+          }
+
+          state.employees = employeesArray.length > 0 ? employeesArray : legacyEmployees;
+
+          // Asegurar que cada empleado tenga ID (si viene del objeto viejo y no tiene id, asiganarle uno o usar el índice)
+          state.employees.forEach(emp => {
+              if (!emp.id) emp.id = crypto.randomUUID();
+          });
 
           state.breaks = data.breaks || defaultBreaks;
           state.rappiCode = data.rappiCode || '';
@@ -4876,11 +4887,16 @@ const auth = firebase.auth();
               const reqDate = new Date(req.fechaSolicitada + 'T12:00:00');
               const fmtDate = reqDate.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
 
+              let timeRange = "";
+              if (req.start && req.end) {
+                  timeRange = ` ${req.start} - ${req.end}`;
+              }
+
               card.innerHTML = `
                   <div class="card-c row" style="align-items:flex-start; justify-content:space-between">
                       <div class="stack" style="gap:4px">
                           <strong>${escapeHtml(req.nombre || 'Desconocido')}</strong>
-                          <div>${fmtDate} <span class="badge" style="background:#eee;color:#333">${req.tipo}</span></div>
+                          <div>${fmtDate}${timeRange ? ` <strong>(${timeRange})</strong>` : ''} <span class="badge" style="background:#eee;color:#333">${req.tipo}</span></div>
                           <div class="muted" style="font-style:italic">${escapeHtml(req.motivo || 'Sin motivo')}</div>
                       </div>
                       <div class="stack">
@@ -4960,8 +4976,10 @@ const auth = firebase.auth();
           // 2. Add exception to employee document directly
           const empRef = db.collection('employees').doc(req.empleadoId);
           const newException = {
-              date: req.fechaSolicitada,
-              type: req.tipo // 'Día Completo' or 'Horario Parcial'
+              date: req.fechaSolicitada, // YYYY-MM-DD
+              start: req.start || null,  // HH:MM o null
+              end: req.end || null,      // HH:MM o null
+              type: req.tipo // Mantengo el tipo por compatibilidad
           };
           batch.update(empRef, {
               exceptions: firebase.firestore.FieldValue.arrayUnion(newException)
