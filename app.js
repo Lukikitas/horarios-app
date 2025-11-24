@@ -4919,105 +4919,51 @@ const auth = firebase.auth();
       }
   }
 
-  async function approveRequest(reqId, req) {
+async function approveRequest(reqId, req) {
       if(!confirm("¿Aprobar solicitud?")) return;
 
       try {
           const batch = db.batch();
 
-          // 1. Update request status
+          // 1. Actualizar estado de la solicitud en la DB
           const reqRef = db.collection("solicitudes").doc(reqId);
           batch.update(reqRef, { estado: "aprobada" });
 
-          // 2. Add exception to employee (affects schedule)
-          // We need to find the employee in our local state to update UI immediately,
-          // but more importantly, we assume the 'schedules/main' doc is where employees live.
-          // Wait, we need to update 'schedules/main' in Firestore too.
-          // Since 'state.employees' is loaded from there, we should update the array in that doc.
-          // But that doc is large. It's better to update our local state and save() everything?
-          // NO, the requirement says "Crear un NUEVO documento en la colección excepciones...".
-          // WAIT: "Crear un NUEVO documento en la colección excepciones (o asistencias) con los datos de la fecha y el empleado, para que impacte en su calendario."
-          // But my app uses `state.employees` with an `exceptions` array inside `schedules/main`.
-          // If I create a document in a NEW collection 'exceptions', I need to modify `loadState` to read from there too?
-          // OR, does the user mean "add an exception record" which in my app means updating the employee object?
-          // "Impacte en su calendario" implies it should work with existing logic.
-          // Existing logic reads `employee.exceptions` from `schedules/main`.
-          // If I create a doc in `exceptions` collection, my app won't see it unless I change `loadState`.
-          // The prompt says: "Crear un NUEVO documento en la colección excepciones (o asistencias)..."
-          // This implies I should start using a collection for this?
-          // OR, maybe the prompt assumes a different architecture?
-          // "Contexto de Datos (Firestore)" was specific about `solicitudes`.
-          // But for approval it says "Crear un NUEVO documento en la colección excepciones".
-          // If I do that, I MUST update `loadState` to fetch that collection and merge it into `state.employees`.
-          // ALTERNATIVELY, since I am the engineer, I can interpret "Crear un NUEVO documento..." as "Make sure the exception is recorded".
-          // BUT, if I strictly follow "Crear un NUEVO documento en la colección excepciones", I have to implement that collection reading.
+          // 2. Buscar y actualizar el documento del empleado (Usando el UID correcto)
+          const empRef = db.collection('employees').doc(req.empleadoUid); // ✅ Correcto
 
-          // Decision: I will strictly follow the instruction to create a document in `excepciones` collection.
-          // AND I will update `loadState` (or a new listener) to load these exceptions.
-          // HOWEVER, to avoid "breaking nothing existing", I should also perhaps keep the old array-based exceptions working?
-          // Actually, the easiest way to "impacte en su calendario" given the CURRENT code is to update the `schedules/main` document's employee list.
-          // But the prompt is explicit about a "batch... B) Create a NEW document in exceptions collection".
-          // So I will do exactly that: write to `excepciones`.
-          // AND I will add a logic to load these exceptions into the app state so they appear in the calendar.
-
-          // The user requested: "Modificar approveRequest() (Logic): Al aprobar una solicitud, actualiza directamente el documento en la colección employees usando updateDoc y arrayUnion para las excepciones."
-          // This replaces the previous logic of creating a doc in 'excepciones' or redundant saving.
-          // But wait, did they want to remove the 'excepciones' collection creation?
-          // "B) Crear un NUEVO documento en la colección excepciones" was the previous requirement.
-          // The new requirement says: "Modificar approveRequest()... actualiza directamente el documento en la colección employees".
-          // It implies a change in strategy to store exceptions ON the employee document itself (which matches how my app works).
-          // I will assume I should do this INSTEAD or IN ADDITION.
-          // Since the app relies on `employee.exceptions`, updating the employee document is the correct way to "impacte en su calendario".
-          // I will keep the 'excepciones' collection write if it was for audit log, but the prompt specifically focuses on the `updateDoc` part.
-          // I will do BOTH to be safe (audit log + functional update), or just the functional update if that's what they mean by "change logic".
-          // "Al aprobar una solicitud, actualiza directamente el documento en la colección employees...".
-          // I will update the employee document.
-
-          // 2. Add exception to employee document directly
-          const empRef = db.collection('employees').doc(req.empleadoId);
           const newException = {
               date: req.fechaSolicitada, // YYYY-MM-DD
               start: req.start || null,  // HH:MM o null
               end: req.end || null,      // HH:MM o null
-              type: req.tipo // Mantengo el tipo por compatibilidad
+              type: req.tipo
           };
-          batch.update(empRef, {
-              exceptions: firebase.firestore.FieldValue.arrayUnion(newException)
-          });
 
-          // Note: I am NOT creating a document in 'excepciones' collection here because the user's new instruction for this specific function
-          // seems to override the previous one or refine how the "impact" happens.
-          // However, the previous instruction "B) Crear un NUEVO documento en la colección excepciones" might still be valid for the record.
-          // But usually "Modificar approveRequest" implies replacing the logic.
-          // The prompt says: "Modificar approveRequest() (Logic): Al aprobar una solicitud, actualiza directamente el documento en la colección employees usando updateDoc y arrayUnion para las excepciones."
-          // It doesn't say "Also keep creating the exceptions doc".
-          // I will assume the new instruction is the primary way to handle the data now.
+          // Usamos SET con MERGE para asegurar que no falle si el documento no existía
+          batch.set(empRef, {
+              exceptions: firebase.firestore.FieldValue.arrayUnion(newException)
+          }, { merge: true });
 
           await batch.commit();
 
-          // Update local state
-          const emp = state.employees.find(e => e.id === req.empleadoId);
+          // 3. Actualizar estado LOCAL (Para que se vea en el calendario al instante)
+          // ⚠️ CORRECCIÓN AQUÍ: Usamos 'req.empleadoUid' en lugar de 'req.empleadoId'
+          const emp = state.employees.find(e => e.id === req.empleadoUid); 
+          
           if(emp) {
               if(!emp.exceptions) emp.exceptions = [];
               emp.exceptions.push(newException);
-              // No need to call save() immediately if we just updated the DB via batch,
-              // BUT save() handles saving OTHER things (like schedules).
-              // However, since we just updated the employee doc in DB, calling save() (which writes state.employees to DB)
-              // might be redundant or race-condition prone if not careful.
-              // But since we updated local state `emp.exceptions`, and save() writes local state to DB, it's consistent.
-              // Actually, if we use `arrayUnion` in DB, and `push` in local, they match.
-              // If we call `save()`, it will set `emp` again. `set` with merge might overwrite `arrayUnion` result if parallel?
-              // Generally safe if single user.
-              // We can skip save() here because we just wrote to DB.
-              renderAll();
+              
+              // Recargar la vista para pintar la excepción nueva
+              renderAll(); 
           }
 
-          renderRequests();
-          alert("Solicitud aprobada.");
+          renderRequests(); // Actualizar la lista de solicitudes
+          alert("Solicitud aprobada correctamente.");
 
       } catch (e) {
           console.error(e);
-          alert("Error al aprobar.");
+          alert("Error al aprobar: " + e.message);
       }
   }
 
