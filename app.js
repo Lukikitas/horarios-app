@@ -91,6 +91,29 @@ const auth = firebase.auth();
     ]
   };
 
+  async function notifyEmployee(employeeId, message) {
+    try {
+      const response = await fetch('https://us-central1-horarios-data.cloudfunctions.net/enviarNotificacionManual', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ employeeId, message })
+      });
+
+      if (response.ok) {
+        alert("Notificación enviada correctamente.");
+      } else {
+        const errorText = await response.text();
+        console.error("Error sending notification:", errorText);
+        alert("Error al enviar la notificación: " + errorText);
+      }
+    } catch (error) {
+      console.error("Network error sending notification:", error);
+      alert("Error de red al enviar la notificación.");
+    }
+  }
+
   async function loadState() {
     try {
       // 1. Fetch main document (schedules, templates, settings)
@@ -1552,11 +1575,22 @@ const auth = firebase.auth();
               dropdownContent.classList.remove("show");
           };
 
+          const bWhatsApp = document.createElement("button");
+          bWhatsApp.className="dropdown-item"; bWhatsApp.textContent="💬 Enviar WhatsApp";
+          bWhatsApp.onclick = () => {
+              const msg = prompt(`Escribe el mensaje para ${e.name}:`);
+              if (msg && msg.trim()) {
+                  notifyEmployee(e.id, msg.trim());
+              }
+              dropdownContent.classList.remove("show");
+          };
+
           dropdownContent.appendChild(bAvailability);
           dropdownContent.appendChild(bExceptions);
           dropdownContent.appendChild(bSanctions);
           dropdownContent.appendChild(bAllStar);
           dropdownContent.appendChild(bMinor);
+          dropdownContent.appendChild(bWhatsApp);
           dropdownDiv.appendChild(dropdownButton);
           dropdownDiv.appendChild(dropdownContent);
 
@@ -3230,9 +3264,30 @@ const auth = firebase.auth();
     optionize(endSelect, SLOTS, s => ({value: s.index, label: s.label}));
     endSelect.value = shift.endSlot + 1;
 
+    const notifyCheckContainer = document.createElement("div");
+    notifyCheckContainer.className = "row";
+    notifyCheckContainer.style.marginTop = "8px";
+    notifyCheckContainer.style.alignItems = "center";
+    notifyCheckContainer.style.gap = "8px";
+
+    const notifyCheckbox = document.createElement("input");
+    notifyCheckbox.type = "checkbox";
+    notifyCheckbox.id = "notify-change";
+    notifyCheckbox.checked = true; // Default checked
+
+    const notifyLabel = document.createElement("label");
+    notifyLabel.htmlFor = "notify-change";
+    notifyLabel.textContent = "🔔 Notificar cambio por WhatsApp";
+    notifyLabel.className = "muted";
+    notifyLabel.style.fontSize = "13px";
+
+    notifyCheckContainer.appendChild(notifyCheckbox);
+    notifyCheckContainer.appendChild(notifyLabel);
+
     c.appendChild(roleLabel); c.appendChild(roleSelect);
     c.appendChild(startLabel); c.appendChild(startSelect);
     c.appendChild(endLabel); c.appendChild(endSelect);
+    c.appendChild(notifyCheckContainer);
 
     const f = document.createElement("div"); f.style.textAlign="right"; f.style.marginTop="12px";
     const saveBtn = document.createElement("button"); saveBtn.className="btn"; saveBtn.textContent="Guardar";
@@ -3271,6 +3326,9 @@ const auth = firebase.auth();
             }
         }
 
+        const shouldNotify = notifyCheckbox.checked;
+        const currentEmployeeId = shift.employeeId;
+
         commitChange(() => {
             shift.role = newRole;
             shift.startSlot = newStart;
@@ -3284,6 +3342,27 @@ const auth = firebase.auth();
                 }
             }
         });
+
+        // Send notification if requested and employee is still assigned (or was assigned)
+        if (shouldNotify && currentEmployeeId) {
+             const emp = state.employees.find(e => e.id === currentEmployeeId);
+             // Verify if employee is still assigned or if we should notify the original employee even if unassigned?
+             // Request says: "Hola [Nombre], hubo un cambio en tu horario..."
+             // We should notify the employee who owns the shift.
+             // If they were unassigned due to role mismatch, maybe we shouldn't notify?
+             // But the prompt implies notifying about the *new* details.
+             // If unassigned, there are no new details for them.
+             // So we check if shift.employeeId is still the same (or valid).
+
+             if (emp && shift.employeeId === emp.id) {
+                 const dayName = DAYS[day];
+                 const startTime = SLOTS[shift.startSlot].label;
+                 const endTime = SLOTS[shift.endSlot + 1] ? SLOTS[shift.endSlot + 1].label : "02:00";
+                 const message = `Hola ${emp.name}, hubo un cambio en tu horario del ${dayName}. Tu nuevo turno es: ${startTime} a ${endTime} (${shift.role}).`;
+                 notifyEmployee(emp.id, message);
+             }
+        }
+
         wrap.remove();
     });
     const cancelBtn = document.createElement("button"); cancelBtn.className="btn secondary"; cancelBtn.textContent="Cancelar";
@@ -4867,98 +4946,223 @@ const auth = firebase.auth();
       list.innerHTML = "<p>Cargando solicitudes...</p>";
 
       try {
+          // Query Update: Last 50 requests, sorted by date desc
           const snapshot = await db.collection("solicitudes")
-                                   .where("estado", "==", "pendiente_aprobacion")
-                                   .orderBy("fechaCreacion", "desc") // requires index usually
+                                   .orderBy("fechaCreacion", "desc")
+                                   .limit(50)
                                    .get();
 
           list.innerHTML = "";
           if(snapshot.empty){
-              list.innerHTML = `<div class="muted">No hay solicitudes pendientes.</div>`;
+              list.innerHTML = `<div class="muted">No hay solicitudes.</div>`;
               return;
           }
 
-          snapshot.forEach(doc => {
-              const req = doc.data();
+          const requests = [];
+          snapshot.forEach(doc => requests.push({ id: doc.id, ...doc.data() }));
+
+          const pending = requests.filter(r => r.estado === 'pendiente_aprobacion');
+          const history = requests.filter(r => r.estado !== 'pendiente_aprobacion');
+
+          const getFormattedDate = (timestamp) => {
+              if (!timestamp) return '-';
+              const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+              // Check if date is valid
+              if (isNaN(date.getTime())) return '-';
+              return date.toLocaleString('es-AR', {
+                  day: '2-digit', month: '2-digit', year: 'numeric',
+                  hour: '2-digit', minute: '2-digit'
+              });
+          };
+
+          const createCard = (req, isHistory) => {
               const card = document.createElement("div");
               card.className = "card";
               card.style.marginBottom = "8px";
+              if(isHistory) card.style.opacity = "0.8";
 
-              const reqDate = new Date(req.fechaSolicitada + 'T12:00:00');
-              const fmtDate = reqDate.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+              // Dynamic Content
+              // We wrap the title in a container to control the background width if necessary, though currently it's just text + span
+              let title = `<strong>${escapeHtml(req.nombre || 'Desconocido')}</strong>`;
+              let details = "";
 
-              let timeRange = "";
-              if (req.start && req.end) {
-                  timeRange = ` ${req.start} - ${req.end}`;
+              if (req.tipo === 'cambio_disponibilidad') {
+                   title += ` <span class="badge" style="background:var(--c-sandwich);color:#fff;width:fit-content">🔄 Cambio Disponibilidad</span>`;
+                   details = `
+                     <div><strong>Día:</strong> ${req.diaNombre}</div>
+                     <div><strong>Propuesta:</strong> ${escapeHtml(req.nuevaDispo || '-')}</div>
+                   `;
+              } else {
+                   // Normal request
+                   let dateStr = "Fecha inválida";
+                   if (req.fechaSolicitada) {
+                       const d = new Date(req.fechaSolicitada + 'T12:00:00');
+                       if (!isNaN(d.getTime())) {
+                           dateStr = d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+                       }
+                   }
+                   let timeRange = (req.start && req.end) ? ` (${req.start} - ${req.end})` : ' (Día Completo)';
+
+                   title += ` <span class="badge" style="background:#eee;color:#333;width:fit-content">${req.tipo}</span>`;
+                   details = `
+                     <div><strong>Fecha:</strong> ${dateStr}${timeRange}</div>
+                     <div class="muted" style="font-style:italic">${escapeHtml(req.motivo || 'Sin motivo')}</div>
+                   `;
               }
 
+              const footer = document.createElement("div");
+              footer.className = "row";
+              footer.style.justifyContent = "space-between";
+              footer.style.marginTop = "8px";
+              footer.innerHTML = `<small class="muted">Solicitado: ${getFormattedDate(req.fechaCreacion)}</small>`;
+
+              const actions = document.createElement("div");
+              actions.className = "stack";
+              actions.style.flexDirection = "row";
+
+              if (isHistory) {
+                  const statusColor = req.estado === 'aprobada' ? 'var(--c-lobby)' : 'var(--c-cocina)'; // Green / Red-ish
+                  const statusBadge = `<span class="badge" style="background:${statusColor};color:#fff;margin-right:8px">${req.estado.toUpperCase()}</span>`;
+                  const btnDelete = document.createElement("button");
+                  btnDelete.className = "btn secondary del";
+                  btnDelete.textContent = "🗑️";
+                  btnDelete.onclick = () => deleteRequest(req.id);
+
+                  const statusDiv = document.createElement("div");
+                  statusDiv.innerHTML = statusBadge;
+                  actions.appendChild(statusDiv);
+                  actions.appendChild(btnDelete);
+              } else {
+                  const btnApprove = document.createElement("button");
+                  btnApprove.className = "btn";
+                  btnApprove.style.background = "var(--c-lobby)";
+                  btnApprove.style.border = "none";
+                  btnApprove.textContent = "✅ Aprobar";
+                  btnApprove.onclick = () => approveRequest(req.id, req);
+
+                  const btnReject = document.createElement("button");
+                  btnReject.className = "btn";
+                  btnReject.style.background = "var(--c-cocina)";
+                  btnReject.style.border = "none";
+                  btnReject.textContent = "❌ Rechazar";
+                  btnReject.onclick = () => rejectRequest(req.id);
+
+                  actions.appendChild(btnApprove);
+                  actions.appendChild(btnReject);
+              }
+
+              footer.appendChild(actions);
+
               card.innerHTML = `
-                  <div class="card-c row" style="align-items:flex-start; justify-content:space-between">
-                      <div class="stack" style="gap:4px">
-                          <strong>${escapeHtml(req.nombre || 'Desconocido')}</strong>
-                          <div>${fmtDate}${timeRange ? ` <strong>(${timeRange})</strong>` : ''} <span class="badge" style="background:#eee;color:#333">${req.tipo}</span></div>
-                          <div class="muted" style="font-style:italic">${escapeHtml(req.motivo || 'Sin motivo')}</div>
-                      </div>
-                      <div class="stack">
-                          <button class="btn" style="background:var(--c-lobby);border:none">✅ Aprobar</button>
-                          <button class="btn" style="background:var(--c-cocina);border:none">❌ Rechazar</button>
-                      </div>
+                  <div class="stack" style="gap:4px">
+                      ${title}
+                      ${details}
                   </div>
               `;
+              card.appendChild(footer);
+              return card;
+          };
 
-              const [btnApprove, btnReject] = card.querySelectorAll("button");
-              btnApprove.onclick = () => approveRequest(doc.id, req);
-              btnReject.onclick = () => rejectRequest(doc.id);
+          // Render Pending
+          if (pending.length > 0) {
+              const h3 = document.createElement("h3");
+              h3.textContent = `Pendientes (${pending.length})`;
+              h3.style.marginTop = "0";
+              list.appendChild(h3);
+              pending.forEach(r => list.appendChild(createCard(r, false)));
+          }
 
-              list.appendChild(card);
-          });
+          // Render History
+          if (history.length > 0) {
+              const separator = document.createElement("div");
+              separator.style.borderTop = "1px solid #ccc";
+              separator.style.margin = "20px 0 10px 0";
+              list.appendChild(separator);
+
+              const h3 = document.createElement("h3");
+              h3.textContent = "Historial Reciente";
+              list.appendChild(h3);
+              history.forEach(r => list.appendChild(createCard(r, true)));
+          }
+
       } catch (e) {
           console.error(e);
           list.innerHTML = `<p class="danger">Error al cargar solicitudes. Verifica la consola.</p>`;
-          // It might fail if index is missing. Retry without order if failed? Or just log.
       }
   }
 
-async function approveRequest(reqId, req) {
+  async function approveRequest(reqId, req) {
       if(!confirm("¿Aprobar solicitud?")) return;
 
       try {
           const batch = db.batch();
+          const empRef = db.collection('employees').doc(req.empleadoUid);
+          const emp = state.employees.find(e => e.id === req.empleadoUid);
 
-          // 1. Actualizar estado de la solicitud en la DB
-          const reqRef = db.collection("solicitudes").doc(reqId);
-          batch.update(reqRef, { estado: "aprobada" });
+          if (req.tipo === 'cambio_disponibilidad') {
+              // Case B: Availability Change
+              const proposal = req.nuevaDispo || "Sin detalle";
+              const rawInput = prompt(`Aprobando cambio de disponibilidad para ${req.diaNombre}.\n\nPropuesta del usuario: "${proposal}"\n\nIngresa los nuevos slots (formato "Inicio-Fin" ej: "10:00-16:00").\nUsa comas para múltiples rangos (ej: "10:00-14:00, 18:00-22:00").\nDeja vacío para dar el día libre.`, proposal);
 
-          // 2. Buscar y actualizar el documento del empleado (Usando el UID correcto)
-          const empRef = db.collection('employees').doc(req.empleadoUid); // ✅ Correcto
+              if (rawInput === null) return; // Cancelled
 
-          const newException = {
-              date: req.fechaSolicitada, // YYYY-MM-DD
-              start: req.start || null,  // HH:MM o null
-              end: req.end || null,      // HH:MM o null
-              type: req.tipo
-          };
+              const newSlots = [];
+              if (rawInput.trim() !== "") {
+                  const ranges = rawInput.split(',');
+                  for (const range of ranges) {
+                      const parts = range.trim().split('-');
+                      if (parts.length !== 2) {
+                          alert(`Formato inválido en rango: "${range}". Usa HH:MM-HH:MM.`);
+                          return;
+                      }
+                      newSlots.push({ start: parts[0].trim(), end: parts[1].trim() });
+                  }
+              }
 
-          // Usamos SET con MERGE para asegurar que no falle si el documento no existía
-          batch.set(empRef, {
-              exceptions: firebase.firestore.FieldValue.arrayUnion(newException)
-          }, { merge: true });
+              // Update DB
+              const updateData = {};
+              updateData[`availability.${req.diaIndex}`] = newSlots;
+              batch.update(empRef, updateData);
+              batch.update(db.collection("solicitudes").doc(reqId), { estado: "aprobada" });
 
-          await batch.commit();
+              await batch.commit();
 
-          // 3. Actualizar estado LOCAL (Para que se vea en el calendario al instante)
-          // ⚠️ CORRECCIÓN AQUÍ: Usamos 'req.empleadoUid' en lugar de 'req.empleadoId'
-          const emp = state.employees.find(e => e.id === req.empleadoUid); 
-          
-          if(emp) {
-              if(!emp.exceptions) emp.exceptions = [];
-              emp.exceptions.push(newException);
+              // Update Local State
+              if (emp) {
+                  if (!emp.availability) emp.availability = {};
+                  emp.availability[req.diaIndex] = newSlots;
+                  renderAll(); // Refresh UI to show availability changes if viewing that employee
+              }
+
+          } else {
+              // Case A: Normal Request (Days Off / Exceptions)
+
+              const newException = {
+                  date: req.fechaSolicitada,
+                  start: req.start || null,
+                  end: req.end || null,
+                  type: req.tipo
+              };
+
+              batch.set(empRef, {
+                  exceptions: firebase.firestore.FieldValue.arrayUnion(newException)
+              }, { merge: true });
               
-              // Recargar la vista para pintar la excepción nueva
-              renderAll(); 
+              batch.update(db.collection("solicitudes").doc(reqId), { estado: "aprobada" });
+
+              await batch.commit();
+
+              // Update Local State
+              if(emp) {
+                  if(!emp.exceptions) emp.exceptions = [];
+                  emp.exceptions.push(newException);
+
+                  // Recargar la vista para pintar la excepción nueva
+                  renderAll();
+              }
           }
 
-          renderRequests(); // Actualizar la lista de solicitudes
+          renderRequests();
           alert("Solicitud aprobada correctamente.");
 
       } catch (e) {
@@ -4981,6 +5185,17 @@ async function approveRequest(reqId, req) {
       } catch (e) {
           console.error(e);
           alert("Error al rechazar.");
+      }
+  }
+
+  async function deleteRequest(reqId) {
+      if(!confirm("¿Eliminar este registro del historial?")) return;
+      try {
+          await db.collection("solicitudes").doc(reqId).delete();
+          renderRequests();
+      } catch (e) {
+          console.error(e);
+          alert("Error al eliminar.");
       }
   }
 
