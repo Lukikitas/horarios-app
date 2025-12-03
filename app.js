@@ -3358,7 +3358,7 @@ const auth = firebase.auth();
                  const dayName = DAYS[day];
                  const startTime = SLOTS[shift.startSlot].label;
                  const endTime = SLOTS[shift.endSlot + 1] ? SLOTS[shift.endSlot + 1].label : "02:00";
-                 const message = `Hola ${emp.name}, hubo un cambio en tu horario del ${dayName}. Tu nuevo turno es: ${startTime} a ${endTime} (${shift.role}).`;
+                 const message = `Hola ${emp.name}, hubo un cambio/adición en tu horario del ${dayName}. Tu nuevo turno es: ${startTime} a ${endTime} (${shift.role}).`;
                  notifyEmployee(emp.id, message);
              }
         }
