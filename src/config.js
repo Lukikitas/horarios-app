@@ -18,3 +18,23 @@ function generateTimeSlots(){
 }
 
 export const SLOTS = generateTimeSlots();
+
+// Need to create logic for computing colors based on css variables
+// Since this runs in module scope, we can try to read them, but DOM might not be ready or styles not applied.
+// We will hardcode fallback or read on init.
+// For config, better to hardcode defaults or use a function.
+
+export const ROLES = [
+    { key: "Cocina",       cls: "b-cocina",       color: "#ef4444",       darkText:false },
+    { key: "Empaque",      cls: "b-empaque",      color: "#f97316",      darkText:false },
+    { key: "Sandwich",     cls: "b-sandwich",     color: "#facc15",     darkText:true  },
+    { key: "Lobby",        cls: "b-lobby",        color: "#10b981",        darkText:false },
+    { key: "Presentación", cls: "b-presentación", color: "#0ea5e9", darkText:false },
+    { key: "Delivery",     cls: "b-delivery",     color: "#6366f1",     darkText:false },
+    { key: "Caja",         cls: "b-caja",         color: "#8b5cf6",         darkText:false },
+    { key: "Anfitriona",   cls: "b-anfitriona",   color: "#ec4899",   darkText:false },
+    { key: "Descarga",     cls: "b-descarga",     color: "#14b8a6",     darkText:false },
+];
+
+export const DAYS = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"];
+export const MAX_SLOT_FOR_MINOR = 27;
