@@ -1,11 +1,6 @@
 import { el } from '../utils/dom.js';
 import { store } from '../store/Store.js';
 import { DataManager } from '../services/DataManager.js';
-import { renderAll } from '../app_main.js'; // Loop dependency?
-// We should use an event bus or simple subscription.
-// UIManager shouldn't import renderAll directly if renderAll imports UIManager.
-// Solution: UIManager manages visibility. Components manage their own rendering.
-// `renderAll` in app_main calls `UIManager.renderAll` which calls `EmployeeManager.render`, `ScheduleManager.render`.
 
 export const UIManager = {
     init() {
