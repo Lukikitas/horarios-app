@@ -19,6 +19,8 @@ export const ScheduleManager = {
         el("#btnUndo")?.addEventListener("click", () => this.undoLastAction());
 
         el("#weekSelector")?.addEventListener("change", (e) => this.changeWeek(e.target.value));
+        el("#btn-prev-week")?.addEventListener("click", () => this.changeWeek(-7));
+        el("#btn-next-week")?.addEventListener("click", () => this.changeWeek(7));
         el("#btn-lock-week")?.addEventListener("click", () => this.toggleWeekLock());
 
         // Painting listeners
@@ -39,6 +41,79 @@ export const ScheduleManager = {
         el("#btnPrintDailyPlanning")?.addEventListener("click", () => { this.printDailyPlanning(); el("#print-modal").style.display="none"; });
         el("#btnPrint")?.addEventListener("click", () => el("#print-modal").style.display="flex");
         el("#print-modal-close")?.addEventListener("click", () => el("#print-modal").style.display="none");
+
+        // Schedule List Listeners
+        el("#schedule-list-search")?.addEventListener("input", (e) => {
+            store.setState({ scheduleSearchTerm: e.target.value });
+            this.renderScheduleList();
+        });
+
+        // Calendar Modal
+        el("#week-display")?.addEventListener("click", () => {
+            this.calendarDate = new Date(store.getState().activeWeek + "T12:00:00Z");
+            this.renderCalendar();
+            el("#calendar-modal").style.display = "flex";
+        });
+        el("#calendar-prev-month")?.addEventListener("click", () => {
+            this.calendarDate.setMonth(this.calendarDate.getMonth() - 1);
+            this.renderCalendar();
+        });
+        el("#calendar-next-month")?.addEventListener("click", () => {
+            this.calendarDate.setMonth(this.calendarDate.getMonth() + 1);
+            this.renderCalendar();
+        });
+        el("#calendar-modal")?.addEventListener("click", (e) => {
+            if (e.target === el("#calendar-modal")) el("#calendar-modal").style.display = "none";
+        });
+
+        // Templates
+        el("#btnSaveTemplate")?.addEventListener("click", () => this.saveCurrentDayAsTemplate());
+    },
+
+    calendarDate: new Date(),
+
+    renderCalendar() {
+        const grid = el("#calendar-grid");
+        const title = el("#calendar-month-year");
+        if (!grid || !title) return;
+
+        clear(grid);
+        const month = this.calendarDate.getMonth();
+        const year = this.calendarDate.getFullYear();
+        title.textContent = `${new Date(year, month).toLocaleString('es-ES', { month: 'long' })} ${year}`;
+
+        const firstDay = new Date(year, month, 1);
+        const lastDay = new Date(year, month + 1, 0);
+        const startDay = (firstDay.getDay() + 6) % 7; // Monday = 0
+        const totalDays = lastDay.getDate();
+
+        ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'].forEach(d => {
+            grid.appendChild(create("div", { className: "day-name", textContent: d }));
+        });
+
+        for (let i = 0; i < startDay; i++) {
+            grid.appendChild(create("div"));
+        }
+
+        for (let day = 1; day <= totalDays; day++) {
+            const date = new Date(year, month, day);
+            const isMonday = date.getDay() === 1;
+            const classes = "day" + (isMonday ? " monday" : "");
+
+            const dayEl = create("div", { className: classes, textContent: day });
+
+            if (isMonday) {
+                if (toISODateString(date) === store.getState().activeWeek) {
+                    dayEl.classList.add("selected");
+                }
+                dayEl.addEventListener("click", () => {
+                    const newWeek = toISODateString(date);
+                    DataManager.loadWeek(newWeek);
+                    el("#calendar-modal").style.display = "none";
+                });
+            }
+            grid.appendChild(dayEl);
+        }
     },
 
     optionize(select, items, map=(x)=>({value:x, label:x}), includeBlank){
@@ -74,6 +149,10 @@ export const ScheduleManager = {
         this.renderTable();
         this.renderLegend();
         this.updateLockUI();
+        this.renderTemplateList();
+        if (store.getState().activeView === 'schedule-list') {
+            this.renderScheduleList();
+        }
     },
 
     renderTable() {
@@ -740,6 +819,13 @@ export const ScheduleManager = {
             scheduleTbody.style.pointerEvents = isLocked ? 'none' : 'auto';
             scheduleTbody.style.opacity = isLocked ? 0.7 : 1;
         }
+
+        const scheduleListContent = el('#schedule-list-content');
+        if (scheduleListContent) {
+            scheduleListContent.querySelectorAll('[draggable="true"]').forEach(el => {
+                el.draggable = !isLocked;
+            });
+        }
     },
 
     toggleWeekLock() {
@@ -765,10 +851,18 @@ export const ScheduleManager = {
     },
 
     changeWeek(offset) {
-        // Logic handled in DataManager usually, or here calling DataManager
-        // If offset is string (date) or number (days)
-        // If it's number (prev/next)
-        // ...
+        const state = store.getState();
+        const currentMonday = new Date(state.activeWeek + "T12:00:00Z");
+
+        if (typeof offset === 'number') {
+            currentMonday.setDate(currentMonday.getDate() + offset);
+        } else {
+            // Assume offset is date string or called from unexpected place
+            return;
+        }
+
+        const newWeek = toISODateString(getMonday(currentMonday));
+        DataManager.loadWeek(newWeek);
     },
 
     openAssignEmployeeModal(shiftId) {
@@ -889,7 +983,6 @@ export const ScheduleManager = {
                 shift.role = roleSelect.value;
                 shift.startSlot = newStart;
                 shift.endSlot = newEnd - 1;
-                // Check logic for star mismatch...
             });
             wrap.remove();
         }}));
@@ -897,6 +990,292 @@ export const ScheduleManager = {
 
         wrap.appendChild(box);
         document.body.appendChild(wrap);
+    },
+
+    renderScheduleList() {
+        const content = el("#schedule-list-content");
+        if(!content) return;
+        clear(content);
+
+        const state = store.getState();
+        const schedule = getActiveSchedule();
+        if(!schedule) return;
+
+        const searchTerm = (state.scheduleSearchTerm || '').toLowerCase().trim();
+        const employees = state.employees
+            .filter(emp => this.getEmployeeWeeklyHours(emp.id) > 0)
+            .filter(emp => emp.name.toLowerCase().includes(searchTerm))
+            .sort((a, b) => a.name.localeCompare(b.name));
+
+        const unassignedShiftsExist = Object.values(schedule).some(day => Array.isArray(day) && day.some(s => !s.employeeId));
+
+        if (employees.length === 0 && !unassignedShiftsExist) {
+            content.appendChild(create("p", { className: "muted", textContent: "No hay empleados ni turnos para mostrar." }));
+            return;
+        }
+
+        const table = create("table", { className: "schedule-list-table" });
+        const thead = create("thead");
+        const headerRow = create("tr");
+
+        const weekMonday = new Date(state.activeWeek + "T12:00:00Z");
+
+        headerRow.appendChild(create("th", { textContent: "Empleado" }));
+        DAYS.forEach((dayName, dayIndex) => {
+            const dayDate = new Date(weekMonday);
+            dayDate.setDate(weekMonday.getDate() + dayIndex);
+            headerRow.appendChild(create("th", {
+                innerHTML: `${dayName}<br><span class="muted" style="font-size:11px;">${dayDate.getDate()}/${dayDate.getMonth() + 1}</span>`
+            }));
+        });
+        thead.appendChild(headerRow);
+        table.appendChild(thead);
+
+        const tbody = create("tbody");
+
+        // Unassigned Row
+        const unassignedRow = create("tr", { dataset: { employeeId: "unassigned" } });
+        unassignedRow.appendChild(create("td", { innerHTML: `<div style="font-weight: 500; font-style: italic;">Turnos sin Asignar</div>` }));
+
+        for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
+            const dayCell = create("td", { dataset: { day: dayIndex } });
+            const unassignedShifts = (schedule[dayIndex] || []).filter(s => !s.employeeId);
+            if (unassignedShifts.length > 0) {
+                const shiftsContainer = create("div", { className: "shifts-container" });
+                unassignedShifts.forEach(shift => {
+                    const shiftDiv = create("div", {
+                        className: "schedule-list-shift unassigned-shift-item",
+                        dataset: { shiftId: shift.id, dayIndex: dayIndex },
+                        draggable: true,
+                        innerHTML: `<div style="font-weight: 500;">${shift.role}</div><div style="font-size: 11px;">${SLOTS[shift.startSlot].label} - ${SLOTS[shift.endSlot + 1] ? SLOTS[shift.endSlot + 1].label : "02:00"}</div>`
+                    });
+
+                    const roleInfo = ROLES.find(r => r.key === shift.role);
+                    if(roleInfo) {
+                        shiftDiv.style.backgroundColor = roleInfo.color;
+                        shiftDiv.style.color = roleInfo.darkText ? '#111' : '#fff';
+                    }
+
+                    // Drag events (simplified inline or bind proper listeners)
+                    shiftDiv.addEventListener('dragstart', (e) => {
+                        e.dataTransfer.setData('text/plain', JSON.stringify({ shiftId: shift.id, dayIndex: dayIndex }));
+                        e.dataTransfer.effectAllowed = 'move';
+                        setTimeout(() => { shiftDiv.style.opacity = '0.5'; }, 0);
+                    });
+                    shiftDiv.addEventListener('dragend', () => { shiftDiv.style.opacity = '1'; });
+
+                    shiftsContainer.appendChild(shiftDiv);
+                });
+                dayCell.appendChild(shiftsContainer);
+            }
+            this.addDropListeners(dayCell);
+            unassignedRow.appendChild(dayCell);
+        }
+        tbody.appendChild(unassignedRow);
+
+        // Employee Rows
+        employees.forEach(emp => {
+            const row = create("tr", { dataset: { employeeId: emp.id } });
+            const weeklyHours = this.getEmployeeWeeklyHours(emp.id);
+            row.appendChild(create("td", { innerHTML: `<div style="font-weight: 500;">${this.escapeHtml(emp.name)}</div><div class="muted" style="font-size: 12px;">Total: ${String(weeklyHours).replace('.', ',')}hs</div>` }));
+
+            for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
+                const dayCell = create("td", { dataset: { day: dayIndex } });
+                const dayShifts = (schedule[dayIndex] || []).filter(s => s.employeeId === emp.id);
+                if (dayShifts.length > 0) {
+                    const shiftsContainer = create("div", { className: "shifts-container" });
+                    dayShifts.forEach(shift => {
+                        const shiftDiv = create("div", {
+                            className: "schedule-list-shift",
+                            dataset: { shiftId: shift.id, dayIndex: dayIndex },
+                            draggable: true
+                        });
+
+                        const roleInfo = ROLES.find(r => r.key === shift.role);
+                        if(roleInfo) {
+                            shiftDiv.style.backgroundColor = roleInfo.color;
+                            shiftDiv.style.color = roleInfo.darkText ? '#111' : '#fff';
+                        }
+
+                        const startTime = SLOTS[shift.startSlot].label;
+                        const endTime = SLOTS[shift.endSlot + 1] ? SLOTS[shift.endSlot + 1].label : "02:00";
+                        let shiftText = `<div style="font-weight: 500;">${shift.role}</div><div style="font-size: 11px;">${startTime} - ${endTime}</div>`;
+
+                        if (shift.replacement && shift.replacement.originalEmployeeId) {
+                            const originalEmp = state.employees.find(e => e.id === shift.replacement.originalEmployeeId);
+                            if(originalEmp) {
+                                const originalName = originalEmp.displayName || originalEmp.name.split(' ')[0];
+                                shiftText += `<div style="font-size: 10px; font-style: italic; margin-top: 2px;">(cubre a ${this.escapeHtml(originalName)})</div>`;
+                            }
+                        }
+                        shiftDiv.innerHTML = shiftText;
+
+                        // Sanction conflict visual
+                        const weekMonday = new Date(state.activeWeek + "T12:00:00Z");
+                        const shiftDate = new Date(weekMonday);
+                        shiftDate.setDate(shiftDate.getDate() + dayIndex);
+
+                        if (this.isDateInSanctionPeriod(shiftDate, emp.sanctions) && !shift.replacement) {
+                            shiftDiv.style.border = `2px solid var(--c-danger)`;
+                            shiftDiv.title = 'Conflicto con sanción/licencia';
+                        }
+
+                        shiftDiv.addEventListener('dragstart', (e) => {
+                            e.dataTransfer.setData('text/plain', JSON.stringify({ shiftId: shift.id, dayIndex: dayIndex }));
+                            e.dataTransfer.effectAllowed = 'move';
+                            setTimeout(() => { shiftDiv.style.opacity = '0.5'; }, 0);
+                        });
+                        shiftDiv.addEventListener('dragend', () => { shiftDiv.style.opacity = '1'; });
+
+                        shiftDiv.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            // Go to shift logic reuse?
+                            // For list view, we might want a context menu too or jump to grid.
+                            // Let's jump to grid.
+                            store.setState({ activeDay: dayIndex });
+                            // Need to switch view via UIManager, but we don't import it here directly to avoid circle?
+                            // We can use the event bus pattern or just dispatch the event.
+                            // Or simple:
+                            // el("#btn-view-schedule").click();
+                            // But cleaner:
+                            // We will expose a method or dispatch event.
+                            // For now, let's just use the click trick or rely on shared logic.
+                            // Actually, let's implement showShiftContextMenu
+                            this.showShiftContextMenu(e, shift.id, dayIndex, emp.id);
+                        });
+
+                        shiftsContainer.appendChild(shiftDiv);
+                    });
+                    dayCell.appendChild(shiftsContainer);
+                }
+                this.addDropListeners(dayCell);
+                row.appendChild(dayCell);
+            }
+            tbody.appendChild(row);
+        });
+
+        table.appendChild(tbody);
+        content.appendChild(table);
+    },
+
+    addDropListeners(dayCell) {
+        dayCell.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; });
+        dayCell.addEventListener('dragenter', (e) => { e.preventDefault(); dayCell.classList.add('drag-over'); });
+        dayCell.addEventListener('dragleave', () => { dayCell.classList.remove('drag-over'); });
+        dayCell.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dayCell.classList.remove('drag-over');
+
+            const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+            const sourceShiftId = data.shiftId;
+            const sourceDayIndex = data.dayIndex;
+
+            const targetTr = e.target.closest('tr');
+            if (!targetTr) return;
+
+            const targetEmployeeId = targetTr.dataset.employeeId;
+            const targetShiftElement = e.target.closest('.schedule-list-shift');
+            const targetDayIndex = parseInt(e.target.closest('td').dataset.day, 10);
+
+            const schedule = getActiveSchedule();
+            const sourceShift = schedule[sourceDayIndex]?.find(s => s.id === sourceShiftId);
+            if (!sourceShift) return;
+
+            this.commitChange(() => {
+                // Scenario 1: Unassign
+                if (targetEmployeeId === 'unassigned') {
+                    if (!sourceShift.employeeId) return;
+                    sourceShift.employeeId = null;
+                    return;
+                }
+
+                const targetEmployee = store.getState().employees.find(e => e.id === targetEmployeeId);
+                if (!targetEmployee) return;
+
+                // Scenario 2: Swap
+                if (targetShiftElement) {
+                    const targetShiftId = targetShiftElement.dataset.shiftId;
+                    if (sourceShiftId === targetShiftId) return;
+
+                    const targetShift = schedule[targetDayIndex]?.find(s => s.id === targetShiftId);
+                    if (!targetShift || !targetShift.employeeId) return;
+
+                    // Swap logic (simplified check)
+                    [targetShift.employeeId, sourceShift.employeeId] = [sourceShift.employeeId, targetShift.employeeId];
+                }
+                // Scenario 3: Move/Assign
+                else {
+                    const sourceEmployeeId = sourceShift.employeeId;
+                    if (sourceEmployeeId === targetEmployeeId && sourceDayIndex === targetDayIndex) return;
+
+                    // Move logic
+                    // If moving day, need to splice and push.
+                    if (sourceDayIndex !== targetDayIndex) {
+                        const originalDayShifts = schedule[sourceDayIndex];
+                        const shiftIndex = originalDayShifts.findIndex(s => s.id === sourceShift.id);
+                        if (shiftIndex > -1) {
+                            const [shiftToMove] = originalDayShifts.splice(shiftIndex, 1);
+                            shiftToMove.employeeId = targetEmployee.id;
+                            this.ensureDay(targetDayIndex);
+                            schedule[targetDayIndex].push(shiftToMove);
+                        }
+                    } else {
+                        // Same day, just reassign
+                        sourceShift.employeeId = targetEmployee.id;
+                    }
+                }
+            });
+        });
+    },
+
+    showShiftContextMenu(event, shiftId, dayIndex, employeeId) {
+        const existingMenu = document.querySelector('.shift-context-menu');
+        if (existingMenu) existingMenu.remove();
+
+        const menu = create("div", { className: 'shift-context-menu' });
+
+        if (employeeId) {
+            menu.appendChild(create("button", { textContent: 'Desasignar empleado', onClick: () => {
+                const schedule = getActiveSchedule();
+                const shift = schedule[dayIndex]?.find(s => s.id === shiftId);
+                if (shift) {
+                    this.commitChange(() => { shift.employeeId = null; });
+                }
+                menu.remove();
+            }}));
+        }
+
+        menu.appendChild(create("button", { textContent: 'Ir al turno', onClick: () => {
+            store.setState({ activeDay: dayIndex });
+            // Dispatch event to switch view
+            document.dispatchEvent(new CustomEvent('view-changed', { detail: { view: 'schedule' } }));
+            // Also need to trigger UIManager to actually switch the DOM visibility
+            // We can listen to this event in app_main or UIManager.
+            // Or just:
+            el("#btn-view-schedule").click();
+
+            setTimeout(() => {
+                const shiftRow = document.querySelector(`[data-shift-id="${shiftId}"]`);
+                if (shiftRow) {
+                    shiftRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    shiftRow.classList.add('highlight-shift');
+                    setTimeout(() => shiftRow.classList.remove('highlight-shift'), 2000);
+                }
+            }, 100);
+            menu.remove();
+        }}));
+
+        document.body.appendChild(menu);
+        menu.style.left = `${event.pageX}px`;
+        menu.style.top = `${event.pageY}px`;
+
+        const closeListener = (e) => {
+            if (!menu.contains(e.target)) {
+                menu.remove();
+                document.removeEventListener('click', closeListener);
+            }
+        };
+        setTimeout(() => document.addEventListener('click', closeListener), 0);
     },
 
     handleSlotClick(shift, slotIndex) {

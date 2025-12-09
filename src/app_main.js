@@ -33,9 +33,10 @@ async function init() {
         // Ideally each manager subscribes to what it needs.
 
         // For now, call specific render methods based on view
-        // (This is a simplified approach to mimic the original monolithic renderAll)
         if (state.activeView === 'employees') EmployeeManager.renderList();
-        if (state.activeView === 'schedule') ScheduleManager.render();
+        if (state.activeView === 'schedule' || state.activeView === 'schedule-list') ScheduleManager.render();
+        if (state.activeView === 'francos' || state.activeView === 'clock-ins' || state.activeView === 'planilla-turno') StatsManager.render();
+        if (state.activeView === 'requests') RequestsManager.render();
         // ... etc
 
         // Always update some common UI?
