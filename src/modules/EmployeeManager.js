@@ -6,9 +6,6 @@ import { getActiveSchedule } from '../store/Store.js';
 export const EmployeeManager = {
     init() {
         this.bindEvents();
-        // Subscribe to store? Or let app_main call render?
-        // Let's rely on explicit render calls from app_main for now to control flow,
-        // or subscribe to 'employees' changes.
     },
 
     bindEvents() {
@@ -16,9 +13,6 @@ export const EmployeeManager = {
         el("#inpName")?.addEventListener("keydown", (ev) => { if(ev.key==="Enter") this.addEmployee(); });
         el("#empFilter")?.addEventListener("change", () => this.renderList());
         el("#empSearch")?.addEventListener("input", () => this.renderList());
-
-        // Export logic handled elsewhere? Or here?
-        // Let's keep export in ImportExportManager or similar.
     },
 
     addEmployee() {
@@ -94,7 +88,7 @@ export const EmployeeManager = {
 
         const table = create("table", { className: "emp-table-new" });
         const thead = create("thead");
-        thead.innerHTML = "<tr><th>Nombre</th><th>DNI/Mail/Cel</th><th>Estrellas</th><th>Acciones</th></tr>"; // Using innerHTML for static header is fine/easy
+        thead.innerHTML = "<tr><th>Nombre</th><th>DNI/Mail/Cel</th><th>Estrellas</th><th>Acciones</th></tr>";
         table.appendChild(thead);
 
         const tbody = create("tbody");
@@ -149,10 +143,6 @@ export const EmployeeManager = {
             if (e.stars && e.stars.length > 0) {
                 const badges = create("div", { className: "chips" });
                 e.stars.forEach(s => {
-                    // We need clsFor helper.
-                    // Let's import it or duplicate simple logic.
-                    // Ideally use a RoleManager or Utils.
-                    // For now, I'll assume a helper function.
                     const cls = this.clsFor(s);
                     badges.appendChild(create("span", { className: "badge " + cls, textContent: s }));
                 });
@@ -243,20 +233,6 @@ export const EmployeeManager = {
         const newEmployees = state.employees.filter(e => e.id !== empId);
         store.setState({ employees: newEmployees });
 
-        // Remove from DB logic is handled by saveState usually, but explicit delete is better?
-        // DataManager.saveState handles the 'employees' array update in state but doesn't delete the doc in 'employees' collection.
-        // We should add a deleteEmployee method to DataManager.
-        // For now, let's just use firestore directly here or add it to DataManager.
-        // The original code did: db.collection('employees').doc(empId).delete();
-
-        // Also remove from schedules.
-        // The original code iterated over ALL schedules.
-        // We only have activeWeek loaded?
-        // This is a limitation of the new architecture if we don't load everything.
-        // Ideally we only clear from active week.
-        // Or we let the UI handle "Employee Not Found" gracefully.
-
-        // Let's implement delete in DataManager later or here.
         import('../services/DataManager.js').then(({getDb}) => {
              getDb().collection('employees').doc(empId).delete().catch(console.error);
         });
@@ -291,7 +267,6 @@ export const EmployeeManager = {
                     style: { justifyContent: "space-between", display: "flex", width: "100%" },
                     innerHTML: `<span>${r.key}</span><span>${isOn ? "★" : ""}</span>`,
                     onClick: () => {
-                        // Toggle star
                         const stars = emp.stars || [];
                         const i = stars.indexOf(r.key);
                         if(i >= 0) stars.splice(i, 1); else stars.push(r.key);
@@ -324,15 +299,17 @@ export const EmployeeManager = {
             emp.availability = { "0": [], "1": [], "2": [], "3": [], "4": [], "5": [], "6": [] };
         }
 
-        // Conflicts check (simplified for now as imports are tricky without circular deps, but could import from ScheduleManager if exposed)
-        // const conflicts = findAvailabilityConflicts(employeeId); ...
-
         const content = create("div");
         const stack = create("div", { className: "stack" });
         stack.appendChild(create("strong", { textContent: "Disponibilidad Semanal" }));
 
         const DAYS = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"];
         import('../config.js').then(({ SLOTS }) => {
+            if (!SLOTS) {
+                stack.appendChild(create("div", { textContent: "Error cargando slots." }));
+                return;
+            }
+
             DAYS.forEach((day, dayIndex) => {
                 const dayAvailability = emp.availability[dayIndex] || [];
                 const dayRow = create("div", {
@@ -375,7 +352,6 @@ export const EmployeeManager = {
                     });
                 }
 
-                // Add Slot Button
                 const addDiv = create("div", { style: { width: "100%" } });
                 addDiv.appendChild(create("button", { className: "btn secondary", textContent: "+", style: { padding: "2px 8px" }, onClick: () => {
                     if (!emp.availability[dayIndex]) emp.availability[dayIndex] = [];
@@ -414,7 +390,9 @@ export const EmployeeManager = {
 
         (emp.exceptions || []).forEach(ex => {
             const row = create("div", { className: "row", style: { justifyContent: "space-between" } });
-            row.textContent = `${ex.date} (${ex.type || 'Excepción'})`;
+            const timeInfo = ex.start && ex.end ? ` (${ex.start} - ${ex.end})` : ' (Día completo)';
+            row.textContent = `${ex.date}${timeInfo} - ${ex.type || 'Excepción'}`;
+
             const delBtn = create("button", { className: "btn secondary del", textContent: "X", onClick: () => {
                 emp.exceptions = emp.exceptions.filter(x => x !== ex);
                 DataManager.saveState();
@@ -424,17 +402,40 @@ export const EmployeeManager = {
             list.appendChild(row);
         });
 
-        const addRow = create("div", { className: "row" });
+        const addRow = create("div", { className: "row", style: { gap: '8px', flexWrap: 'wrap' } });
         const dateInput = create("input", { type: "date", className: "input" });
+        const startInput = create("input", { type: "time", className: "input", title: "Inicio (opcional)" });
+        const endInput = create("input", { type: "time", className: "input", title: "Fin (opcional)" });
+
         const addBtn = create("button", { className: "btn", textContent: "Añadir", onClick: () => {
             if(dateInput.value) {
                 if(!emp.exceptions) emp.exceptions = [];
-                emp.exceptions.push({ date: dateInput.value });
+                const newEx = {
+                    date: dateInput.value,
+                    start: startInput.value || null,
+                    end: endInput.value || null
+                };
+                // If only one time is set, it's invalid for range, assume full day?
+                // Or require both for partial.
+                if ((newEx.start && !newEx.end) || (!newEx.start && newEx.end)) {
+                    alert("Para excepción parcial, ingresa Inicio y Fin.");
+                    return;
+                }
+
+                emp.exceptions.push(newEx);
                 DataManager.saveState();
                 this.renderList();
+            } else {
+                alert("Ingresa una fecha.");
             }
         }});
+
+        addRow.appendChild(create("label", { textContent: "Fecha:", className: "muted", style: {fontSize:'12px'} }));
         addRow.appendChild(dateInput);
+        addRow.appendChild(create("label", { textContent: "De:", className: "muted", style: {fontSize:'12px'} }));
+        addRow.appendChild(startInput);
+        addRow.appendChild(create("label", { textContent: "A:", className: "muted", style: {fontSize:'12px'} }));
+        addRow.appendChild(endInput);
         addRow.appendChild(addBtn);
 
         panel.appendChild(list);
