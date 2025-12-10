@@ -155,6 +155,117 @@ export const ScheduleManager = {
         }
     },
 
+    // --- Template Logic ---
+
+    renderTemplateList() {
+        const list = el("#templateList");
+        if (!list) return;
+
+        clear(list);
+        const templates = store.getState().templates || {};
+
+        if (Object.keys(templates).length === 0) {
+            list.appendChild(create("div", { className: "muted", style: { padding: "10px", textAlign: "center" }, textContent: "No hay plantillas guardadas." }));
+            return;
+        }
+
+        Object.entries(templates).forEach(([name, template]) => {
+            const item = create("div", { className: "template-item" });
+            const info = create("div", { style: { flex: 1 } });
+            info.appendChild(create("div", { style: { fontWeight: "600" }, textContent: name }));
+            if (template.description) {
+                info.appendChild(create("div", { className: "muted", style: { fontSize: "12px" }, textContent: template.description }));
+            }
+            item.appendChild(info);
+
+            const actions = create("div", { style: { display: "flex", gap: "5px" } });
+            actions.appendChild(create("button", {
+                className: "btn small", textContent: "Aplicar",
+                onClick: () => { if(confirm(`¿Aplicar plantilla "${name}"? Esto sobrescribirá el día actual.`)) this.applyTemplate(name); }
+            }));
+            actions.appendChild(create("button", {
+                className: "btn small secondary del", innerHTML: "&times;",
+                onClick: () => { if(confirm(`¿Eliminar plantilla "${name}"?`)) this.deleteTemplate(name); }
+            }));
+
+            item.appendChild(actions);
+            list.appendChild(item);
+        });
+    },
+
+    saveCurrentDayAsTemplate() {
+        const nameInp = el("#inpTemplateName");
+        const descInp = el("#inpTemplateDesc");
+        if (!nameInp) return;
+
+        const name = nameInp.value.trim();
+        const description = descInp ? descInp.value.trim() : "";
+
+        if (!name) { alert("Ingresa un nombre para la plantilla."); return; }
+
+        const state = store.getState();
+        if (state.templates && state.templates[name]) {
+            if (!confirm(`La plantilla "${name}" ya existe. ¿Sobrescribirla?`)) return;
+        }
+
+        const schedule = getActiveSchedule();
+        const dayShifts = schedule[state.activeDay] || [];
+
+        // Deep copy shifts and clear specific IDs/Employees if needed?
+        // Usually templates keep roles and times, but maybe not employees?
+        // Let's keep employees for now as per "Guardar día como plantilla" usually implies full snapshot.
+        // But re-applying might need new IDs.
+
+        const templateShifts = dayShifts.map(s => ({ ...s })); // Shallow copy of objects is enough for now if properties are primitives
+
+        const newTemplates = {
+            ...state.templates,
+            [name]: {
+                description,
+                shifts: templateShifts
+            }
+        };
+
+        store.setState({ templates: newTemplates });
+        DataManager.saveState();
+
+        nameInp.value = "";
+        if(descInp) descInp.value = "";
+        this.renderTemplateList();
+        alert("Plantilla guardada.");
+    },
+
+    applyTemplate(name) {
+        const state = store.getState();
+        const template = state.templates[name];
+        if (!template) return;
+
+        const day = state.activeDay;
+        this.ensureDay(day);
+
+        // Create new shifts with new IDs
+        const newShifts = template.shifts.map(s => ({
+            ...s,
+            id: crypto.randomUUID(),
+            // Ensure employeeId is valid? If employee was deleted, it might be an issue.
+            // But we keep it simple.
+        }));
+
+        this.commitChange(() => {
+            getActiveSchedule()[day] = newShifts;
+        });
+    },
+
+    deleteTemplate(name) {
+        const state = store.getState();
+        const newTemplates = { ...state.templates };
+        delete newTemplates[name];
+
+        store.setState({ templates: newTemplates });
+        DataManager.saveState();
+        this.renderTemplateList();
+    },
+
     renderTable() {
         const state = store.getState();
         const tbody = el("#tbody");
