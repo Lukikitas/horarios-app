@@ -68,12 +68,20 @@ export const EmployeeManager = {
         const starFilter = el("#empFilter")?.value;
         const searchFilter = el("#empSearch")?.value.toLowerCase();
 
-        const filtered = state.employees
+        const employees = Array.isArray(state.employees) ? state.employees : [];
+
+        const filtered = employees
+            .filter(e => e && typeof e === 'object') // Filter out null/undefined entries
             .slice()
-            .sort((a,b)=>a.name.localeCompare(b.name))
-            .filter(e=> {
-                const nameMatch = e.name.toLowerCase().includes(searchFilter);
-                const starMatch = !starFilter || (e.stars||[]).includes(starFilter);
+            .sort((a, b) => {
+                const nameA = a.name || '';
+                const nameB = b.name || '';
+                return nameA.localeCompare(nameB);
+            })
+            .filter(e => {
+                const name = e.name || '';
+                const nameMatch = name.toLowerCase().includes(searchFilter);
+                const starMatch = !starFilter || (e.stars || []).includes(starFilter);
                 return nameMatch && starMatch;
             });
 
