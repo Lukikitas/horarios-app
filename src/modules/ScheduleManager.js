@@ -23,6 +23,23 @@ export const ScheduleManager = {
         el("#btn-next-week")?.addEventListener("click", () => this.changeWeek(7));
         el("#btn-lock-week")?.addEventListener("click", () => this.toggleWeekLock());
 
+        // Projected tickets persistence per day
+        el("#projectedTickets")?.addEventListener("change", (e) => {
+            const val = e.target.value;
+            const { activeWeek, activeDay, projectedTickets } = store.getState();
+            const weekData = projectedTickets[activeWeek] || {};
+            weekData[activeDay] = val;
+
+            const newProjectedTickets = {
+                ...projectedTickets,
+                [activeWeek]: weekData
+            };
+            store.setState({ projectedTickets: newProjectedTickets });
+            DataManager.saveState();
+            this.updateProjectedProductivity();
+            this.renderWeeklyStats(); // Update header stats
+        });
+
         // Painting listeners
         window.addEventListener("mouseup", () => {
             if (this.isPainting) this.handlePaintEnd();
@@ -149,6 +166,8 @@ export const ScheduleManager = {
         this.renderTable();
         this.renderLegend();
         this.updateLockUI();
+        this.updateWeekDisplay();
+        this.renderWeeklyStats();
         this.renderTemplateList();
         if (store.getState().activeView === 'schedule-list') {
             this.renderScheduleList();
@@ -950,6 +969,11 @@ export const ScheduleManager = {
         const { activeWeek, activeDay, projectedTickets } = store.getState();
         const weekTickets = projectedTickets[activeWeek] || {};
         const tickets = Number(weekTickets[activeDay] || 0);
+
+        // Update input value
+        const inp = el("#projectedTickets");
+        if (inp) inp.value = tickets || '';
+
         const totalHours = this.calculateTotalDayHours(activeDay);
         const pp = el("#projectedProductivity");
         if(pp) {
@@ -959,6 +983,66 @@ export const ScheduleManager = {
                 pp.textContent = "-";
             }
         }
+    },
+
+    updateWeekDisplay() {
+        const btn = el("#week-display");
+        if (!btn) return;
+        const state = store.getState();
+        const monday = new Date(state.activeWeek + "T12:00:00Z");
+        const sunday = new Date(monday);
+        sunday.setDate(monday.getDate() + 6);
+
+        const format = (d) => `${d.getDate()}/${d.getMonth()+1}`;
+        btn.textContent = `${format(monday)} - ${format(sunday)}`;
+    },
+
+    renderWeeklyStats() {
+        const headerContainer = el(".controls-center");
+        if (!headerContainer) return;
+
+        // Check if stats container exists
+        let statsContainer = el("#weekly-stats-container");
+        if (!statsContainer) {
+            statsContainer = create("div", {
+                id: "weekly-stats-container",
+                style: {
+                    display: "flex",
+                    gap: "10px",
+                    fontSize: "12px",
+                    marginBottom: "4px",
+                    color: "var(--muted)"
+                }
+            });
+            // Insert before the day title or at the top of controls-center
+            headerContainer.insertBefore(statsContainer, headerContainer.firstChild);
+        }
+
+        // Calculate stats
+        const state = store.getState();
+        let totalHours = 0;
+        let totalTickets = 0;
+
+        const schedule = getActiveSchedule();
+        const weekTickets = state.projectedTickets[state.activeWeek] || {};
+
+        for (let i = 0; i < 7; i++) {
+            totalHours += this.calculateTotalDayHours(i);
+            totalTickets += Number(weekTickets[i] || 0);
+        }
+
+        const productivity = totalHours > 0 ? (totalTickets / totalHours).toFixed(1) : "-";
+
+        clear(statsContainer);
+
+        const leftBox = create("div", { style: { display: "flex", flexDirection: "column", alignItems: "flex-end" } });
+        leftBox.innerHTML = `<div><strong>${String(totalHours).replace('.',',')}hs</strong></div><div>${totalTickets} Tkts</div>`;
+
+        const prodBox = create("div", { style: { display: "flex", alignItems: "center", fontWeight: "bold" } });
+        prodBox.textContent = `Prod: ${productivity}`;
+
+        statsContainer.appendChild(leftBox);
+        statsContainer.appendChild(prodBox);
     },
 
     changeWeek(offset) {

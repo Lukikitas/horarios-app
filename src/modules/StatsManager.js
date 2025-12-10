@@ -116,12 +116,21 @@ export const StatsManager = {
         // Helper to generate details row content
         const generateDetailsRow = (empId) => {
             const schedule = getActiveSchedule();
-            if (!schedule) return '';
+            if (!schedule) return document.createElement('div');
 
-            let detailsHtml = '<div class="details-container" style="padding: 10px; background: #f9fafb; border-radius: 4px; margin: 5px 0;">';
-            detailsHtml += '<table class="details-table" style="width:100%; font-size:12px;"><thead><tr><th>Día</th><th>Horario</th><th>Puesto</th><th>Acción</th></tr></thead><tbody>';
+            const detailsContainer = create("div", { className: "details-container" });
+            const table = create("table", { className: "details-table" });
 
-            const daysMap = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+            const thead = create("thead");
+            const headRow = create("tr");
+            ['Día', 'Horario', 'Puesto', 'Acción'].forEach(text => {
+                headRow.appendChild(create("th", { textContent: text }));
+            });
+            thead.appendChild(headRow);
+            table.appendChild(thead);
+
+            const tbody = create("tbody");
+            const daysMap = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'];
             let hasShifts = false;
 
             for (let i = 0; i < 7; i++) {
@@ -132,19 +141,36 @@ export const StatsManager = {
                     hasShifts = true;
                     const start = SLOTS[shift.startSlot].label;
                     const end = SLOTS[shift.endSlot + 1] ? SLOTS[shift.endSlot + 1].label : "02:00";
-                    detailsHtml += `<tr>
-                        <td>${daysMap[i]}</td>
-                        <td>${start} - ${end}</td>
-                        <td>${shift.role}</td>
-                        <td><button class="btn small secondary btn-go-shift" data-shift-id="${shift.id}" data-day="${i}">Ir</button></td>
-                    </tr>`;
+
+                    const tr = create("tr");
+                    tr.appendChild(create("td", { textContent: daysMap[i] }));
+                    tr.appendChild(create("td", { textContent: `${start} - ${end}` }));
+                    tr.appendChild(create("td", { textContent: shift.role })); // create handles text content safely
+
+                    const actionTd = create("td", { style: { textAlign: 'center' } });
+                    const btn = create("button", {
+                        className: "btn small secondary btn-go-shift",
+                        textContent: "Ir",
+                        style: { padding: "1px 4px", fontSize: "10px" },
+                        dataset: { shiftId: shift.id, day: i }
+                    });
+                    actionTd.appendChild(btn);
+                    tr.appendChild(actionTd);
+
+                    tbody.appendChild(tr);
                 });
             }
 
-            if (!hasShifts) detailsHtml += '<tr><td colspan="4" class="muted">Sin turnos asignados esta semana.</td></tr>';
+            if (!hasShifts) {
+                const tr = create("tr");
+                const td = create("td", { colSpan: 4, className: "muted", textContent: "Sin turnos." });
+                tr.appendChild(td);
+                tbody.appendChild(tr);
+            }
 
-            detailsHtml += '</tbody></table></div>';
-            return detailsHtml;
+            table.appendChild(tbody);
+            detailsContainer.appendChild(table);
+            return detailsContainer;
         };
 
         const generateTableFor = (list, colIndex) => {
@@ -168,7 +194,7 @@ export const StatsManager = {
                         } else {
                             const detailsTr = create("tr", { className: "details-row" });
                             const detailsTd = create("td", { colSpan: 4 });
-                            detailsTd.innerHTML = generateDetailsRow(e.id);
+                            detailsTd.appendChild(generateDetailsRow(e.id));
 
                             // Bind "Ir" buttons
                             detailsTd.querySelectorAll('.btn-go-shift').forEach(btn => {
