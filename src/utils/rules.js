@@ -169,3 +169,54 @@ export function calculateConsecutiveWorkDays(employeeId, weekId, dayIndex) {
     }
     return consecutiveDays;
 }
+
+export function isSlotUnavailable(employee, slotIndex, weekId, dayIndex) {
+    if (!employee) return false;
+
+    const shiftDate = new Date(`${weekId}T12:00:00.000Z`);
+    shiftDate.setUTCDate(shiftDate.getUTCDate() + dayIndex);
+    const shiftDateString = toISODateString(shiftDate).slice(0, 10);
+
+    // 1. Sanctions (Blocking)
+    if (isDateInSanctionPeriod(shiftDate, employee.sanctions)) return true;
+
+    // 2. Exceptions
+    if (employee.exceptions && Array.isArray(employee.exceptions)) {
+        const exception = employee.exceptions.find(ex => ex.date === shiftDateString);
+        if (exception) {
+            // Full day exception
+            if (!exception.start && !exception.end) return true;
+
+            // Partial exception: Unavailable during this range
+            const exStart = timeToSlotIndex(exception.start);
+            const exEnd = timeToSlotIndex(exception.end);
+
+            if (exStart !== -1 && exEnd !== -1) {
+                if (slotIndex >= exStart && slotIndex < exEnd) return true;
+            }
+        }
+    }
+
+    // 3. Weekly Availability
+    // If defined, slot must be inside at least one range to be AVAILABLE.
+    if (employee.availability && Array.isArray(employee.availability)) {
+        const daySlots = employee.availability[dayIndex];
+        if (daySlots && daySlots.length > 0) {
+            let isCovered = false;
+            for (const range of daySlots) {
+                const rStart = range.start ? timeToSlotIndex(range.start) : 0;
+                const rEnd = range.end ? timeToSlotIndex(range.end) : SLOTS.length; // Exclusive end
+
+                if (rStart !== -1 && rEnd !== -1) {
+                    if (slotIndex >= rStart && slotIndex < rEnd) {
+                        isCovered = true;
+                        break;
+                    }
+                }
+            }
+            if (!isCovered) return true; // Unavailable if not covered
+        }
+    }
+
+    return false;
+}

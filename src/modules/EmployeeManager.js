@@ -331,7 +331,9 @@ export const EmployeeManager = {
                         const startSel = create("select", { className: "select availability-start" });
                         startSel.appendChild(create("option", { value:"", textContent:"--" }));
                         SLOTS.forEach(s => {
-                            const isSelected = slot.start && String(slot.start).trim() === s.label;
+                            // Compare using substring to handle potential HH:MM:SS formats
+                            const val = slot.start ? String(slot.start).trim().substring(0, 5) : "";
+                            const isSelected = val === s.label;
                             startSel.appendChild(create("option", { value:s.label, textContent:s.label, selected: isSelected }));
                         });
                         startSel.onchange = (e) => { slot.start = e.target.value || null; };
@@ -339,7 +341,8 @@ export const EmployeeManager = {
                         const endSel = create("select", { className: "select availability-end" });
                         endSel.appendChild(create("option", { value:"", textContent:"--" }));
                         SLOTS.forEach(s => {
-                            const isSelected = slot.end && String(slot.end).trim() === s.label;
+                            const val = slot.end ? String(slot.end).trim().substring(0, 5) : "";
+                            const isSelected = val === s.label;
                             endSel.appendChild(create("option", { value:s.label, textContent:s.label, selected: isSelected }));
                         });
                         endSel.onchange = (e) => { slot.end = e.target.value || null; };

@@ -8,7 +8,8 @@ import {
     checkShiftOverlap,
     checkEmployeeAvailability,
     isDateInSanctionPeriod,
-    calculateConsecutiveWorkDays
+    calculateConsecutiveWorkDays,
+    isSlotUnavailable
 } from '../utils/rules.js';
 import { getMonday, toISODateString } from '../utils/date.js';
 import { EmployeeManager } from './EmployeeManager.js';
@@ -470,6 +471,12 @@ export const ScheduleManager = {
 
                 for (let i = 0; i < SLOTS.length; i++) {
                     const cell = create("div", { className: "slot", onClick: () => this.handleSlotClick(shift, i) });
+
+                    // Check availability for every slot
+                    if (shift.employeeId && emp && isSlotUnavailable(emp, i, state.activeWeek, day)) {
+                        cell.classList.add("unavailable-slot");
+                    }
+
                     if (i >= shift.startSlot && i <= shift.endSlot) {
                         const roleData = ROLES.find(r => r.key === shift.role);
                         cell.classList.add("assigned");
