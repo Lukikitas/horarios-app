@@ -330,12 +330,18 @@ export const EmployeeManager = {
 
                         const startSel = create("select", { className: "select availability-start" });
                         startSel.appendChild(create("option", { value:"", textContent:"--" }));
-                        SLOTS.forEach(s => startSel.appendChild(create("option", { value:s.label, textContent:s.label, selected: slot.start === s.label })));
+                        SLOTS.forEach(s => {
+                            const isSelected = slot.start && String(slot.start).trim() === s.label;
+                            startSel.appendChild(create("option", { value:s.label, textContent:s.label, selected: isSelected }));
+                        });
                         startSel.onchange = (e) => { slot.start = e.target.value || null; };
 
                         const endSel = create("select", { className: "select availability-end" });
                         endSel.appendChild(create("option", { value:"", textContent:"--" }));
-                        SLOTS.forEach(s => endSel.appendChild(create("option", { value:s.label, textContent:s.label, selected: slot.end === s.label })));
+                        SLOTS.forEach(s => {
+                            const isSelected = slot.end && String(slot.end).trim() === s.label;
+                            endSel.appendChild(create("option", { value:s.label, textContent:s.label, selected: isSelected }));
+                        });
                         endSel.onchange = (e) => { slot.end = e.target.value || null; };
 
                         timeRow.appendChild(startSel);

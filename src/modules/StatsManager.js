@@ -107,7 +107,7 @@ export const StatsManager = {
 
         if (sortOrder === 'hours') employeeData.sort((a,b) => b.weeklyHours - a.weeklyHours);
         else if (sortOrder === 'days') employeeData.sort((a,b) => b.workingDaysCount - a.workingDaysCount);
-        else employeeData.sort((a,b) => a.name.localeCompare(b.name));
+        else employeeData.sort((a,b) => (a.name || '').localeCompare(b.name || ''));
 
         const middleIndex = Math.ceil(employeeData.length / 2);
         const leftColumnEmployees = employeeData.slice(0, middleIndex);
