@@ -1623,6 +1623,10 @@ export const ScheduleManager = {
     },
 
     handleSlotClick(shift, slotIndex) {
+        const state = store.getState();
+        const emp = shift.employeeId ? state.employees.find(e => e.id === shift.employeeId) : null;
+        const dayIndex = typeof state.activeDay === 'number' ? state.activeDay : 0;
+
         const tempShift = { ...shift };
         let modified = false;
 
@@ -1641,7 +1645,12 @@ export const ScheduleManager = {
         }
 
         if (modified) {
-            // Should check availability here...
+            const isUnavailable = emp && isSlotUnavailable(emp, slotIndex, state.activeWeek, dayIndex);
+            if (isUnavailable) {
+                const confirmMessage = 'Esta celda está marcada como no disponible para este empleado. ¿Querés continuar de todos modos?';
+                if (!confirm(confirmMessage)) return;
+            }
+
             this.commitChange(() => {
                 shift.startSlot = tempShift.startSlot;
                 shift.endSlot = tempShift.endSlot;
