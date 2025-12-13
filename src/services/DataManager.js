@@ -1,5 +1,5 @@
 import { store, getActiveSchedule } from '../store/Store.js';
-import { firebaseConfig } from '../config.js';
+import { firebaseConfig, ROLES, setRoles, DEFAULT_ROLES } from '../config.js';
 
 let firestore = null;
 
@@ -68,6 +68,10 @@ export const DataManager = {
                 }
 
                 newState.employees = employeesArray.length > 0 ? employeesArray : legacyEmployees;
+
+                const loadedRoles = Array.isArray(data.roles) && data.roles.length > 0 ? data.roles : DEFAULT_ROLES;
+                setRoles(loadedRoles);
+                newState.roles = [...ROLES];
 
                 // Normalize employees
                 newState.employees.forEach(emp => {
@@ -143,6 +147,8 @@ export const DataManager = {
                  newState.activeWeek = toISODateString(getMonday(new Date()));
                  newState.schedules = { [newState.activeWeek]: {} };
                  newState.employees = employeesArray;
+                 setRoles(DEFAULT_ROLES);
+                 newState.roles = [...ROLES];
             }
 
             store.setState(newState);
@@ -175,6 +181,7 @@ export const DataManager = {
                 activeWeek: state.activeWeek,
                 breaks: state.breaks,
                 rappiCode: state.rappiCode,
+                roles: state.roles && state.roles.length ? state.roles : ROLES,
             };
             await db.collection("schedules").doc("main").set(mainData, { merge: true });
 

@@ -2,6 +2,7 @@ import { el, create, clear } from '../utils/dom.js';
 import { store } from '../store/Store.js';
 import { DataManager } from '../services/DataManager.js';
 import { getActiveSchedule } from '../store/Store.js';
+import { ROLES } from '../config.js';
 
 export const EmployeeManager = {
     init() {
@@ -143,8 +144,12 @@ export const EmployeeManager = {
             if (e.stars && e.stars.length > 0) {
                 const badges = create("div", { className: "chips" });
                 e.stars.forEach(s => {
-                    const cls = this.clsFor(s);
-                    badges.appendChild(create("span", { className: "badge " + cls, textContent: s }));
+                    const roleInfo = ROLES.find(r => r.key.toLowerCase() === s.toLowerCase());
+                    badges.appendChild(create("span", {
+                        className: "badge",
+                        textContent: s,
+                        style: roleInfo ? { background: roleInfo.color, color: roleInfo.darkText ? '#111' : '#fff' } : {}
+                    }));
                 });
                 starsCell.appendChild(badges);
             } else {
@@ -310,6 +315,27 @@ export const EmployeeManager = {
                 return;
             }
 
+            const getSlotLabel = (timeValue, slotIndex, isEnd = false) => {
+                if (typeof timeValue === 'number') {
+                    const idx = isEnd ? timeValue + 1 : timeValue;
+                    return SLOTS[idx]?.label || '';
+                }
+
+                if (typeof slotIndex === 'number') {
+                    const idx = isEnd ? slotIndex + 1 : slotIndex;
+                    if (SLOTS[idx]?.label) return SLOTS[idx].label;
+                }
+
+                if (typeof timeValue === 'string') {
+                    const normalized = timeValue.trim().substring(0, 5);
+                    const padded = normalized.length === 4 ? '0' + normalized : normalized;
+                    const match = SLOTS.find(s => s.label === padded);
+                    if (match) return match.label;
+                }
+
+                return '';
+            };
+
             DAYS.forEach((day, dayIndex) => {
                 const dayAvailability = emp.availability[dayIndex] || [];
                 const dayRow = create("div", {
@@ -325,26 +351,22 @@ export const EmployeeManager = {
                     slotsStack.appendChild(create("span", { className: "muted", style: { fontSize:"12px", paddingTop:"8px" }, textContent: "Día libre / Full-time" }));
                 } else {
                     dayAvailability.forEach((slot, slotIndex) => {
+                        const startValue = getSlotLabel(slot.start, slot.startSlot, false);
+                        const endValue = getSlotLabel(slot.end, slot.endSlot, true);
+
                         const slotRow = create("div", { className: "row", style: { justifyContent: "space-between", width: "100%" } });
                         const timeRow = create("div", { className: "row" });
 
                         const startSel = create("select", { className: "select availability-start" });
                         startSel.appendChild(create("option", { value:"", textContent:"--" }));
-                        SLOTS.forEach(s => {
-                            // Compare using substring to handle potential HH:MM:SS formats
-                            const val = slot.start ? String(slot.start).trim().substring(0, 5) : "";
-                            const isSelected = val === s.label;
-                            startSel.appendChild(create("option", { value:s.label, textContent:s.label, selected: isSelected }));
-                        });
+                        SLOTS.forEach(s => startSel.appendChild(create("option", { value:s.label, textContent:s.label })));
+                        if (startValue) startSel.value = startValue;
                         startSel.onchange = (e) => { slot.start = e.target.value || null; };
 
                         const endSel = create("select", { className: "select availability-end" });
                         endSel.appendChild(create("option", { value:"", textContent:"--" }));
-                        SLOTS.forEach(s => {
-                            const val = slot.end ? String(slot.end).trim().substring(0, 5) : "";
-                            const isSelected = val === s.label;
-                            endSel.appendChild(create("option", { value:s.label, textContent:s.label, selected: isSelected }));
-                        });
+                        SLOTS.forEach(s => endSel.appendChild(create("option", { value:s.label, textContent:s.label })));
+                        if (endValue) endSel.value = endValue;
                         endSel.onchange = (e) => { slot.end = e.target.value || null; };
 
                         timeRow.appendChild(startSel);
@@ -571,19 +593,5 @@ export const EmployeeManager = {
 
     sendWhatsApp(empId) {
          // ... Logic
-    },
-
-    clsFor(role) {
-        const k = role.toLowerCase();
-        if(k==="cocina") return "b-cocina";
-        if(k==="empaque") return "b-empaque";
-        if(k==="sandwich") return "b-sandwich";
-        if(k==="lobby") return "b-lobby";
-        if(k==="presentación"||k==="presentacion") return "b-presentación";
-        if(k==="delivery") return "b-delivery";
-        if(k==="caja") return "b-caja";
-        if(k==="anfitriona") return "b-anfitriona";
-        if(k==="descarga") return "b-descarga";
-        return "";
     }
 };

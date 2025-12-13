@@ -16,7 +16,8 @@ export const UIManager = {
             { id: 'schedule-list', btn: '#btn-schedule-list' },
             { id: 'clock-ins', btn: '#btn-view-clock-ins' },
             { id: 'requests', btn: '#btn-view-requests' },
-            { id: 'planilla-turno', btn: '#btn-planilla-turno' }
+            { id: 'planilla-turno', btn: '#btn-planilla-turno' },
+            { id: 'options', btn: '#btn-view-options' }
         ];
 
         views.forEach(v => {
@@ -28,10 +29,37 @@ export const UIManager = {
 
         el("#btn-dark-mode")?.addEventListener("click", () => this.toggleDarkMode());
 
+        this.bindActionsDropdown();
+
         // Init Dark Mode
         if (localStorage.getItem("darkMode") === "enabled") {
             this.setDarkMode(true);
         }
+    },
+
+    bindActionsDropdown() {
+        const btn = el('#btn-actions');
+        const dropdown = el('#actions-dropdown');
+        if (!btn || !dropdown) return;
+
+        const hide = () => dropdown.classList.remove('show');
+
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isOpen = dropdown.classList.contains('show');
+            document.querySelectorAll('.dropdown-content').forEach(d => { if (d !== dropdown) d.classList.remove('show'); });
+            dropdown.classList.toggle('show', !isOpen);
+        });
+
+        dropdown.querySelectorAll('.dropdown-item').forEach(item => item.addEventListener('click', hide));
+
+        document.addEventListener('click', (e) => {
+            if (!dropdown.contains(e.target) && e.target !== btn) hide();
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') hide();
+        });
     },
 
     showView(viewName) {
@@ -39,7 +67,7 @@ export const UIManager = {
         const allViews = [
             'view-schedule', 'view-employees', 'view-templates',
             'view-schedule-list', 'view-francos', 'view-clock-ins',
-            'view-planilla-turno', 'view-requests'
+            'view-planilla-turno', 'view-requests', 'view-options'
         ];
         allViews.forEach(id => {
             const elem = el('#' + id);
@@ -65,6 +93,7 @@ export const UIManager = {
             case 'clock-ins': viewId='view-clock-ins'; btnId='#btn-view-clock-ins'; break;
             case 'requests': viewId='view-requests'; btnId='#btn-view-requests'; break;
             case 'planilla-turno': viewId='view-planilla-turno'; btnId='#btn-planilla-turno'; break;
+            case 'options': viewId='view-options'; btnId='#btn-view-options'; break;
         }
 
         const viewEl = el('#' + viewId);
