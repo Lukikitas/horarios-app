@@ -33,6 +33,7 @@ export class Store {
 // Create a singleton instance with default state
 // Default state structure matches the original app.js state
 import { HistoryManager } from '../history.js';
+import { ROLES } from '../config.js';
 
 const defaultState = {
     employees: [],
@@ -55,6 +56,7 @@ const defaultState = {
     breaks: {},
     tempPlanillaState: null,
     rappiCode: '',
+    roles: [...ROLES],
     // Data loaded flags
     isLoading: true,
 };

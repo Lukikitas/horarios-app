@@ -24,7 +24,7 @@ export const SLOTS = generateTimeSlots();
 // We will hardcode fallback or read on init.
 // For config, better to hardcode defaults or use a function.
 
-export const ROLES = [
+export let ROLES = [
     { key: "Cocina",       cls: "b-cocina",       color: "#ef4444",       darkText:false },
     { key: "Empaque",      cls: "b-empaque",      color: "#f97316",      darkText:false },
     { key: "Sandwich",     cls: "b-sandwich",     color: "#facc15",     darkText:true  },
@@ -35,6 +35,12 @@ export const ROLES = [
     { key: "Anfitriona",   cls: "b-anfitriona",   color: "#ec4899",   darkText:false },
     { key: "Descarga",     cls: "b-descarga",     color: "#14b8a6",     darkText:false },
 ];
+
+export const DEFAULT_ROLES = [...ROLES];
+
+export function setRoles(newRoles = []) {
+  ROLES.splice(0, ROLES.length, ...newRoles);
+}
 
 export const DAYS = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"];
 export const MAX_SLOT_FOR_MINOR = 27;
