@@ -31,6 +31,43 @@ export const ScheduleManager = {
         el("#btn-next-week")?.addEventListener("click", () => this.changeWeek(7));
         el("#btn-lock-week")?.addEventListener("click", () => this.toggleWeekLock());
 
+        // Filters dropdown toggle
+        const filterBtn = el("#btn-schedule-filters");
+        const filterDropdown = el("#schedule-filter-dropdown");
+        if (filterBtn && filterDropdown) {
+            const hideDropdown = () => {
+                filterDropdown.classList.remove('show');
+                filterBtn.classList.remove('active');
+            };
+
+            filterBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const isOpen = filterDropdown.classList.contains('show');
+                document.querySelectorAll('.dropdown-content').forEach(d => { if (d !== filterDropdown) d.classList.remove('show'); });
+                filterDropdown.classList.toggle('show', !isOpen);
+                filterBtn.classList.toggle('active', !isOpen);
+            });
+
+            document.addEventListener('click', (e) => {
+                if (!filterDropdown.contains(e.target) && e.target !== filterBtn) hideDropdown();
+            });
+
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') hideDropdown();
+            });
+        }
+
+        // Inline filters in schedule grid
+        el("#schedule-search")?.addEventListener("input", (e) => {
+            store.setState({ scheduleSearchTerm: e.target.value });
+            this.renderTable();
+        });
+        el("#schedule-role-filter")?.addEventListener("change", (e) => {
+            const selected = Array.from(e.target.selectedOptions || []).map(o => o.value).filter(Boolean);
+            store.setState({ scheduleRoleFilters: selected });
+            this.renderTable();
+        });
+
         // Auto Assign
         el("#btn-auto-assign")?.addEventListener("click", () => {
             this.autoAssignShifts();
@@ -65,12 +102,13 @@ export const ScheduleManager = {
         this.optionize(el("#activeRole"), ROLES, r=>({value:r.key,label:r.key}));
         this.optionize(el("#formStart"), SLOTS, s=>({value:s.index,label:s.label}));
         this.optionize(el("#formEnd"),   SLOTS, s=>({value:s.index,label:s.label}));
+        this.optionize(el("#schedule-role-filter"), ROLES, r=>({value:r.key,label:r.key}));
 
         this.updateShiftDuration();
 
         // Print Listeners
-        el("#btnPrintScheduleList")?.addEventListener("click", () => { this.printSchedule(); el("#print-modal").style.display="none"; });
-        el("#btnPrintDailyPlanning")?.addEventListener("click", () => { this.printDailyPlanning(); el("#print-modal").style.display="none"; });
+        el("#btn-print-schedule-list")?.addEventListener("click", () => { this.printSchedule(); el("#print-modal").style.display="none"; });
+        el("#btn-print-daily-planning")?.addEventListener("click", () => { this.printDailyPlanning(); el("#print-modal").style.display="none"; });
         el("#btnPrint")?.addEventListener("click", () => el("#print-modal").style.display="flex");
         el("#print-modal-close")?.addEventListener("click", () => el("#print-modal").style.display="none");
 
@@ -178,6 +216,7 @@ export const ScheduleManager = {
 
     render() {
         this.renderDayTabs();
+        this.updateScheduleFiltersUI();
         this.renderTable();
         this.renderLegend();
         this.updateLockUI();
@@ -530,7 +569,7 @@ export const ScheduleManager = {
         SLOTS.forEach((s, idx) => {
             const c = create("div", {
                 className: "slot-h",
-                style: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "2px" }
+                style: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "1px", padding: "2px 0" }
             });
 
             const count = headcount[idx].total;
@@ -668,9 +707,21 @@ export const ScheduleManager = {
 
     printDailyPlanning() {
         const schedule = getActiveSchedule();
-        const employees = store.getState().employees;
-        const weekMonday = new Date(store.getState().activeWeek + "T12:00:00Z");
+        const state = store.getState();
+        const employees = state.employees;
+        const weekMonday = new Date(state.activeWeek + "T12:00:00Z");
+        const weekTickets = state.projectedTickets[state.activeWeek] || {};
         let pagesHtml = '';
+
+        const getEmployeeColor = (id) => {
+            let hash = 0;
+            for (let c = 0; c < id.length; c++) {
+                hash = ((hash << 5) - hash) + id.charCodeAt(c);
+                hash |= 0;
+            }
+            const hue = Math.abs(hash) % 360;
+            return `hsl(${hue}, 70%, 85%)`;
+        };
 
         for (let i = 0; i < 7; i++) {
             const dayShifts = (schedule[i] || []).filter(s => s.employeeId);
@@ -681,6 +732,18 @@ export const ScheduleManager = {
             const dayName = DAYS[i];
             const formattedDate = `${dayName} ${dayDate.getDate()}/${dayDate.getMonth()+1}`;
 
+            const headcounts = Array(SLOTS.length).fill(0);
+            dayShifts.forEach(shift => {
+                for (let slot = shift.startSlot; slot <= shift.endSlot; slot++) {
+                    headcounts[slot] += 1;
+                }
+            });
+
+            const tickets = Number(weekTickets[i] || 0);
+            const totalHours = this.calculateTotalDayHours(i);
+            const productivity = (tickets > 0 && totalHours > 0) ? (tickets / totalHours).toFixed(1) : "-";
+            const statsLabel = `Tickets: ${tickets || '-'} | Horas: ${totalHours ? String(totalHours).replace('.', ',') : '-'} | Prod: ${productivity}`;
+
             let tableRows = '';
             dayShifts.sort((a, b) => a.startSlot - b.startSlot).forEach(shift => {
                 const emp = employees.find(e => e.id === shift.employeeId);
@@ -688,24 +751,27 @@ export const ScheduleManager = {
                 const shiftHours = (shift.endSlot - shift.startSlot + 1) * 0.5;
                 const start = SLOTS[shift.startSlot].label;
                 const end = SLOTS[shift.endSlot + 1] ? SLOTS[shift.endSlot + 1].label : "02:00";
+                const color = getEmployeeColor(emp.id || emp.name || "");
 
                 let timeline = '';
                 for(let j=0; j<SLOTS.length; j++) {
                     const inShift = j >= shift.startSlot && j <= shift.endSlot;
-                    timeline += `<td style="${inShift?'background:#c9e6b3':''}">${inShift?'A':''}</td>`;
+                    const cellStyle = inShift ? `background:${color};border:1px solid rgba(0,0,0,0.05);` : '';
+                    timeline += `<td style="${cellStyle}">${inShift ? '&nbsp;' : ''}</td>`;
                 }
                 tableRows += `<tr><td>${this.escapeHtml(emp.name)}<br>${start}-${end}</td><td>${this.escapeHtml(shift.role)}</td><td>${String(shiftHours).replace('.',',')}</td>${timeline}</tr>`;
             });
 
             // Header
+            const headcountRow = `<tr class="slot-headcount"><th colspan="3" style="text-align:left;font-weight:600;color:#444">En turno</th>${headcounts.map(c => `<th>${c || ''}</th>`).join('')}</tr>`;
             let timelineHeader = '';
             SLOTS.forEach(slot => timelineHeader += `<th>${slot.label.split(':')[0]}</th>`);
 
-            pagesHtml += `<div class="page" style="page-break-after:always; margin-bottom: 20px;"><h3>${formattedDate}</h3><table style="width:100%;border-collapse:collapse;font-size:9px"><thead><tr><th>Empleado</th><th>Pos</th><th>Hs</th>${timelineHeader}</tr></thead><tbody>${tableRows}</tbody></table></div>`;
+            pagesHtml += `<div class="page" style="page-break-after:always; margin-bottom: 20px;"><div style="display:flex;align-items:baseline;gap:12px;"><h3 style="margin:4px 0">${formattedDate}</h3><span style="font-size:11px;color:#555;white-space:nowrap;">${statsLabel}</span></div><table style="width:100%;border-collapse:collapse;font-size:9px"><thead>${headcountRow}<tr><th>Empleado</th><th>Pos</th><th>Hs</th>${timelineHeader}</tr></thead><tbody>${tableRows}</tbody></table></div>`;
         }
 
         const w = window.open('', '', 'height=800,width=1200');
-        w.document.write(`<html><head><title>Planning</title><style>body{font-family:sans-serif}table,th,td{border:1px solid #999;padding:2px;text-align:center}@media print{@page{size:landscape}}</style></head><body>${pagesHtml}<script>setTimeout(()=>{window.print();window.close()},500)</script></body></html>`);
+        w.document.write(`<html><head><title>Planning</title><style>body{font-family:sans-serif}table,th,td{border:1px solid #999;padding:2px;text-align:center}th{background:#f6f6f6} .slot-headcount th{background:#eef3fb;font-size:8px;color:#333}@media print{@page{size:landscape}}</style></head><body>${pagesHtml}<script>setTimeout(()=>{window.print();window.close()},500)</script></body></html>`);
         w.document.close();
     },
 
@@ -755,6 +821,35 @@ export const ScheduleManager = {
             totalSlots += (shift.endSlot - shift.startSlot + 1);
         }
         return totalSlots * 0.5;
+    },
+
+    getEmployeeAssignmentsSummary(employeeId) {
+        const schedule = getActiveSchedule();
+        const summaries = [];
+
+        Object.entries(schedule || {}).forEach(([dayIndex, dayShifts]) => {
+            if (!Array.isArray(dayShifts)) return;
+            dayShifts
+                .filter(shift => shift.employeeId === employeeId)
+                .forEach(shift => {
+                    const start = SLOTS[shift.startSlot]?.label || "--:--";
+                    const end = SLOTS[Math.min(shift.endSlot + 1, SLOTS.length - 1)]?.label || start;
+                    const roleAbbr = this.getRoleAbbreviation(shift.role);
+                    const dayAbbr = DAYS[Number(dayIndex)]?.slice(0, 2) || "";
+                    summaries.push(`${dayAbbr} ${start}-${end} ${roleAbbr}`.trim());
+                });
+        });
+
+        return summaries;
+    },
+
+    getRoleAbbreviation(role) {
+        if (!role) return "";
+        const parts = role.split(/\s+/).filter(Boolean);
+        if (parts.length > 1) {
+            return parts.map(p => p[0]).join("").slice(0, 3);
+        }
+        return role.slice(0, 3);
     },
 
     getEmployeeWeeklyHours(employeeId) {
@@ -893,6 +988,7 @@ export const ScheduleManager = {
         if(!dayTabs) return;
         clear(dayTabs);
         const state = store.getState();
+        const schedule = getActiveSchedule() || {};
 
         DAYS.forEach((d,idx) => {
             const container = create("div", { className: 'day-tab-item' });
@@ -901,6 +997,11 @@ export const ScheduleManager = {
                 textContent: d,
                 onClick: () => { store.setState({ activeDay: idx }); this.render(); }
             });
+
+            const hasUnassigned = Array.isArray(schedule[idx]) && schedule[idx].some(s => !s.employeeId);
+            if (hasUnassigned) {
+                b.appendChild(create("span", { className: "unassigned-dot", title: "Quedan turnos sin asignar" }));
+            }
 
             const hoursSpan = create("span", { className: 'day-tab-hours', dataset: { day: idx } });
             const totalHours = this.calculateTotalDayHours(idx);
@@ -931,6 +1032,23 @@ export const ScheduleManager = {
         const formattedDate = `${dayName}, ${dayDate.getDate()} de ${dayDate.toLocaleString('es-ES', { month: 'long' })}`;
         const dayTitleEl = el("#day-title");
         if (dayTitleEl) dayTitleEl.textContent = formattedDate;
+    },
+
+    updateScheduleFiltersUI() {
+        const state = store.getState();
+        const searchInput = el("#schedule-search");
+        const roleSelect = el("#schedule-role-filter");
+
+        if (searchInput && searchInput.value !== (state.scheduleSearchTerm || "")) {
+            searchInput.value = state.scheduleSearchTerm || "";
+        }
+
+        if (roleSelect) {
+            const selectedValues = new Set(state.scheduleRoleFilters || []);
+            Array.from(roleSelect.options).forEach(opt => {
+                opt.selected = selectedValues.has(opt.value);
+            });
+        }
     },
 
     renderLegend() {
@@ -1018,32 +1136,14 @@ export const ScheduleManager = {
     },
 
     renderWeeklyStats() {
-        const headerContainer = el(".controls-center");
-        if (!headerContainer) return;
-
-        // Check if stats container exists
-        let statsContainer = el("#weekly-stats-container");
-        if (!statsContainer) {
-            statsContainer = create("div", {
-                id: "weekly-stats-container",
-                style: {
-                    display: "flex",
-                    gap: "10px",
-                    fontSize: "12px",
-                    marginBottom: "4px",
-                    color: "var(--muted)"
-                }
-            });
-            // Insert before the day title or at the top of controls-center
-            headerContainer.insertBefore(statsContainer, headerContainer.firstChild);
-        }
+        const statsContainer = el("#weekly-stats-container");
+        if (!statsContainer) return;
 
         // Calculate stats
         const state = store.getState();
         let totalHours = 0;
         let totalTickets = 0;
 
-        const schedule = getActiveSchedule();
         const weekTickets = state.projectedTickets[state.activeWeek] || {};
 
         for (let i = 0; i < 7; i++) {
@@ -1055,14 +1155,17 @@ export const ScheduleManager = {
 
         clear(statsContainer);
 
-        const leftBox = create("div", { style: { display: "flex", flexDirection: "column", alignItems: "flex-end" } });
-        leftBox.innerHTML = `<div><strong>${String(totalHours).replace('.',',')}hs</strong></div><div>${totalTickets} Tkts</div>`;
+        const stats = [
+            { label: 'Hs', value: `${String(totalHours).replace('.', ',')}hs` },
+            { label: 'Tkts', value: `${totalTickets}` },
+            { label: 'Prod', value: productivity }
+        ];
 
-        const prodBox = create("div", { style: { display: "flex", alignItems: "center", fontWeight: "bold" } });
-        prodBox.textContent = `Prod: ${productivity}`;
-
-        statsContainer.appendChild(leftBox);
-        statsContainer.appendChild(prodBox);
+        stats.forEach(stat => {
+            const pill = create("div", { className: "weekly-stat-pill" });
+            pill.innerHTML = `<span class="muted">${stat.label}</span><strong>${stat.value}</strong>`;
+            statsContainer.appendChild(pill);
+        });
     },
 
     changeWeek(offset) {
@@ -1259,6 +1362,12 @@ export const ScheduleManager = {
                 const btn = create("button", { className: "btn secondary", style: { width: "100%", textAlign: "left" } });
                 const weeklyHours = this.getEmployeeWeeklyHours(emp.id);
                 btn.innerHTML = `<div>${emp.name} (${String(weeklyHours).replace('.',',')}hs)</div>`;
+
+                const assignmentsSummary = this.getEmployeeAssignmentsSummary(emp.id);
+                if (assignmentsSummary.length > 0) {
+                    const summaryText = assignmentsSummary.join(" | ");
+                    btn.appendChild(create("div", { className: "assignment-summary", textContent: summaryText }));
+                }
 
                 if(warningText) {
                     const div = create("div", { className: "warning-text", style: {fontSize:"11px", color: isUnavail ? "var(--c-danger)" : "var(--c-sandwich)"} });
@@ -1623,6 +1732,10 @@ export const ScheduleManager = {
     },
 
     handleSlotClick(shift, slotIndex) {
+        const state = store.getState();
+        const emp = shift.employeeId ? state.employees.find(e => e.id === shift.employeeId) : null;
+        const dayIndex = typeof state.activeDay === 'number' ? state.activeDay : 0;
+
         const tempShift = { ...shift };
         let modified = false;
 
@@ -1641,7 +1754,12 @@ export const ScheduleManager = {
         }
 
         if (modified) {
-            // Should check availability here...
+            const isUnavailable = emp && isSlotUnavailable(emp, slotIndex, state.activeWeek, dayIndex);
+            if (isUnavailable) {
+                const confirmMessage = 'Esta celda está marcada como no disponible para este empleado. ¿Querés continuar de todos modos?';
+                if (!confirm(confirmMessage)) return;
+            }
+
             this.commitChange(() => {
                 shift.startSlot = tempShift.startSlot;
                 shift.endSlot = tempShift.endSlot;

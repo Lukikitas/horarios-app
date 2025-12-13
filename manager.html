@@ -110,6 +110,17 @@
         <section class="card">
             <div class="card-h card-h-controls">
                 <div class="controls-left">
+                    <div class="dropdown filter-dropdown">
+                        <button id="btn-schedule-filters" class="btn secondary">Filtros ▾</button>
+                        <div id="schedule-filter-dropdown" class="dropdown-content">
+                            <div class="filters-content">
+                                <label for="schedule-search" class="muted mini-label">Buscar</label>
+                                <input id="schedule-search" class="input input-compact" placeholder="Empleado...">
+                                <label for="schedule-role-filter" class="muted mini-label">Puestos</label>
+                                <select id="schedule-role-filter" class="select select-compact" multiple></select>
+                            </div>
+                        </div>
+                    </div>
                     <div class="controls-group">
                         <div class="control-item"><label for="activeRole" class="muted">Rol</label><select id="activeRole" class="select"></select></div>
                         <div class="control-item"><label for="formStart" class="muted">Inicio</label><select id="formStart" class="select"></select></div>
@@ -120,7 +131,10 @@
                     </div>
                 </div>
                 <div class="controls-center">
-                    <h2 id="day-title" class="day-title"></h2>
+                    <div class="day-title-row">
+                        <h2 id="day-title" class="day-title"></h2>
+                        <div id="weekly-stats-container" class="weekly-stats"></div>
+                    </div>
                     <div class="controls-group">
                         <div class="control-item"><label for="projectedTickets" class="muted">Tickets</label><input id="projectedTickets" type="number" class="input"></div>
                         <div class="control-item"><label class="muted">Prod.</label><span id="projectedProductivity" class="strong"></span></div>

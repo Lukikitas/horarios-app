@@ -17,9 +17,12 @@
     --c-descarga:#14b8a6;      /* teal */
     --c-active-border: #9333ea; /* purple-600 */
 
-    --c-warning: #9a3412; /* amber-800 */
-    --c-warning-bg: #fffbeb; /* amber-50 */
-    --c-warning-border: #fcd34d; /* amber-300 */
+  --c-warning: #9a3412; /* amber-800 */
+  --c-warning-bg: #fffbeb; /* amber-50 */
+  --c-warning-border: #fcd34d; /* amber-300 */
+  --c-danger: #ef4444; /* rojo para conflictos */
+  --c-danger-soft: rgba(239, 68, 68, 0.16);
+  --c-danger-strong: rgba(239, 68, 68, 0.3);
   }
   *{box-sizing:border-box}
   html, body {
@@ -51,9 +54,10 @@
 #view-schedule .card {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 145px); /* header/footer/paddings */
+  height: calc(100vh - 120px); /* header/footer/paddings */
 }
   .card-h{padding:10px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+#view-schedule .card-h { padding:8px 10px; }
   .card-c{padding:12px}
   .stack{display:flex;flex-direction:column;gap:8px}
   .row{display:flex;gap:10px;align-items:center}
@@ -86,9 +90,9 @@
   .namecol{position:sticky;left:0;background:#fff;border-right:1px solid var(--border);z-index:5;padding:6px 10px;display:flex;gap:8px;align-items:center}
   .name{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .stars{display:flex;gap:4px;align-items:center;min-width:0;flex-wrap:wrap}
-  .slot-h{font-size:10px;color:var(--muted);text-align:center;border-left:1px solid var(--border);padding:6px 0}
-  .all-star-indicator{color: #f59e0b;opacity: 0.5;font-size: 10px;height: 10px;}
-  .slot{height:42px;position:relative;cursor:crosshair;user-select:none; padding: 4px 2px;}
+  .slot-h{font-size:10px;color:var(--muted);text-align:center;border-left:1px solid var(--border);padding:2px 0 1px;line-height:1.1}
+  .all-star-indicator{color: #f59e0b;opacity: 0.5;font-size: 9px;height: auto;line-height:1;display:flex;align-items:center;gap:2px;}
+  .slot{height:36px;position:relative;cursor:crosshair;user-select:none; padding: 3px 2px;}
   .slot.assigned .label{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:#fff}
   .slot.sandwich .label{color:#111} /* por el amarillo */
   /* .slot:hover{outline:1px dashed #aaa;outline-offset:-3px} */
@@ -116,8 +120,10 @@
   .legend{display:flex;flex-wrap:wrap;gap:10px}
   .legend > div{display:flex;gap:6px;align-items:center}
   .hr{height:1px;background:var(--border);margin:8px 0}
-.pilltab{border:1px solid var(--border);background:#fff;padding:6px 6px;border-radius:4px;cursor:pointer}
-  .pilltab.active{background:#111;border-color:#111;color:#fff; border: 2px solid var(--c-active-border); padding: 5px;}
+.day-tab-item { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.pilltab{border:1px solid var(--border);background:#fff;padding:5px 6px;border-radius:4px;cursor:pointer;position:relative;font-size:13px;}
+  .pilltab.active{background:#111;border-color:#111;color:#fff; border: 2px solid var(--c-active-border); padding: 4px 5px;}
+.unassigned-dot { position:absolute; top:3px; right:3px; width:8px; height:8px; border-radius:50%; background: var(--c-danger); box-shadow: 0 0 0 2px var(--card); }
   .muted{color:var(--muted)}
   .danger{color:#b91c1c}
   .ghost{background:#fafafa}
@@ -164,6 +170,10 @@ body.dark-mode {
   --ink: #ffffff;
   --muted: #99aab5;
   --border: #3a3e44;
+
+  --c-danger: #f87171;
+  --c-danger-soft: rgba(248, 113, 113, 0.22);
+  --c-danger-strong: rgba(248, 113, 113, 0.36);
 
   --c-warning: #fde68a; /* amber-200 */
   --c-warning-bg: #451a03; /* amber-950 */
@@ -394,18 +404,18 @@ body.dark-mode .btn.secondary {
   display: grid;
   grid-template-columns: auto 1fr auto;
   align-items: center;
-  gap: 24px;
+  gap: 16px;
   width: 100%;
 }
 
-.controls-left { grid-column: 1; }
+.controls-left { grid-column: 1; display: flex; gap: 10px; align-items: center; }
 .controls-center {
   grid-column: 2;
   text-align: center;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 4px;
+  align-items: flex-start;
+  gap: 6px;
 }
 .controls-right { grid-column: 3; }
 
@@ -416,6 +426,15 @@ body.dark-mode .btn.secondary {
   white-space: nowrap;
 }
 
+.day-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  width: 100%;
+  justify-content: space-between;
+}
+
 .assign-employee-list {
   max-height: 40vh;
   overflow-y: auto;
@@ -423,6 +442,13 @@ body.dark-mode .btn.secondary {
   flex-direction: column;
   gap: 8px;
   padding-right: 8px; /* For scrollbar */
+}
+
+.assignment-summary {
+  font-size: 10px;
+  color: var(--muted);
+  line-height: 1.3;
+  margin-top: 2px;
 }
 
 .warning-text {
@@ -457,6 +483,54 @@ body.dark-mode .btn.secondary {
 .control-item label {
   font-size: 12px;
   white-space: nowrap;
+}
+
+.controls-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 140px;
+}
+
+.mini-label {
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.weekly-stats {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.weekly-stat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  line-height: 1.2;
+}
+
+.weekly-stat-pill strong {
+  font-size: 12px;
+}
+
+.input-compact,
+.select-compact {
+  padding: 4px 8px;
+  font-size: 12px;
+  height: 28px;
+}
+
+.select-compact[multiple] {
+  height: auto;
+  min-height: 60px;
 }
 
 .control-item .select,
@@ -764,41 +838,24 @@ body.dark-mode #calendar-grid .day.monday:not(.other-month):hover {
   width: 250px;
 }
 
-#role-filter-dropdown {
-    padding: 10px;
-    gap: 8px;
-    max-height: 300px;
-    overflow-y: auto;
-    min-width: 200px; /* Wider dropdown */
-    right: auto; /* Override default right alignment */
-    left: 0; /* Align to the left */
+.filter-dropdown .dropdown-content {
+  padding: 10px;
+  gap: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+  min-width: 220px;
+  left: 0;
+  right: auto;
 }
 
-#role-filter-dropdown .filter-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    cursor: pointer;
-    padding: 4px;
-    border-radius: 4px;
+.filter-dropdown .btn.active {
+  background-color: var(--bg-secondary);
 }
 
-#role-filter-dropdown .filter-item:hover {
-    background-color: var(--bg);
-}
-
-#role-filter-dropdown .filter-item input {
-    cursor: pointer;
-}
-
-#role-filter-dropdown .filter-item label {
-    cursor: pointer;
-    flex-grow: 1; /* Make label take up space */
-}
-
-#schedule-filter-bar {
-  padding-top: 8px;
-  padding-bottom: 8px;
+.filters-content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 /* Planilla de Turno */
@@ -1218,12 +1275,36 @@ body.dark-mode #calendar-grid .day.monday:not(.other-month):hover {
     100% { transform: rotate(360deg); }
 }
 .unavailable-slot {
-    background: repeating-linear-gradient(
-        45deg,
-        rgba(255, 0, 0, 0.1),
-        rgba(255, 0, 0, 0.1) 5px,
-        rgba(255, 0, 0, 0.2) 5px,
-        rgba(255, 0, 0, 0.2) 10px
-    ) !important;
+    background-image: repeating-linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--c-danger) 8%, transparent),
+        color-mix(in srgb, var(--c-danger) 8%, transparent) 5px,
+        transparent 5px,
+        transparent 14px
+    );
+    background-color: transparent !important;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c-danger) 12%, transparent);
+    border-radius: 4px;
     cursor: not-allowed;
 }
+
+.slot.assigned.unavailable-slot::after {
+    content: "";
+    position: absolute;
+    inset: 3px;
+    border-radius: 3px;
+    background-image: repeating-linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--c-danger) 12%, transparent),
+        color-mix(in srgb, var(--c-danger) 12%, transparent) 6px,
+        transparent 6px,
+        transparent 16px
+    );
+    opacity: 0.4;
+    mix-blend-mode: multiply;
+    pointer-events: none;
+    z-index: 0;
+}
+
+.slot.assigned.unavailable-slot .label,
+.slot.assigned.unavailable-slot { position: relative; z-index: 1; }
