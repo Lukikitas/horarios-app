@@ -17,9 +17,12 @@
     --c-descarga:#14b8a6;      /* teal */
     --c-active-border: #9333ea; /* purple-600 */
 
-    --c-warning: #9a3412; /* amber-800 */
-    --c-warning-bg: #fffbeb; /* amber-50 */
-    --c-warning-border: #fcd34d; /* amber-300 */
+  --c-warning: #9a3412; /* amber-800 */
+  --c-warning-bg: #fffbeb; /* amber-50 */
+  --c-warning-border: #fcd34d; /* amber-300 */
+  --c-danger: #ef4444; /* rojo para conflictos */
+  --c-danger-soft: rgba(239, 68, 68, 0.16);
+  --c-danger-strong: rgba(239, 68, 68, 0.3);
   }
   *{box-sizing:border-box}
   html, body {
@@ -164,6 +167,10 @@ body.dark-mode {
   --ink: #ffffff;
   --muted: #99aab5;
   --border: #3a3e44;
+
+  --c-danger: #f87171;
+  --c-danger-soft: rgba(248, 113, 113, 0.22);
+  --c-danger-strong: rgba(248, 113, 113, 0.36);
 
   --c-warning: #fde68a; /* amber-200 */
   --c-warning-bg: #451a03; /* amber-950 */
@@ -423,6 +430,13 @@ body.dark-mode .btn.secondary {
   flex-direction: column;
   gap: 8px;
   padding-right: 8px; /* For scrollbar */
+}
+
+.assignment-summary {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.3;
+  margin-top: 2px;
 }
 
 .warning-text {
@@ -1218,12 +1232,36 @@ body.dark-mode #calendar-grid .day.monday:not(.other-month):hover {
     100% { transform: rotate(360deg); }
 }
 .unavailable-slot {
-    background: repeating-linear-gradient(
-        45deg,
-        rgba(255, 0, 0, 0.1),
-        rgba(255, 0, 0, 0.1) 5px,
-        rgba(255, 0, 0, 0.2) 5px,
-        rgba(255, 0, 0, 0.2) 10px
-    ) !important;
+    background-image: repeating-linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--c-danger) 8%, transparent),
+        color-mix(in srgb, var(--c-danger) 8%, transparent) 5px,
+        transparent 5px,
+        transparent 14px
+    );
+    background-color: transparent !important;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c-danger) 12%, transparent);
+    border-radius: 4px;
     cursor: not-allowed;
 }
+
+.slot.assigned.unavailable-slot::after {
+    content: "";
+    position: absolute;
+    inset: 3px;
+    border-radius: 3px;
+    background-image: repeating-linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--c-danger) 12%, transparent),
+        color-mix(in srgb, var(--c-danger) 12%, transparent) 6px,
+        transparent 6px,
+        transparent 16px
+    );
+    opacity: 0.4;
+    mix-blend-mode: multiply;
+    pointer-events: none;
+    z-index: 0;
+}
+
+.slot.assigned.unavailable-slot .label,
+.slot.assigned.unavailable-slot { position: relative; z-index: 1; }
