@@ -6,6 +6,7 @@ import { ScheduleManager } from './modules/ScheduleManager.js';
 import { RequestsManager } from './modules/RequestsManager.js';
 import { StatsManager } from './modules/StatsManager.js';
 import { ImportExportManager } from './modules/ImportExportManager.js';
+import { OptionsManager } from './modules/OptionsManager.js';
 import { el } from './utils/dom.js';
 
 // Init
@@ -20,6 +21,7 @@ async function init() {
     RequestsManager.init();
     StatsManager.init();
     ImportExportManager.init();
+    OptionsManager.init();
 
     // Subscribe renderers to store changes
     store.subscribe((state) => {
