@@ -28,10 +28,37 @@ export const UIManager = {
 
         el("#btn-dark-mode")?.addEventListener("click", () => this.toggleDarkMode());
 
+        this.bindActionsDropdown();
+
         // Init Dark Mode
         if (localStorage.getItem("darkMode") === "enabled") {
             this.setDarkMode(true);
         }
+    },
+
+    bindActionsDropdown() {
+        const btn = el('#btn-actions');
+        const dropdown = el('#actions-dropdown');
+        if (!btn || !dropdown) return;
+
+        const hide = () => dropdown.classList.remove('show');
+
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isOpen = dropdown.classList.contains('show');
+            document.querySelectorAll('.dropdown-content').forEach(d => { if (d !== dropdown) d.classList.remove('show'); });
+            dropdown.classList.toggle('show', !isOpen);
+        });
+
+        dropdown.querySelectorAll('.dropdown-item').forEach(item => item.addEventListener('click', hide));
+
+        document.addEventListener('click', (e) => {
+            if (!dropdown.contains(e.target) && e.target !== btn) hide();
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') hide();
+        });
     },
 
     showView(viewName) {

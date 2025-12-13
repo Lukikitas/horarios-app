@@ -1,4 +1,4 @@
-import { SLOTS } from '../config.js';
+import { SLOTS, MAX_SLOT_FOR_MINOR } from '../config.js';
 import { toISODateString, getMonday } from '../utils/date.js';
 import { store, getActiveSchedule } from '../store/Store.js';
 
@@ -173,14 +173,34 @@ export function calculateConsecutiveWorkDays(employeeId, weekId, dayIndex) {
 export function isSlotUnavailable(employee, slotIndex, weekId, dayIndex) {
     if (!employee) return false;
 
+    const minorCutoff = SLOTS.findIndex((s) => s.label === '20:00');
+    const minorRestrictionSlot = minorCutoff !== -1 ? minorCutoff : MAX_SLOT_FOR_MINOR + 1;
+
+    const normalizeSlotIndex = (timeValue, indexValue, isEnd = false) => {
+        if (typeof timeValue === 'number') return isEnd ? timeValue + 1 : timeValue;
+        if (typeof indexValue === 'number') return isEnd ? indexValue + 1 : indexValue;
+
+        if (typeof timeValue === 'string') {
+            const trimmed = timeValue.trim().substring(0, 5);
+            const padded = trimmed.length === 4 ? `0${trimmed}` : trimmed;
+            const idx = timeToSlotIndex(padded);
+            if (idx !== -1) return idx;
+        }
+
+        return -1;
+    };
+
     const shiftDate = new Date(`${weekId}T12:00:00.000Z`);
     shiftDate.setUTCDate(shiftDate.getUTCDate() + dayIndex);
     const shiftDateString = toISODateString(shiftDate).slice(0, 10);
 
-    // 1. Sanctions (Blocking)
+    // 1. Underage restriction (night hours)
+    if (employee.isMinor && slotIndex >= minorRestrictionSlot) return true;
+
+    // 2. Sanctions (Blocking)
     if (isDateInSanctionPeriod(shiftDate, employee.sanctions)) return true;
 
-    // 2. Exceptions
+    // 3. Exceptions
     if (employee.exceptions && Array.isArray(employee.exceptions)) {
         const exception = employee.exceptions.find(ex => ex.date === shiftDateString);
         if (exception) {
@@ -188,34 +208,40 @@ export function isSlotUnavailable(employee, slotIndex, weekId, dayIndex) {
             if (!exception.start && !exception.end) return true;
 
             // Partial exception: Unavailable during this range
-            const exStart = timeToSlotIndex(exception.start);
-            const exEnd = timeToSlotIndex(exception.end);
+            const exStart = normalizeSlotIndex(exception.start, exception.startSlot);
+            const exEnd = normalizeSlotIndex(exception.end, exception.endSlot, true);
 
-            if (exStart !== -1 && exEnd !== -1) {
-                if (slotIndex >= exStart && slotIndex < exEnd) return true;
-            }
+            const startIdx = exStart === -1 ? 0 : exStart;
+            const endIdx = exEnd === -1 ? SLOTS.length : exEnd;
+
+            if (slotIndex >= startIdx && slotIndex < endIdx) return true;
         }
     }
 
-    // 3. Weekly Availability
+    // 4. Weekly Availability
     // If defined, slot must be inside at least one range to be AVAILABLE.
-    if (employee.availability && Array.isArray(employee.availability)) {
-        const daySlots = employee.availability[dayIndex];
-        if (daySlots && daySlots.length > 0) {
-            let isCovered = false;
-            for (const range of daySlots) {
-                const rStart = range.start ? timeToSlotIndex(range.start) : 0;
-                const rEnd = range.end ? timeToSlotIndex(range.end) : SLOTS.length; // Exclusive end
+    const rawAvailability = employee.availability || {};
+    const daySlots = Array.isArray(rawAvailability)
+        ? rawAvailability[dayIndex]
+        : rawAvailability?.[dayIndex] || rawAvailability?.[String(dayIndex)];
 
-                if (rStart !== -1 && rEnd !== -1) {
-                    if (slotIndex >= rStart && slotIndex < rEnd) {
-                        isCovered = true;
-                        break;
-                    }
-                }
+    if (daySlots && daySlots.length > 0) {
+        let isCovered = false;
+        for (const range of daySlots) {
+            const rStart = normalizeSlotIndex(range?.start, range?.startSlot);
+            const rEnd = normalizeSlotIndex(range?.end, range?.endSlot, true) ?? SLOTS.length;
+
+            if (rStart === -1 && rEnd === -1) continue;
+
+            const startIdx = rStart === -1 ? 0 : rStart;
+            const endIdx = rEnd === -1 ? SLOTS.length : rEnd;
+
+            if (slotIndex >= startIdx && slotIndex < endIdx) {
+                isCovered = true;
+                break;
             }
-            if (!isCovered) return true; // Unavailable if not covered
         }
+        if (!isCovered) return true; // Unavailable if not covered
     }
 
     return false;
