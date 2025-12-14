@@ -73,6 +73,7 @@ export const RequestsManager = {
 
         this.approveModal = el('#request-approve-modal');
         this.rejectModal = el('#request-reject-modal');
+        this.deleteModal = el('#request-delete-modal');
         this.rejectReason = el('#reject-reason');
     },
 
@@ -136,6 +137,14 @@ export const RequestsManager = {
                 this.toggleModal(this.rejectModal, false);
             });
         });
+
+        ['cancel-delete-modal', 'close-delete-modal'].forEach(id => {
+            el(`#${id}`)?.addEventListener('click', () => {
+                this.pendingActionId = null;
+                this.toggleModal(this.deleteModal, false);
+            });
+        });
+        el('#confirm-delete-modal')?.addEventListener('click', () => this.confirmDelete());
     },
 
     toggleModal(modal, show) {
@@ -335,6 +344,19 @@ export const RequestsManager = {
             grid.appendChild(historyBlock);
         }
 
+        if (req.tipo !== 'cambio_disponibilidad' && req.estado !== 'pendiente_aprobacion') {
+            const deleteBlock = create('div', { className: 'detail-block danger-block' });
+            deleteBlock.appendChild(create('h4', { textContent: 'Licencia en historial' }));
+            deleteBlock.appendChild(create('p', { className: 'muted', textContent: 'Podés borrar la licencia del historial si fue cargada por error.' }));
+            deleteBlock.appendChild(create('button', {
+                className: 'btn danger',
+                textContent: 'Eliminar licencia',
+                disabled: this.state.savingAction,
+                onClick: () => this.openDelete(req.id)
+            }));
+            grid.appendChild(deleteBlock);
+        }
+
         this.detailEl.appendChild(grid);
     },
 
@@ -409,6 +431,11 @@ export const RequestsManager = {
         this.toggleModal(this.rejectModal, true);
     },
 
+    openDelete(id) {
+        this.pendingActionId = id;
+        this.toggleModal(this.deleteModal, true);
+    },
+
     async confirmApprove() {
         if (!this.pendingActionId) return;
         this.state.savingAction = true;
@@ -447,6 +474,34 @@ export const RequestsManager = {
         } catch (error) {
             console.error('Error al rechazar', error);
             this.state.actionError = 'No se pudo rechazar la solicitud.';
+        } finally {
+            this.state.savingAction = false;
+            this.render();
+        }
+    },
+
+    async confirmDelete() {
+        if (!this.pendingActionId) return;
+        const target = this.state.requests.find((r) => r.id === this.pendingActionId);
+        if (!target || target.tipo === 'cambio_disponibilidad') {
+            this.state.actionError = 'Solo se pueden borrar licencias.';
+            this.render();
+            return;
+        }
+        this.state.savingAction = true;
+        this.state.actionError = '';
+        this.render();
+        try {
+            await getDb().collection('solicitudes').doc(this.pendingActionId).delete();
+            this.toggleModal(this.deleteModal, false);
+            this.state.requests = this.state.requests.filter((r) => r.id !== this.pendingActionId);
+            if (this.state.selectedId === this.pendingActionId) {
+                this.state.selectedId = this.state.requests[0]?.id || null;
+            }
+            this.pendingActionId = null;
+        } catch (error) {
+            console.error('Error al eliminar licencia', error);
+            this.state.actionError = 'No se pudo eliminar la licencia.';
         } finally {
             this.state.savingAction = false;
             this.render();

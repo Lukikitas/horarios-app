@@ -44,8 +44,9 @@
   .bar{position:sticky;top:0;background:#ffffffcc;backdrop-filter:saturate(1.1) blur(6px);border-bottom:1px solid var(--border);z-index:50}
   .bar-inner{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:12px 24px;}
   h1{margin:0;font-size:18px}
-.btn{border:1px solid var(--ink);background:var(--ink);color:#fff;border-radius:4px;padding:8px 12px;cursor:pointer}
+  .btn{border:1px solid var(--ink);background:var(--ink);color:#fff;border-radius:4px;padding:8px 12px;cursor:pointer}
   .btn.secondary{background:#fff;color:var(--ink);border-color:var(--border)}
+  .btn.danger{background:#ef4444;border-color:#ef4444;color:#fff;}
   .btn:disabled{opacity:.6;cursor:not-allowed}
   .select,.input,.file{
   border:1px solid var(--border);border-radius:4px;padding:8px 10px;background:#fff;color:var(--ink)
@@ -86,7 +87,7 @@
 .requests-list { border-right: 1px solid var(--border); padding: 16px; overflow-y: auto; }
 .requests-detail { padding: 16px; min-height: 300px; }
 .requests-empty { text-align: center; padding: 60px 12px; color: var(--muted); }
-.request-card { border: 1px solid var(--border); border-radius: 8px; padding: 12px; display: grid; grid-template-columns: 1fr auto; gap: 6px; cursor: pointer; transition: border-color .15s ease, box-shadow .15s ease; background: #fff; }
+.request-card { border: 1px solid var(--border); border-radius: 8px; padding: 12px; display: grid; grid-template-columns: 1fr auto; gap: 6px; cursor: pointer; transition: border-color .15s ease, box-shadow .15s ease; background: var(--card); }
 .request-card:hover { border-color: #cbd5e1; box-shadow: 0 2px 6px rgba(0,0,0,0.05); }
 .request-card.selected { border-color: var(--c-active-border); box-shadow: 0 0 0 2px rgba(147,51,234,0.15); }
 .request-title { font-weight: 700; font-size: 15px; }
@@ -106,10 +107,11 @@
 .requests-detail .muted { color: var(--muted); }
 .requests-detail-header { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .requests-detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-top: 12px; }
-.detail-block { border: 1px solid var(--border); border-radius: 8px; padding: 12px; background: #fafafa; }
+.detail-block { border: 1px solid var(--border); border-radius: 8px; padding: 12px; background: var(--card); }
+.detail-block.danger-block { border-color: #fecdd3; background: #fff1f2; }
 .detail-block h4 { margin: 0 0 6px 0; font-size: 14px; }
 .detail-row { display: flex; justify-content: space-between; gap: 8px; align-items: center; font-size: 13px; }
-.pill { padding: 4px 8px; border-radius: 999px; font-weight: 600; font-size: 12px; border: 1px solid var(--border); background: #fff; }
+.pill { padding: 4px 8px; border-radius: 999px; font-weight: 600; font-size: 12px; border: 1px solid var(--border); background: var(--card); }
 .copy-btn { background: transparent; border: 1px solid var(--border); padding: 4px 6px; border-radius: 6px; cursor: pointer; font-size: 12px; }
 .copy-btn:hover { background: #f3f4f6; }
 .mobile-back { display: none; margin-bottom: 8px; }
@@ -282,12 +284,27 @@ body.dark-mode .select, body.dark-mode .input {
   color: var(--ink);
   border-color: var(--border);
 }
-body.dark-mode .btn {
+body.dark-mode .btn { 
   color: #000;
 }
 body.dark-mode .btn.secondary {
   color: var(--ink);
 }
+body.dark-mode .btn.danger {
+  background: #b91c1c;
+  border-color: #7f1d1d;
+  color: #fff;
+}
+body.dark-mode .request-card { background: var(--card); border-color: var(--border); box-shadow: none; }
+body.dark-mode .request-card:hover { border-color: #555; box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
+body.dark-mode .request-card.selected { box-shadow: 0 0 0 2px rgba(147,51,234,0.4); }
+body.dark-mode .detail-block { background: #1f2933; }
+body.dark-mode .detail-block.danger-block { background: rgba(248, 113, 113, 0.08); border-color: rgba(248, 113, 113, 0.25); }
+body.dark-mode .request-type { background: rgba(99, 102, 241, 0.18); color: #c7d2fe; }
+body.dark-mode .request-type.availability { background: rgba(14, 165, 233, 0.16); color: #bae6fd; }
+body.dark-mode .pill { background: #1f2933; }
+body.dark-mode .copy-btn { border-color: #4b5563; color: var(--ink); }
+body.dark-mode .copy-btn:hover { background: #374151; }
 
 /* Employee Table */
 .emp-table-new {
