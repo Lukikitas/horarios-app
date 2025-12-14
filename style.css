@@ -113,6 +113,8 @@
     background-clip: content-box;
     border: 1px solid transparent;
     border-radius: 4px;
+    margin: 3px;
+    height: 35px;
   }
   .new-shift-row {
     border-bottom: 1px solid var(--border);
