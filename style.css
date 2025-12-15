@@ -404,30 +404,32 @@ body.dark-mode .b-warning { background: rgba(251, 191, 36, 0.16); color: #fde68a
 }
 
 .export-fields-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: 8px;
 }
 
 .export-field {
   justify-content: flex-start;
   padding: 8px 10px;
+  width: 100%;
 }
 
 .export-controls {
   align-items: center;
 }
 
-.export-dropdown { position: relative; z-index: 3; }
+.export-dropdown { position: relative; z-index: 90; isolation: isolate; }
 
 .export-dropdown-content {
   left: 0;
   right: auto;
   top: calc(100% + 8px);
-  width: clamp(380px, 52vw, 680px);
-  max-height: 440px;
+  width: 260px;
+  max-height: 420px;
   overflow-y: auto;
-  box-shadow: 0 18px 40px rgba(0,0,0,0.25);
+  box-shadow: 0 18px 40px rgba(0,0,0,0.28);
+  z-index: 999;
 }
 
 .dropdown-content .del {
