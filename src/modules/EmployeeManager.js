@@ -6,7 +6,10 @@ import { ROLES } from '../config.js';
 
 export const EmployeeManager = {
     init() {
+        this.roleSignature = '';
+        this.populateRoleFilter();
         this.bindEvents();
+        store.subscribe((state) => this.handleStoreUpdate(state));
     },
 
     bindEvents() {
@@ -14,6 +17,53 @@ export const EmployeeManager = {
         el("#inpName")?.addEventListener("keydown", (ev) => { if(ev.key==="Enter") this.addEmployee(); });
         el("#empFilter")?.addEventListener("change", () => this.renderList());
         el("#empSearch")?.addEventListener("input", () => this.renderList());
+        el("#empPriorityFilter")?.addEventListener("change", () => this.renderList());
+        el("#empSort")?.addEventListener("change", () => this.renderList());
+        el("#btn-clear-emp-filters")?.addEventListener("click", () => this.resetFilters());
+        el("#fileImportExcel")?.addEventListener("change", (ev) => this.importFromExcel(ev));
+
+        ["#filterAllStarOnly", "#filterMinorOnly", "#filterSanctionsOnly", "#filterAvailabilityOnly"].forEach(sel => {
+            el(sel)?.addEventListener("change", () => this.renderList());
+        });
+    },
+
+    handleStoreUpdate(state) {
+        const roles = (state?.roles && state.roles.length) ? state.roles : ROLES;
+        const signature = roles.map(r => `${r.key}-${r.color || ''}-${r.darkText ? '1' : '0'}`).join('|');
+        if (signature !== this.roleSignature) {
+            this.roleSignature = signature;
+            this.populateRoleFilter(roles);
+        }
+    },
+
+    populateRoleFilter(rolesList = []) {
+        const empFilter = el("#empFilter");
+        if (!empFilter) return;
+
+        const roles = rolesList.length ? rolesList : ((store.getState().roles && store.getState().roles.length) ? store.getState().roles : ROLES);
+
+        empFilter.innerHTML = "";
+        empFilter.appendChild(create("option", { value: "", textContent: "Todos" }));
+        roles.forEach(role => empFilter.appendChild(create("option", { value: role.key, textContent: role.key })));
+    },
+
+    resetFilters() {
+        const search = el("#empSearch");
+        const star = el("#empFilter");
+        const priority = el("#empPriorityFilter");
+        const sort = el("#empSort");
+
+        if (search) search.value = "";
+        if (star) star.value = "";
+        if (priority) priority.value = "";
+        if (sort) sort.value = "name";
+
+        ["#filterAllStarOnly", "#filterMinorOnly", "#filterSanctionsOnly", "#filterAvailabilityOnly"].forEach(sel => {
+            const checkbox = el(sel);
+            if (checkbox) checkbox.checked = false;
+        });
+
+        this.renderList();
     },
 
     addEmployee() {
@@ -55,32 +105,101 @@ export const EmployeeManager = {
         DataManager.saveState();
     },
 
+    importFromExcel(event) {
+        const file = event?.target?.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const sheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[sheetName];
+                const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+                const employees = [...(store.getState().employees || [])];
+                let importedCount = 0;
+
+                rows.slice(1).forEach(row => {
+                    const name = row[0];
+                    if (name && String(name).trim()) {
+                        const normalized = String(name).trim();
+                        const aliasParts = normalized.split(',');
+                        const displayName = (aliasParts.length > 1) ? aliasParts[1].trim() : normalized.split(' ')[0];
+                        const id = crypto.randomUUID();
+                        const base = {
+                            id,
+                            name: normalized,
+                            displayName: displayName,
+                            dni: '',
+                            mail: '',
+                            celular: '',
+                            stars: [],
+                            isMinor: false,
+                            isAllStar: false,
+                            priority: 'medium',
+                            availability: { "0": [], "1": [], "2": [], "3": [], "4": [], "5": [], "6": [] },
+                            exceptions: [],
+                            sanctions: [],
+                        };
+                        employees.push(base);
+                        importedCount++;
+                    }
+                });
+
+                store.setState({ employees });
+                DataManager.saveState();
+                alert(`Se importaron ${importedCount} empleados.`);
+            } catch (err) {
+                console.error(err);
+                alert('Error al importar empleados.');
+            }
+        };
+        reader.readAsArrayBuffer(file);
+        event.target.value = "";
+    },
+
     renderList() {
         const state = store.getState();
         const empList = el("#empList");
         if (!empList) return;
 
         const starFilter = el("#empFilter")?.value;
-        const searchFilter = el("#empSearch")?.value.toLowerCase();
+        const searchFilter = (el("#empSearch")?.value || "").toLowerCase();
+        const priorityFilter = el("#empPriorityFilter")?.value;
+        const sortMode = el("#empSort")?.value || "name";
+
+        const filters = {
+            allStarOnly: el("#filterAllStarOnly")?.checked,
+            minorOnly: el("#filterMinorOnly")?.checked,
+            sanctionsOnly: el("#filterSanctionsOnly")?.checked,
+            availabilityOnly: el("#filterAvailabilityOnly")?.checked,
+        };
 
         const employees = Array.isArray(state.employees) ? state.employees : [];
 
         const filtered = employees
             .filter(e => e && typeof e === 'object') // Filter out null/undefined entries
             .slice()
-            .sort((a, b) => {
-                const nameA = a.name || '';
-                const nameB = b.name || '';
-                return nameA.localeCompare(nameB);
-            })
+            .sort((a, b) => this.sortEmployees(a, b, sortMode))
             .filter(e => {
                 const name = e.name || '';
-                const nameMatch = name.toLowerCase().includes(searchFilter);
+                const contact = `${e.mail || ''} ${e.celular || ''} ${e.dni || ''}`;
+                const nameMatch = `${name} ${contact}`.toLowerCase().includes(searchFilter);
                 const starMatch = !starFilter || (e.stars || []).includes(starFilter);
-                return nameMatch && starMatch;
+                const priorityMatch = !priorityFilter || (e.priority || 'medium') === priorityFilter;
+                const allStarMatch = !filters.allStarOnly || e.isAllStar;
+                const minorMatch = !filters.minorOnly || e.isMinor;
+                const sanctionMatch = !filters.sanctionsOnly || ((e.sanctions || []).length > 0);
+                const availabilityMatch = !filters.availabilityOnly || this.hasAvailability(e);
+
+                return nameMatch && starMatch && priorityMatch && allStarMatch && minorMatch && sanctionMatch && availabilityMatch;
             });
 
         clear(empList);
+
+        this.updateStats(employees, filtered);
 
         if(filtered.length===0){
             empList.appendChild(create("div", { className: "muted", textContent: "Agregá tu primer empleado 👇" }));
@@ -89,7 +208,7 @@ export const EmployeeManager = {
 
         const table = create("table", { className: "emp-table-new" });
         const thead = create("thead");
-        thead.innerHTML = "<tr><th>Nombre</th><th>DNI/Mail/Cel</th><th>Estrellas</th><th>Acciones</th></tr>";
+        thead.innerHTML = "<tr><th>Nombre</th><th>Contacto</th><th>Disponibilidad</th><th>Estrellas</th><th>Acciones</th></tr>";
         table.appendChild(thead);
 
         const tbody = create("tbody");
@@ -122,22 +241,53 @@ export const EmployeeManager = {
                 container.appendChild(prioritySelect);
                 nameCell.appendChild(container);
             } else {
-                nameCell.textContent = e.name;
-                if (e.isAllStar) {
-                    nameCell.appendChild(create("span", { className: "badge b-all-star", textContent: "★", title: "All Star", style: { marginLeft: "8px" } }));
-                }
-                if (e.isMinor) {
-                    nameCell.appendChild(create("span", { className: "badge b-minor", textContent: "M", title: "Menor de edad", style: { marginLeft: "8px" } }));
-                }
+                const titleRow = create("div", { className: "employee-name-row" });
+                titleRow.appendChild(create("strong", { textContent: e.name || 'Sin nombre' }));
+
+                const flags = create("div", { className: "employee-flags" });
+                if (e.isAllStar) flags.appendChild(create("span", { className: "badge b-all-star", textContent: "All Star" }));
+                if (e.isMinor) flags.appendChild(create("span", { className: "badge b-minor", textContent: "Menor" }));
+                const sanctionsCount = (e.sanctions || []).length;
+                if (sanctionsCount > 0) flags.appendChild(create("span", { className: "badge b-empaque", textContent: `${sanctionsCount} sanc.` }));
+                titleRow.appendChild(flags);
+                nameCell.appendChild(titleRow);
+
+                nameCell.appendChild(create("div", { className: "muted", style: { fontSize: "12px" }, textContent: e.displayName ? `Planilla: ${e.displayName}` : "Planilla: sin alias" }));
+
+                const meta = create("div", { className: "employee-meta" });
+                meta.appendChild(create("span", { className: "pill pill-neutral", textContent: this.priorityLabel(e.priority) }));
+                const exceptions = (e.exceptions || []).length;
+                if (exceptions > 0) meta.appendChild(create("span", { className: "pill pill-neutral", textContent: `${exceptions} excepción${exceptions === 1 ? '' : 'es'}` }));
+                const starCount = (e.stars || []).length;
+                meta.appendChild(create("span", { className: "pill pill-neutral", textContent: starCount > 0 ? `${starCount} rol${starCount === 1 ? '' : 'es'}` : "Sin roles" }));
+                nameCell.appendChild(meta);
             }
             row.appendChild(nameCell);
 
-            // DNI Cell
-            const dniCell = create("td");
+            // Contact Cell
+            const contactCell = create("td");
             if (!isEditing) {
-                dniCell.innerHTML = `<div>${e.dni || '-'}</div><div class="muted" style="font-size:12px;">${e.mail || '-'}</div><div class="muted" style="font-size:12px;">${e.celular || '-'}</div>`;
+                const contactStack = create("div", { className: "employee-contact" });
+                contactStack.appendChild(create("span", { textContent: e.dni ? `DNI: ${e.dni}` : "DNI no cargado" }));
+                contactStack.appendChild(create("span", { className: e.mail ? "" : "muted", textContent: e.mail || "Mail no cargado" }));
+                contactStack.appendChild(create("span", { className: e.celular ? "" : "muted", textContent: e.celular || "Celular no cargado" }));
+                contactCell.appendChild(contactStack);
             }
-            row.appendChild(dniCell);
+            row.appendChild(contactCell);
+
+            // Availability Cell
+            const availabilityCell = create("td", { className: "employee-availability-cell" });
+            if (!isEditing) {
+                availabilityCell.appendChild(create("div", { className: "availability-note", textContent: this.getAvailabilitySummary(e) }));
+
+                const availabilityMeta = create("div", { className: "employee-meta" });
+                if (this.hasAvailability(e)) availabilityMeta.appendChild(create("span", { className: "pill pill-neutral", textContent: "Disponibilidad cargada" }));
+                if ((e.exceptions || []).length > 0) availabilityMeta.appendChild(create("span", { className: "pill pill-neutral", textContent: "Excepciones activas" }));
+                const sanctionsCount = (e.sanctions || []).length;
+                if (sanctionsCount > 0) availabilityMeta.appendChild(create("span", { className: "pill pill-neutral", textContent: `${sanctionsCount} lic./sanc.` }));
+                availabilityCell.appendChild(availabilityMeta);
+            }
+            row.appendChild(availabilityCell);
 
             // Stars Cell
             const starsCell = create("td");
@@ -196,7 +346,7 @@ export const EmployeeManager = {
             // Detail Row
             if (state.activeDetailEmployeeId === e.id) {
                 const detailRow = create("tr");
-                const detailCell = create("td", { colSpan: 4, className: "employee-detail-cell" });
+                const detailCell = create("td", { colSpan: 5, className: "employee-detail-cell" });
 
                 if (state.activeDetailSection === 'stars') this.renderStarsPanel(detailCell, e.id);
                 else if (state.activeDetailSection === 'availability') this.renderAvailabilityPanel(detailCell, e.id);
@@ -571,6 +721,73 @@ export const EmployeeManager = {
 
         panel.appendChild(stack);
         container.appendChild(panel);
+    },
+
+    sortEmployees(a, b, mode) {
+        const nameA = (a.name || '').toLowerCase();
+        const nameB = (b.name || '').toLowerCase();
+        const priorityOrder = { 'very-high': 1, 'high': 2, 'medium': 3, 'low': 4, 'very-low': 5 };
+
+        if (mode === 'priority') {
+            const pa = priorityOrder[a.priority] || priorityOrder['medium'];
+            const pb = priorityOrder[b.priority] || priorityOrder['medium'];
+            if (pa !== pb) return pa - pb;
+        } else if (mode === 'stars') {
+            const sa = (a.stars || []).length;
+            const sb = (b.stars || []).length;
+            if (sa !== sb) return sb - sa;
+        }
+
+        return nameA.localeCompare(nameB);
+    },
+
+    hasAvailability(emp) {
+        if (!emp || typeof emp !== 'object') return false;
+        const availability = emp.availability || {};
+        return Object.values(availability).some(day => Array.isArray(day) && day.length > 0);
+    },
+
+    getAvailabilitySummary(emp) {
+        const daysWithRules = Object.values(emp.availability || {}).filter(day => Array.isArray(day) && day.length > 0).length;
+        const exceptionsCount = (emp.exceptions || []).length;
+
+        if (daysWithRules === 0 && exceptionsCount === 0) return "Sin restricciones cargadas";
+
+        const parts = [];
+        if (daysWithRules > 0) parts.push(`${daysWithRules} día${daysWithRules === 1 ? '' : 's'} con disponibilidad`);
+        if (exceptionsCount > 0) parts.push(`${exceptionsCount} excepción${exceptionsCount === 1 ? '' : 'es'}`);
+        return parts.join(" · ");
+    },
+
+    priorityLabel(value) {
+        const labels = {
+            'very-high': 'Muy alta',
+            'high': 'Alta',
+            'medium': 'Media',
+            'low': 'Baja',
+            'very-low': 'Muy baja'
+        };
+        return labels[value] || 'Sin prioridad';
+    },
+
+    updateStats(allEmployees, filteredEmployees) {
+        const setText = (selector, value) => {
+            const elRef = el(selector);
+            if (elRef) elRef.textContent = value;
+        };
+
+        const total = allEmployees.length;
+        const allStars = allEmployees.filter(e => e.isAllStar).length;
+        const minors = allEmployees.filter(e => e.isMinor).length;
+        const withAvailability = allEmployees.filter(e => this.hasAvailability(e)).length;
+        const withSanctions = allEmployees.filter(e => (e.sanctions || []).length > 0).length;
+
+        setText("#stat-total-employees", total);
+        setText("#stat-all-stars", allStars);
+        setText("#stat-minors", minors);
+        setText("#stat-availability", withAvailability);
+        setText("#stat-sanctions", withSanctions);
+        setText("#stat-filtered-employees", `Mostrando ${filteredEmployees.length} de ${total}`);
     },
 
     toggleIsAllStar(empId) {
