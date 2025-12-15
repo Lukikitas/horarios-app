@@ -323,7 +323,8 @@ export const StatsManager = {
         const normalizeName = (name) => name?.toString().toLowerCase().trim().replace(/,/g, '').replace(/\s+/g, ' ') || '';
         const two = (v) => String(v).padStart(2, '0');
 
-        const formatDate = (d) => `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
+        const normalizeDate = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0, 0);
+        const formatDate = (d) => `${two(d.getDate())}/${two(d.getMonth() + 1)}/${d.getFullYear()}`;
         const formatTime = (d) => `${two(d.getHours())}:${two(d.getMinutes())}`;
 
         const clockInsByEmployee = {};
@@ -335,15 +336,16 @@ export const StatsManager = {
             if (!row || !row[0] || !row[4] || !row[7] || !(row[4] instanceof Date)) continue;
 
             const employeeName = normalizeName(row[0]);
-            const clockInDate = row[4];
-            const clockOutDate = row[7];
-            const dateKey = toISODateString(clockInDate);
+            const clockInDateTime = new Date(row[4]);
+            const clockOutDateTime = new Date(row[7]);
+            const normalizedDate = normalizeDate(clockInDateTime);
+            const dateKey = toISODateString(normalizedDate);
 
             if (!clockInsByEmployee[employeeName]) clockInsByEmployee[employeeName] = {};
-            clockInsByEmployee[employeeName][dateKey] = { clockInDate, clockOutDate };
+            clockInsByEmployee[employeeName][dateKey] = { clockInDate: clockInDateTime, clockOutDate: clockOutDateTime };
 
-            if (!minDate || clockInDate < minDate) minDate = clockInDate;
-            if (!maxDate || clockInDate > maxDate) maxDate = clockInDate;
+            if (!minDate || normalizedDate < minDate) minDate = normalizedDate;
+            if (!maxDate || normalizedDate > maxDate) maxDate = normalizedDate;
         }
 
         if (!minDate || !maxDate) {
@@ -367,7 +369,7 @@ export const StatsManager = {
             const employeeNameNormalized = normalizeName(employee.name);
 
             for (let d = new Date(minDate); d <= maxDate; d.setDate(d.getDate() + 1)) {
-                const currentDate = new Date(d);
+                const currentDate = normalizeDate(new Date(d));
                 const dateKey = toISODateString(currentDate);
                 const scheduledShift = getScheduleForDate(currentDate).find(s => String(s.employeeId) === String(employee.id));
                 const clockInData = clockInsByEmployee[employeeNameNormalized]?.[dateKey];
@@ -402,6 +404,36 @@ export const StatsManager = {
                     // Handle shifts that end after midnight by rolling the clock-out date forward
                     if (clockOutDateTime <= clockInDateTime) clockOutDateTime.setDate(clockOutDateTime.getDate() + 1);
 
+                    let status = 'ok';
+                    let note = '';
+
+                    if (scheduledShift) {
+                        const [scheduledStartH, scheduledStartM] = SLOTS[scheduledShift.startSlot].label.split(':').map(Number);
+                        const scheduledStart = new Date(currentDate);
+                        scheduledStart.setHours(scheduledStartH, scheduledStartM, 0, 0);
+
+                        const endLabel = SLOTS[scheduledShift.endSlot + 1]?.label || '02:00';
+                        const [scheduledEndH, scheduledEndM] = endLabel.split(':').map(Number);
+                        const scheduledEnd = new Date(currentDate);
+                        scheduledEnd.setHours(scheduledEndH, scheduledEndM, 0, 0);
+                        if (scheduledEnd <= scheduledStart) scheduledEnd.setDate(scheduledEnd.getDate() + 1);
+
+                        const diffStart = Math.abs(clockInDateTime - scheduledStart) / (1000 * 60);
+                        const diffEnd = Math.abs(clockOutDateTime - scheduledEnd) / (1000 * 60);
+
+                        if (diffStart > 15 || diffEnd > 15) {
+                            status = 'warning';
+                            const parts = [];
+                            if (diffStart > 15) {
+                                parts.push(`Entrada ${clockInDateTime > scheduledStart ? 'tarde' : 'temprano'} ${Math.round(diffStart)} min`);
+                            }
+                            if (diffEnd > 15) {
+                                parts.push(`Salida ${clockOutDateTime > scheduledEnd ? 'tarde' : 'temprano'} ${Math.round(diffEnd)} min`);
+                            }
+                            note = parts.join(' | ');
+                        }
+                    }
+
                     const actualHours = (clockOutDateTime - clockInDateTime) / (1000 * 60 * 60);
                     reportDataByEmployee[employeeKey].records.push({
                         isoDate: dateKey,
@@ -410,7 +442,8 @@ export const StatsManager = {
                         clockIn: formatTime(clockInData.clockInDate),
                         clockOut: formatTime(clockInData.clockOutDate),
                         actual: `${actualHours.toFixed(2).replace('.',',')}hs`,
-                        status: 'ok'
+                        status,
+                        note
                     });
                 } else if (scheduledShift) {
                     reportDataByEmployee[employeeKey].records.push({
@@ -420,7 +453,8 @@ export const StatsManager = {
                         clockIn: 'Ausente',
                         clockOut: '',
                         actual: '0,00hs',
-                        status: 'absence'
+                        status: 'absence',
+                        note: 'Ausencia en día con turno asignado'
                     });
                 }
             }
@@ -494,7 +528,7 @@ export const StatsManager = {
             card.appendChild(title);
 
             const table = create('table', { className: 'clock-in-table-internal' });
-            table.innerHTML = '<thead><tr><th>Día</th><th>Turno Asignado</th><th>Entrada</th><th>Salida</th><th>Hs. Hechas</th></tr></thead>';
+            table.innerHTML = '<thead><tr><th>Día</th><th>Turno Asignado</th><th>Entrada</th><th>Salida</th><th>Hs. Hechas</th><th>Estado</th></tr></thead>';
             const tbody = table.createTBody();
 
             employeeData.records.forEach(record => {
@@ -505,8 +539,21 @@ export const StatsManager = {
                 } else if (record.status === 'absence') {
                     row.classList.add('absence-row');
                     row.title = 'El empleado tenía un turno asignado pero no hay fichada registrada.';
+                } else if (record.status === 'warning') {
+                    row.classList.add('warning-row');
+                    row.title = record.note || 'Desvío mayor a 15 minutos respecto al turno asignado';
                 }
-                row.innerHTML = `<td>${record.date}</td><td>${record.scheduled}</td><td>${record.clockIn}</td><td>${record.clockOut}</td><td>${record.actual}</td>`;
+
+                row.innerHTML = `<td>${record.date}</td><td>${record.scheduled}</td><td>${record.clockIn}</td><td>${record.clockOut}</td><td>${record.actual}</td><td></td>`;
+
+                const noteCell = row.cells[5];
+                if (record.note) {
+                    const noteEl = create('div', {
+                        className: `warning-text ${record.status === 'absence' ? 'strong-warning' : ''}`.trim(),
+                        textContent: record.note
+                    });
+                    noteCell.appendChild(noteEl);
+                }
             });
 
             card.appendChild(table);
