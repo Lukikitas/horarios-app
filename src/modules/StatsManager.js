@@ -1,7 +1,7 @@
 import { el, create, clear } from '../utils/dom.js';
 import { store, getActiveSchedule } from '../store/Store.js';
 import { DAYS, SLOTS } from '../config.js';
-import { toISODateString } from '../utils/date.js';
+import { toISODateString, getMonday } from '../utils/date.js';
 import { ScheduleManager } from './ScheduleManager.js';
 import { DataManager } from '../services/DataManager.js';
 
@@ -317,24 +317,203 @@ export const StatsManager = {
     },
 
     processAndCompareClockIns(data) {
-        // ... (Logic from app.js processAndCompareClockIns) ...
-        // Need to set store.lastClockInReportData
-        // For brevity, I'll set a placeholder or copy the logic if time permits.
-        // It's complex logic.
-        // store.setState({ lastClockInReportData: reportData });
-        // this.renderClockInReport();
-        console.log("Clock Ins Processed (Stub)");
+        const state = store.getState();
+        const reportDataByEmployee = {};
+
+        const normalizeName = (name) => name?.toString().toLowerCase().trim().replace(/,/g, '').replace(/\s+/g, ' ') || '';
+        const two = (v) => String(v).padStart(2, '0');
+
+        const formatDate = (d) => `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
+        const formatTime = (d) => `${two(d.getHours())}:${two(d.getMinutes())}`;
+
+        const clockInsByEmployee = {};
+        let minDate = null;
+        let maxDate = null;
+
+        for (let i = 1; i < data.length; i++) {
+            const row = data[i];
+            if (!row || !row[0] || !row[4] || !row[7] || !(row[4] instanceof Date)) continue;
+
+            const employeeName = normalizeName(row[0]);
+            const clockInDate = row[4];
+            const clockOutDate = row[7];
+            const dateKey = toISODateString(clockInDate);
+
+            if (!clockInsByEmployee[employeeName]) clockInsByEmployee[employeeName] = {};
+            clockInsByEmployee[employeeName][dateKey] = { clockInDate, clockOutDate };
+
+            if (!minDate || clockInDate < minDate) minDate = clockInDate;
+            if (!maxDate || clockInDate > maxDate) maxDate = clockInDate;
+        }
+
+        if (!minDate || !maxDate) {
+            store.setState({ lastClockInReportData: {} });
+            this.renderClockInReport();
+            return;
+        }
+
+        const getScheduleForDate = (d) => {
+            // Normalize date to noon to avoid timezone shifts when getting the Monday key
+            const localDate = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0, 0);
+            const monday = getMonday(localDate);
+            const weekKey = toISODateString(monday);
+            const dayIndex = localDate.getDay() === 0 ? 6 : localDate.getDay() - 1;
+            const weekSchedule = state.schedules[weekKey] || {};
+            return weekSchedule[dayIndex] || [];
+        };
+
+        for (const employee of state.employees) {
+            const employeeKey = employee.name;
+            const employeeNameNormalized = normalizeName(employee.name);
+
+            for (let d = new Date(minDate); d <= maxDate; d.setDate(d.getDate() + 1)) {
+                const currentDate = new Date(d);
+                const dateKey = toISODateString(currentDate);
+                const scheduledShift = getScheduleForDate(currentDate).find(s => String(s.employeeId) === String(employee.id));
+                const clockInData = clockInsByEmployee[employeeNameNormalized]?.[dateKey];
+
+                if (!scheduledShift && !clockInData) continue;
+
+                if (!reportDataByEmployee[employeeKey]) {
+                    reportDataByEmployee[employeeKey] = { name: employeeKey, records: [], totalHours: 0, status: 'ok' };
+                }
+
+                const dayName = DAYS[currentDate.getDay() === 0 ? 6 : currentDate.getDay() - 1];
+                let scheduledTime = 'Sin turno asignado';
+                if (scheduledShift) {
+                    const startTime = SLOTS[scheduledShift.startSlot].label;
+                    const endTime = SLOTS[scheduledShift.endSlot + 1] ? SLOTS[scheduledShift.endSlot + 1].label : "02:00";
+                    scheduledTime = `${startTime} - ${endTime} (${scheduledShift.role})`;
+                }
+
+                if (clockInData) {
+                    const clockInDateTime = new Date(clockInData.clockInDate);
+                    const rawClockOutTime = new Date(clockInData.clockOutDate);
+
+                    // Combine the clock-out time with the clock-in date to avoid Excel date defaults (e.g., 1899)
+                    const clockOutDateTime = new Date(clockInDateTime);
+                    clockOutDateTime.setHours(
+                        rawClockOutTime.getHours(),
+                        rawClockOutTime.getMinutes(),
+                        rawClockOutTime.getSeconds(),
+                        rawClockOutTime.getMilliseconds()
+                    );
+
+                    // Handle shifts that end after midnight by rolling the clock-out date forward
+                    if (clockOutDateTime <= clockInDateTime) clockOutDateTime.setDate(clockOutDateTime.getDate() + 1);
+
+                    const actualHours = (clockOutDateTime - clockInDateTime) / (1000 * 60 * 60);
+                    reportDataByEmployee[employeeKey].records.push({
+                        isoDate: dateKey,
+                        date: `${dayName}, ${formatDate(currentDate)}`,
+                        scheduled: scheduledTime,
+                        clockIn: formatTime(clockInData.clockInDate),
+                        clockOut: formatTime(clockInData.clockOutDate),
+                        actual: `${actualHours.toFixed(2).replace('.',',')}hs`,
+                        status: 'ok'
+                    });
+                } else if (scheduledShift) {
+                    reportDataByEmployee[employeeKey].records.push({
+                        isoDate: dateKey,
+                        date: `${dayName}, ${formatDate(currentDate)}`,
+                        scheduled: scheduledTime,
+                        clockIn: 'Ausente',
+                        clockOut: '',
+                        actual: '0,00hs',
+                        status: 'absence'
+                    });
+                }
+            }
+        }
+
+        store.setState({ lastClockInReportData: reportDataByEmployee });
+        this.renderClockInReport();
     },
 
     renderClockInReport() {
         const content = el("#clock-in-report-content");
         if(!content) return;
+        clear(content);
+
         const reportData = store.getState().lastClockInReportData;
         if (!reportData) {
-            content.innerHTML = '<p class="muted">Sube un archivo Excel.</p>';
+            content.innerHTML = '<p class="muted">Sube un archivo Excel para ver el análisis de fichadas.</p>';
             return;
         }
-        // ... Render logic ...
+
+        const dateFilter = store.getState().clockInDateFilter;
+        const searchTerm = (store.getState().clockInSearchTerm || '').toLowerCase();
+        const filteredReportData = {};
+
+        for (const empName of Object.keys(reportData)) {
+            const originalData = reportData[empName];
+            let filteredRecords = originalData.records;
+
+            if (dateFilter) filteredRecords = originalData.records.filter(r => r.isoDate === dateFilter);
+
+            if (filteredRecords.length > 0 && (!searchTerm || empName.toLowerCase().includes(searchTerm))) {
+                const totalHours = filteredRecords.reduce((acc, record) => {
+                    const hours = parseFloat(record.actual.replace('hs', '').replace(',', '.'));
+                    return acc + (isNaN(hours) ? 0 : hours);
+                }, 0);
+
+                filteredReportData[empName] = {
+                    ...originalData,
+                    records: filteredRecords,
+                    totalHours: totalHours
+                };
+            }
+        }
+
+        let employeeNames = Object.keys(filteredReportData);
+        if (store.getState().clockInSortOrder === 'hours_desc') {
+            employeeNames.sort((a, b) => filteredReportData[b].totalHours - filteredReportData[a].totalHours);
+        } else if (store.getState().clockInSortOrder === 'hours_asc') {
+            employeeNames.sort((a, b) => filteredReportData[a].totalHours - filteredReportData[b].totalHours);
+        } else {
+            employeeNames.sort((a, b) => a.localeCompare(b));
+        }
+
+        if (employeeNames.length === 0) {
+            content.innerHTML = '<p class="muted">No se encontraron fichadas que coincidan con los filtros.</p>';
+            return;
+        }
+
+        const reportContainer = create('div', { className: 'clock-in-report-container' });
+
+        employeeNames.forEach(employeeName => {
+            const employeeData = filteredReportData[employeeName];
+            const card = create('div', { className: 'employee-clock-in-card' });
+            if (employeeData.status === 'error') card.classList.add('error-card');
+
+            const title = create('h3', { className: 'employee-card-title' });
+            const titleName = create('span', { textContent: employeeName });
+            const titleHours = create('span', { className: 'muted', textContent: `Total: ${employeeData.totalHours.toFixed(2).replace('.',',')}hs` });
+            title.appendChild(titleName);
+            title.appendChild(titleHours);
+            card.appendChild(title);
+
+            const table = create('table', { className: 'clock-in-table-internal' });
+            table.innerHTML = '<thead><tr><th>Día</th><th>Turno Asignado</th><th>Entrada</th><th>Salida</th><th>Hs. Hechas</th></tr></thead>';
+            const tbody = table.createTBody();
+
+            employeeData.records.forEach(record => {
+                const row = tbody.insertRow();
+                if (record.status === 'error') {
+                    row.classList.add('danger-text');
+                    row.title = record.message;
+                } else if (record.status === 'absence') {
+                    row.classList.add('absence-row');
+                    row.title = 'El empleado tenía un turno asignado pero no hay fichada registrada.';
+                }
+                row.innerHTML = `<td>${record.date}</td><td>${record.scheduled}</td><td>${record.clockIn}</td><td>${record.clockOut}</td><td>${record.actual}</td>`;
+            });
+
+            card.appendChild(table);
+            reportContainer.appendChild(card);
+        });
+
+        content.appendChild(reportContainer);
     },
 
     renderPlanillaTurno(isEditing = false) {
