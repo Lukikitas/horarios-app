@@ -6,7 +6,10 @@ import { ROLES } from '../config.js';
 
 export const EmployeeManager = {
     init() {
+        this.roleSignature = '';
+        this.populateRoleFilter();
         this.bindEvents();
+        store.subscribe((state) => this.handleStoreUpdate(state));
     },
 
     bindEvents() {
@@ -17,10 +20,31 @@ export const EmployeeManager = {
         el("#empPriorityFilter")?.addEventListener("change", () => this.renderList());
         el("#empSort")?.addEventListener("change", () => this.renderList());
         el("#btn-clear-emp-filters")?.addEventListener("click", () => this.resetFilters());
+        el("#fileImportExcel")?.addEventListener("change", (ev) => this.importFromExcel(ev));
 
         ["#filterAllStarOnly", "#filterMinorOnly", "#filterSanctionsOnly", "#filterAvailabilityOnly"].forEach(sel => {
             el(sel)?.addEventListener("change", () => this.renderList());
         });
+    },
+
+    handleStoreUpdate(state) {
+        const roles = (state?.roles && state.roles.length) ? state.roles : ROLES;
+        const signature = roles.map(r => `${r.key}-${r.color || ''}-${r.darkText ? '1' : '0'}`).join('|');
+        if (signature !== this.roleSignature) {
+            this.roleSignature = signature;
+            this.populateRoleFilter(roles);
+        }
+    },
+
+    populateRoleFilter(rolesList = []) {
+        const empFilter = el("#empFilter");
+        if (!empFilter) return;
+
+        const roles = rolesList.length ? rolesList : ((store.getState().roles && store.getState().roles.length) ? store.getState().roles : ROLES);
+
+        empFilter.innerHTML = "";
+        empFilter.appendChild(create("option", { value: "", textContent: "Todos" }));
+        roles.forEach(role => empFilter.appendChild(create("option", { value: role.key, textContent: role.key })));
     },
 
     resetFilters() {
@@ -79,6 +103,61 @@ export const EmployeeManager = {
         el("#inpCell").value = "";
 
         DataManager.saveState();
+    },
+
+    importFromExcel(event) {
+        const file = event?.target?.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const sheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[sheetName];
+                const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+                const employees = [...(store.getState().employees || [])];
+                let importedCount = 0;
+
+                rows.slice(1).forEach(row => {
+                    const name = row[0];
+                    if (name && String(name).trim()) {
+                        const normalized = String(name).trim();
+                        const aliasParts = normalized.split(',');
+                        const displayName = (aliasParts.length > 1) ? aliasParts[1].trim() : normalized.split(' ')[0];
+                        const id = crypto.randomUUID();
+                        const base = {
+                            id,
+                            name: normalized,
+                            displayName: displayName,
+                            dni: '',
+                            mail: '',
+                            celular: '',
+                            stars: [],
+                            isMinor: false,
+                            isAllStar: false,
+                            priority: 'medium',
+                            availability: { "0": [], "1": [], "2": [], "3": [], "4": [], "5": [], "6": [] },
+                            exceptions: [],
+                            sanctions: [],
+                        };
+                        employees.push(base);
+                        importedCount++;
+                    }
+                });
+
+                store.setState({ employees });
+                DataManager.saveState();
+                alert(`Se importaron ${importedCount} empleados.`);
+            } catch (err) {
+                console.error(err);
+                alert('Error al importar empleados.');
+            }
+        };
+        reader.readAsArrayBuffer(file);
+        event.target.value = "";
     },
 
     renderList() {
