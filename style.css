@@ -305,6 +305,15 @@ body.dark-mode .request-type.availability { background: rgba(14, 165, 233, 0.16)
 body.dark-mode .pill { background: #1f2933; }
 body.dark-mode .copy-btn { border-color: #4b5563; color: var(--ink); }
 body.dark-mode .copy-btn:hover { background: #374151; }
+body.dark-mode .employee-stat-card,
+body.dark-mode .control-card { background: var(--card); border-color: var(--border); }
+body.dark-mode .control-card-head { background: #111827; }
+body.dark-mode .mini-pill { background: rgba(255,255,255,0.08); color: var(--ink); }
+body.dark-mode .pill-toggle { background: #1f2937; border-color: #374151; }
+body.dark-mode .pill.pill-neutral { border-color: #4b5563; }
+body.dark-mode .b-blue { background: rgba(99, 102, 241, 0.18); color: #c7d2fe; }
+body.dark-mode .b-green { background: rgba(34, 197, 94, 0.18); color: #bbf7d0; }
+body.dark-mode .b-warning { background: rgba(251, 191, 36, 0.16); color: #fde68a; }
 
 /* Employee Table */
 .emp-table-new {
@@ -329,6 +338,190 @@ body.dark-mode .copy-btn:hover { background: #374151; }
 .emp-table-new .actions-cell-new .btn {
   padding: 6px 10px;
   font-size: 13px;
+}
+
+/* Employee Workspace */
+.employee-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.employee-stat-card {
+  border: 1px solid var(--border);
+  background: var(--card);
+  border-radius: 10px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 120px;
+}
+
+.stat-value {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.mini-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  width: fit-content;
+  color: var(--ink);
+  background: rgba(107, 114, 128, 0.12);
+}
+
+.b-blue { background: #e0e7ff; color: #1e3a8a; }
+.b-green { background: #dcfce7; color: #166534; }
+.b-warning { background: #fef3c7; color: #92400e; }
+
+
+.pill-neutral {
+  background: rgba(107, 114, 128, 0.12);
+  color: var(--ink);
+}
+
+.pill-toggle {
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+  align-items: center;
+  border: 1px solid var(--border);
+  background: var(--card);
+}
+
+.pill-toggle input {
+  margin: 0;
+}
+
+.utilities-body {
+  background: var(--bg);
+}
+
+.export-fields-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+.export-field {
+  justify-content: flex-start;
+  padding: 8px 10px;
+}
+
+.export-controls {
+  align-items: center;
+}
+
+.export-dropdown { position: relative; }
+
+.export-dropdown-content {
+  left: 0;
+  right: auto;
+  min-width: 520px;
+  max-width: 720px;
+}
+
+.dropdown-content .del {
+  color: #c0392b;
+}
+
+.employee-controls-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 12px;
+}
+
+.control-card {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  border-radius: 10px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+/* width balancing handled via grid auto-fit */
+
+.control-card-head {
+  padding: 12px;
+  background: var(--card);
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+}
+
+.control-card-body {
+  padding: 12px;
+}
+
+.employee-form-row {
+  gap: 8px;
+}
+
+.filter-badges {
+  flex-wrap: wrap;
+}
+
+.filter-badges .pill {
+  border: 1px dashed var(--border);
+  background: var(--bg);
+}
+
+.emp-table-new .employee-name-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.employee-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.employee-meta {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.employee-contact {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.employee-flags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.availability-note {
+  font-size: 13px;
+  color: var(--muted);
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.pill.pill-neutral {
+  border: 1px solid var(--border);
+}
+
+.emp-table-new .actions-cell-new {
+  width: 520px;
+}
+
+.employee-availability-cell {
+  min-width: 240px;
 }
 
 .employee-detail-cell {
@@ -1249,6 +1442,10 @@ body.dark-mode #calendar-grid .day.monday:not(.other-month):hover {
   .emp-table-new th, .emp-table-new td {
       padding: 8px;
       font-size: 13px;
+  }
+
+  .control-card.wide {
+      grid-column: span 1;
   }
 
   .emp-table-new .actions-cell-new {
