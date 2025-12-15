@@ -56,31 +56,108 @@
     <div id="view-employees" class="wrap" style="display:none; max-width: none; padding: 0 16px;">
         <!-- Empleados -->
         <section class="card">
-            <div class="card-h"><strong>Empleados</strong></div>
+            <div class="card-h card-h-controls">
+              <div class="stack" style="gap:4px;">
+                <strong>Empleados</strong>
+                <span class="muted mini-label">Gestiona la base de colaboradores, disponibilidad y etiquetas sin salir del planificador.</span>
+              </div>
+              <div class="row" style="gap:8px; align-items:center;">
+                <span class="muted mini-label">Vista diseñada para escritorio</span>
+                <span class="pill pill-neutral" id="stat-filtered-employees">--</span>
+              </div>
+            </div>
             <div class="card-c stack">
-                <div class="row">
-                    <input id="inpName" class="input" placeholder="Nombre y apellido" style="flex:1">
-                    <input id="inpDni" class="input" placeholder="DNI" style="flex:1">
-                    <input id="inpMail" class="input" placeholder="Mail" style="flex:1">
-                    <input id="inpCell" class="input" placeholder="Celular" style="flex:1">
-                    <button id="btnAddEmp" class="btn">Añadir</button>
-                </div>
-                <div class="hr"></div>
-                <div class="row">
-                  <label class="btn secondary" style="cursor:pointer;">
-                    Importar desde Excel
-                    <input id="fileImportExcel" class="file" type="file" accept=".xlsx, .xls" style="display:none">
-                  </label>
-                </div>
-                <div class="hr"></div>
-                <div class="row">
-                    <span class="muted" style="font-size:12px">Filtrar empleados por estrella:</span>
-                    <select id="empFilter" class="select"></select>
+                <div class="employee-overview-grid">
+                  <div class="employee-stat-card">
+                    <div class="muted mini-label">Total de empleados</div>
+                    <div class="stat-value" id="stat-total-employees">--</div>
+                    <div class="muted mini-label">Incluye todos los perfiles cargados</div>
+                  </div>
+                  <div class="employee-stat-card">
+                    <div class="muted mini-label">All Star</div>
+                    <div class="stat-value" id="stat-all-stars">--</div>
+                    <div class="mini-pill b-blue">Con insignia destacada</div>
+                  </div>
+                  <div class="employee-stat-card">
+                    <div class="muted mini-label">Menores</div>
+                    <div class="stat-value" id="stat-minors">--</div>
+                    <div class="mini-pill b-minor">Controlá sus límites</div>
+                  </div>
+                  <div class="employee-stat-card">
+                    <div class="muted mini-label">Disponibilidad cargada</div>
+                    <div class="stat-value" id="stat-availability">--</div>
+                    <div class="mini-pill b-green">Con restricciones definidas</div>
+                  </div>
+                  <div class="employee-stat-card">
+                    <div class="muted mini-label">Con licencias o sanciones</div>
+                    <div class="stat-value" id="stat-sanctions">--</div>
+                    <div class="mini-pill b-warning">Seguimiento activo</div>
+                  </div>
                 </div>
 
-                <div class="hr"></div>
-                <div class="row">
-                    <input id="empSearch" class="input" placeholder="Buscar empleado..." style="flex:1">
+                <div class="employee-controls-grid">
+                  <div class="control-card">
+                    <div class="control-card-head">Alta rápida</div>
+                    <div class="control-card-body stack">
+                      <div class="row employee-form-row">
+                          <input id="inpName" class="input" placeholder="Nombre y apellido" style="flex:1">
+                          <input id="inpDni" class="input" placeholder="DNI" style="flex:1">
+                          <input id="inpMail" class="input" placeholder="Mail" style="flex:1">
+                          <input id="inpCell" class="input" placeholder="Celular" style="flex:1">
+                          <button id="btnAddEmp" class="btn">Añadir</button>
+                      </div>
+                      <div class="muted mini-label">La columna "Nombre para planilla" se edita dentro de la fila del empleado.</div>
+                    </div>
+                  </div>
+
+                  <div class="control-card">
+                    <div class="control-card-head">Filtros y búsqueda</div>
+                    <div class="control-card-body stack" style="gap:10px;">
+                      <div class="row" style="gap:8px;">
+                        <input id="empSearch" class="input" placeholder="Buscar por nombre o contacto" style="flex:2">
+                        <select id="empFilter" class="select" style="flex:1"></select>
+                        <select id="empPriorityFilter" class="select" style="flex:1">
+                          <option value="">Todas las prioridades</option>
+                          <option value="very-high">Muy alta</option>
+                          <option value="high">Alta</option>
+                          <option value="medium">Media</option>
+                          <option value="low">Baja</option>
+                          <option value="very-low">Muy baja</option>
+                        </select>
+                      </div>
+                      <div class="row filter-badges" style="gap:10px;">
+                        <label class="pill pill-toggle"><input id="filterAllStarOnly" type="checkbox"> Solo All Star</label>
+                        <label class="pill pill-toggle"><input id="filterMinorOnly" type="checkbox"> Solo menores</label>
+                        <label class="pill pill-toggle"><input id="filterSanctionsOnly" type="checkbox"> Con sanciones</label>
+                        <label class="pill pill-toggle"><input id="filterAvailabilityOnly" type="checkbox"> Con disponibilidad</label>
+                      </div>
+                      <div class="row" style="gap:8px; align-items:center;">
+                        <div class="row" style="gap:6px; flex:1; align-items:center;">
+                          <span class="muted mini-label">Ordenar por</span>
+                          <select id="empSort" class="select" style="flex:1;">
+                            <option value="name">Nombre (A-Z)</option>
+                            <option value="priority">Prioridad</option>
+                            <option value="stars">Cantidad de estrellas</option>
+                          </select>
+                        </div>
+                        <button id="btn-clear-emp-filters" class="btn secondary" style="white-space:nowrap;">Limpiar filtros</button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="control-card wide">
+                    <div class="control-card-head">Utilidades</div>
+                    <div class="control-card-body row" style="align-items:center; gap:10px; flex-wrap:wrap;">
+                      <label class="btn secondary" style="cursor:pointer;">
+                        Importar desde Excel
+                        <input id="fileImportExcel" class="file" type="file" accept=".xlsx, .xls" style="display:none">
+                      </label>
+                      <div class="stack" style="gap:4px;">
+                        <span class="muted mini-label">Tip rápido</span>
+                        <span class="muted" style="font-size:12px;">Usá el menú "Acciones ▾" para exportar/importar datos avanzados.</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 <div id="empList" class="stack"></div>
