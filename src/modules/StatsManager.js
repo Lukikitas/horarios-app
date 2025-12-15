@@ -367,7 +367,7 @@ export const StatsManager = {
             for (let d = new Date(minDate); d <= maxDate; d.setDate(d.getDate() + 1)) {
                 const currentDate = new Date(d);
                 const dateKey = toISODateString(currentDate);
-                const scheduledShift = getScheduleForDate(currentDate).find(s => s.employeeId === employee.id);
+                const scheduledShift = getScheduleForDate(currentDate).find(s => String(s.employeeId) === String(employee.id));
                 const clockInData = clockInsByEmployee[employeeNameNormalized]?.[dateKey];
 
                 if (!scheduledShift && !clockInData) continue;
@@ -385,7 +385,13 @@ export const StatsManager = {
                 }
 
                 if (clockInData) {
-                    const actualHours = (clockInData.clockOutDate - clockInData.clockInDate) / (1000 * 60 * 60);
+                    const clockInDateTime = new Date(clockInData.clockInDate);
+                    const clockOutDateTime = new Date(clockInData.clockOutDate);
+
+                    // Handle shifts that end after midnight by rolling the clock-out date forward
+                    if (clockOutDateTime < clockInDateTime) clockOutDateTime.setDate(clockOutDateTime.getDate() + 1);
+
+                    const actualHours = (clockOutDateTime - clockInDateTime) / (1000 * 60 * 60);
                     reportDataByEmployee[employeeKey].records.push({
                         isoDate: dateKey,
                         date: `${dayName}, ${formatDate(currentDate)}`,
