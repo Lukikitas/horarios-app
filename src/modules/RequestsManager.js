@@ -18,6 +18,7 @@
 import { el, create, clear } from '../utils/dom.js';
 import { getDb } from '../services/DataManager.js';
 import { store } from '../store/Store.js';
+import { storeSolicitudesRef, legacySolicitudesRef } from '../services/firestoreRefs.js';
 
 const MAX_REQUESTS = 200; // límite de carga para evitar traer toda la colección
 
@@ -45,6 +46,12 @@ export const RequestsManager = {
     },
     unsubscribe: null,
 
+    collectionForStore() {
+        const storeId = store.getState().activeStoreId;
+        if (!storeId) return legacySolicitudesRef(); // TODO MIGRACION MULTI-LOCAL
+        return storeSolicitudesRef(storeId);
+    },
+
     init() {
         this.cacheElements();
         this.bindFilters();
@@ -52,6 +59,16 @@ export const RequestsManager = {
 
         document.addEventListener('view-changed', (e) => {
             if (e.detail.view === 'requests') {
+                this.ensureListener();
+            }
+        });
+
+        document.addEventListener('store-changed', () => {
+            if (this.unsubscribe) {
+                this.unsubscribe();
+                this.unsubscribe = null;
+            }
+            if (store.getState().activeView === 'requests') {
                 this.ensureListener();
             }
         });
@@ -82,11 +99,20 @@ export const RequestsManager = {
         const db = getDb();
         if (!db) return;
 
+        const state = store.getState();
+        const storeId = state.activeStoreId;
+        if (!storeId) {
+            console.warn('Solicitudes: no hay local activo');
+            return;
+        }
+
         this.state.loading = true;
         this.render();
 
         // Consulta ordenada por fecha de creación desc y limitada.
-        this.unsubscribe = db.collection('solicitudes')
+        const collectionRef = this.collectionForStore();
+
+        this.unsubscribe = collectionRef
             .orderBy('fechaCreacion', 'desc')
             .limit(MAX_REQUESTS)
             .onSnapshot(
@@ -442,7 +468,7 @@ export const RequestsManager = {
         this.state.actionError = '';
         this.render();
         try {
-            await getDb().collection('solicitudes').doc(this.pendingActionId).update({ estado: 'aprobada', motivoRechazo: null });
+            await this.collectionForStore().doc(this.pendingActionId).update({ estado: 'aprobada', motivoRechazo: null });
             this.toggleModal(this.approveModal, false);
             this.pendingActionId = null;
         } catch (error) {
@@ -465,7 +491,7 @@ export const RequestsManager = {
         this.state.actionError = '';
         this.render();
         try {
-            await getDb().collection('solicitudes').doc(this.pendingActionId).update({
+            await this.collectionForStore().doc(this.pendingActionId).update({
                 estado: 'rechazada',
                 motivoRechazo: reason
             });
@@ -492,7 +518,7 @@ export const RequestsManager = {
         this.state.actionError = '';
         this.render();
         try {
-            await getDb().collection('solicitudes').doc(this.pendingActionId).delete();
+            await this.collectionForStore().doc(this.pendingActionId).delete();
             this.toggleModal(this.deleteModal, false);
             this.state.requests = this.state.requests.filter((r) => r.id !== this.pendingActionId);
             if (this.state.selectedId === this.pendingActionId) {

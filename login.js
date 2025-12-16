@@ -24,17 +24,22 @@ document.addEventListener('DOMContentLoaded', () => {
   auth.onAuthStateChanged(async (user) => {
     if (user) {
       try {
-        const idTokenResult = await user.getIdTokenResult();
-        const role = idTokenResult.claims.role;
+        const userDoc = await db.collection('users').doc(user.uid).get();
+        if (!userDoc.exists) {
+          alert('Usuario sin permisos');
+          await auth.signOut();
+          return;
+        }
+        const profile = userDoc.data();
+        const role = profile.role || (await user.getIdTokenResult())?.claims?.role;
 
-        if (role === 'manager') {
+        if (role === 'manager' || role === 'admin') {
           window.location.href = 'manager.html';
         } else if (role === 'employee') {
           window.location.href = 'portal/index.html';
         } else {
-          // If no role, sign out and show an error
-          console.error("User has no role claim.");
-          auth.signOut();
+          console.error("Usuario sin rol válido");
+          await auth.signOut();
         }
       } catch (error) {
         console.error("Error getting user token:", error);

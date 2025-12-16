@@ -36,6 +36,8 @@ import { HistoryManager } from '../history.js';
 import { ROLES } from '../config.js';
 
 const defaultState = {
+    currentUser: null,
+    activeStoreId: null,
     employees: [],
     schedules: {}, // Will now act as a cache or hold only current week?
                    // Plan: schedules will hold loaded weeks. activeWeek points to current.
