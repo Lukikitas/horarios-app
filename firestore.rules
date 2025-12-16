@@ -1,20 +1,47 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /employees/{employeeId} {
-      allow read, write: if request.auth.token.role == 'manager';
-      allow read: if request.auth.token.role == 'employee' && request.auth.token.employeeId == employeeId;
+    function isSignedIn() {
+      return request.auth != null;
     }
 
-    match /shifts/{shiftId} {
-      allow read, write: if request.auth.token.role == 'manager';
-      allow read: if request.auth.token.role == 'employee' && resource.data.employeeId == request.auth.token.employeeId;
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
     }
 
-    match /requests/{requestId} {
-      allow read, write: if request.auth.token.role == 'manager';
-      allow create: if request.auth.token.role == 'employee' && request.resource.data.employeeId == request.auth.token.employeeId;
-      allow read, update: if request.auth.token.role == 'employee' && resource.data.employeeId == request.auth.token.employeeId;
+    function allowedStores() {
+      return isSignedIn() ? (userDoc().data.allowedStores || []) : [];
+    }
+
+    function userRole() {
+      return isSignedIn() ? (userDoc().data.role || '') : '';
+    }
+
+    function hasStoreAccess(storeId) {
+      return isSignedIn() && allowedStores().hasAny([storeId]);
+    }
+
+    match /users/{uid} {
+      allow read: if isSignedIn() && uid == request.auth.uid;
+      allow write: if false;
+    }
+
+    match /stores/{storeId}/employees/{employeeId} {
+      allow read, write: if hasStoreAccess(storeId) && userRole() in ['manager', 'admin'];
+    }
+
+    match /stores/{storeId}/schedules/{docId} {
+      allow read, write: if hasStoreAccess(storeId) && userRole() in ['manager', 'admin'];
+    }
+
+    match /stores/{storeId}/weeks/{weekId} {
+      allow read, write: if hasStoreAccess(storeId) && userRole() in ['manager', 'admin'];
+    }
+
+    match /stores/{storeId}/solicitudes/{reqId} {
+      allow read: if hasStoreAccess(storeId);
+      allow create: if hasStoreAccess(storeId);
+      allow update, delete: if hasStoreAccess(storeId) && userRole() in ['manager', 'admin'];
     }
   }
 }
