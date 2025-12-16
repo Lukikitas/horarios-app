@@ -1,24 +1,15 @@
 import { store, getActiveSchedule } from '../store/Store.js';
-import { firebaseConfig, ROLES, setRoles, DEFAULT_ROLES } from '../config.js';
-
-let firestore = null;
-
-export function initFirebase() {
-    if (typeof firebase === 'undefined') {
-        console.error("Firebase SDK not loaded.");
-        return null;
-    }
-    if (!firebase.apps.length) {
-        firebase.initializeApp(firebaseConfig);
-    }
-    firestore = firebase.firestore();
-    return firestore;
-}
-
-export function getDb() {
-    if (!firestore) return initFirebase();
-    return firestore;
-}
+import { ROLES, setRoles, DEFAULT_ROLES } from '../config.js';
+import { getDb, initFirebase } from './firebase.js';
+export { getDb } from './firebase.js';
+import {
+    legacyEmployeesRef,
+    legacySchedulesRef,
+    legacyWeeksRef,
+    storeEmployeesRef,
+    storeSchedulesRef,
+    storeWeeksRef
+} from './firestoreRefs.js';
 
 function getMonday(d) {
     d = new Date(d);
@@ -36,7 +27,7 @@ function toISODateString(date) {
 }
 
 export const DataManager = {
-    async loadState() {
+    async loadState(storeId) {
         console.log("DataManager: Loading state...");
         store.setState({ isLoading: true });
 
@@ -44,12 +35,18 @@ export const DataManager = {
             const db = getDb();
             if (!db) throw new Error("Firebase not initialized");
 
+            if (!storeId) throw new Error('Falta storeId activo');
+
+            const schedulesRef = storeSchedulesRef(storeId);
+            const employeesRef = storeEmployeesRef(storeId);
+            const weeksRef = storeWeeksRef(storeId);
+
             // 1. Load Main Doc (Settings, Templates, etc.)
-            const mainDocRef = db.collection("schedules").doc("main");
+            const mainDocRef = schedulesRef.doc("main");
             const mainDoc = await mainDocRef.get();
 
             // 2. Load Employees
-            const employeesSnapshot = await db.collection('employees').get();
+            const employeesSnapshot = await employeesRef.get();
             const employeesArray = [];
             employeesSnapshot.forEach(doc => {
                 employeesArray.push({ id: doc.id, ...doc.data() });
@@ -58,8 +55,19 @@ export const DataManager = {
             const currentState = store.getState();
             let newState = { ...currentState };
 
+            let data = null;
             if (mainDoc.exists) {
-                const data = mainDoc.data();
+                data = mainDoc.data();
+            } else {
+                // TODO MIGRACION MULTI-LOCAL: fallback a estructura legacy
+                console.warn('DataManager: usando schedules/main legacy');
+                const legacyMain = await legacySchedulesRef().doc('main').get();
+                if (legacyMain.exists) {
+                    data = legacyMain.data();
+                }
+            }
+
+            if (data) {
 
                 // Legacy employees handling
                 let legacyEmployees = [];
@@ -67,6 +75,9 @@ export const DataManager = {
                     legacyEmployees = Array.isArray(data.employees) ? data.employees : Object.values(data.employees);
                 }
 
+                if (!employeesArray.length && legacyEmployees.length) {
+                    console.warn('DataManager: empleados desde estructura legacy');
+                }
                 newState.employees = employeesArray.length > 0 ? employeesArray : legacyEmployees;
 
                 const loadedRoles = Array.isArray(data.roles) && data.roles.length > 0 ? data.roles : DEFAULT_ROLES;
@@ -121,7 +132,7 @@ export const DataManager = {
                 }
 
                 // --- SCHEDULE LOADING STRATEGY ---
-                const weekDocRef = db.collection("weeks").doc(newState.activeWeek);
+                const weekDocRef = weeksRef.doc(newState.activeWeek);
                 const weekDoc = await weekDocRef.get();
 
                 newState.schedules = {}; // Reset schedules cache
@@ -139,8 +150,14 @@ export const DataManager = {
                     if (legacySchedules[newState.activeWeek]) {
                         newState.schedules[newState.activeWeek] = legacySchedules[newState.activeWeek];
                     } else {
-                        // New week
-                        newState.schedules[newState.activeWeek] = {};
+                        // Intentar levantar semana de estructura legacy weeks
+                        const legacyWeekDoc = await legacyWeeksRef().doc(newState.activeWeek).get();
+                        if (legacyWeekDoc.exists) {
+                            newState.schedules[newState.activeWeek] = legacyWeekDoc.data();
+                        } else {
+                            // New week
+                            newState.schedules[newState.activeWeek] = {};
+                        }
                     }
                 }
             } else {
@@ -166,12 +183,20 @@ export const DataManager = {
     async saveState() {
         const db = getDb();
         const state = store.getState();
+        const storeId = state.activeStoreId;
+        if (!storeId) {
+            console.warn('Intento de guardar sin store activo');
+            return;
+        }
+        const schedulesRef = storeSchedulesRef(storeId);
+        const employeesRef = storeEmployeesRef(storeId);
+        const weeksRef = storeWeeksRef(storeId);
         const activeWeek = state.activeWeek;
         const currentSchedule = state.schedules[activeWeek];
 
         try {
             if (activeWeek && currentSchedule) {
-                await db.collection("weeks").doc(activeWeek).set(currentSchedule);
+                await weeksRef.doc(activeWeek).set(currentSchedule);
             }
 
             const mainData = {
@@ -183,12 +208,12 @@ export const DataManager = {
                 rappiCode: state.rappiCode,
                 roles: state.roles && state.roles.length ? state.roles : ROLES,
             };
-            await db.collection("schedules").doc("main").set(mainData, { merge: true });
+            await schedulesRef.doc("main").set(mainData, { merge: true });
 
             const batch = db.batch();
             let opCount = 0;
             state.employees.forEach(emp => {
-                const empRef = db.collection('employees').doc(emp.id);
+                const empRef = employeesRef.doc(emp.id);
                 batch.set(empRef, emp, { merge: true });
                 opCount++;
                 if (opCount >= 400) {
@@ -207,6 +232,12 @@ export const DataManager = {
     async loadWeek(weekId) {
         const db = getDb();
         const state = store.getState();
+        const storeId = state.activeStoreId;
+        if (!storeId) {
+            console.warn('Intento de cargar semana sin store activo');
+            return;
+        }
+        const weeksRef = storeWeeksRef(storeId);
 
         if (state.schedules[weekId]) {
             store.setState({ activeWeek: weekId });
@@ -215,19 +246,25 @@ export const DataManager = {
 
         store.setState({ isLoading: true });
         try {
-            const weekDoc = await db.collection("weeks").doc(weekId).get();
+            const weekDoc = await weeksRef.doc(weekId).get();
             let weekData = {};
 
             if (weekDoc.exists) {
                 weekData = weekDoc.data();
             } else {
-                 const mainDoc = await db.collection("schedules").doc("main").get();
+                 // TODO MIGRACION MULTI-LOCAL: fallback a estructura legacy
+                 const mainDoc = await legacySchedulesRef().doc("main").get();
                  if (mainDoc.exists) {
                      const data = mainDoc.data();
                      const legacySchedules = data.schedules || {};
                      if (legacySchedules[weekId]) {
                          weekData = legacySchedules[weekId];
-                         await db.collection("weeks").doc(weekId).set(weekData);
+                         await weeksRef.doc(weekId).set(weekData);
+                     }
+                 } else {
+                     const legacyWeekDoc = await legacyWeeksRef().doc(weekId).get();
+                     if (legacyWeekDoc.exists) {
+                        weekData = legacyWeekDoc.data();
                      }
                  }
             }

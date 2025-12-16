@@ -1,4 +1,6 @@
-import { DataManager, initFirebase } from './services/DataManager.js';
+import { DataManager } from './services/DataManager.js';
+import { initFirebase } from './services/firebase.js';
+import { SessionService } from './services/SessionService.js';
 import { store } from './store/Store.js';
 import { UIManager } from './modules/UIManager.js';
 import { EmployeeManager } from './modules/EmployeeManager.js';
@@ -13,6 +15,12 @@ import { el } from './utils/dom.js';
 async function init() {
     console.log("App Main: Starting Init");
     initFirebase();
+    try {
+        await SessionService.requireSession();
+    } catch (err) {
+        console.error('No se pudo iniciar sesión/seleccionar local', err);
+        return;
+    }
 
     // Bind global managers
     UIManager.init();
@@ -46,7 +54,15 @@ async function init() {
     });
 
     // Initial Load
-    await DataManager.loadState();
+    await DataManager.loadState(store.getState().activeStoreId);
+
+    document.addEventListener('store-changed', async (event) => {
+        const storeId = event.detail?.storeId;
+        if (!storeId) return;
+        store.setState({ isLoading: true });
+        await DataManager.loadState(storeId);
+        UIManager.showView(store.getState().activeView || 'schedule');
+    });
 
     // Force initial render (store subscribe might trigger on loadState but let's be sure)
     UIManager.showView('schedule');
