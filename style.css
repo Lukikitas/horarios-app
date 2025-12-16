@@ -1623,3 +1623,20 @@ body.dark-mode #calendar-grid .day.monday:not(.other-month):hover {
 
 .slot.assigned.unavailable-slot .label,
 .slot.assigned.unavailable-slot { position: relative; z-index: 1; }
+
+/* Multi-local UI helpers */
+.store-selector-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 999;
+}
+
+.session-banner {
+  margin-left: auto;
+  display: none;
+}

@@ -3,6 +3,7 @@ import { store } from '../store/Store.js';
 import { DataManager } from '../services/DataManager.js';
 import { getActiveSchedule } from '../store/Store.js';
 import { ROLES } from '../config.js';
+import { storeEmployeesRef, legacyEmployeesRef } from '../services/firestoreRefs.js';
 
 const EXPORT_FIELD_CONFIG = {
     name: { label: 'Nombre completo', getter: (e) => e.name || '' },
@@ -411,7 +412,9 @@ export const EmployeeManager = {
         store.setState({ employees: newEmployees });
 
         import('../services/DataManager.js').then(({getDb}) => {
-             getDb().collection('employees').doc(empId).delete().catch(console.error);
+             const storeId = store.getState().activeStoreId;
+             const ref = storeId ? storeEmployeesRef(storeId) : legacyEmployeesRef(); // TODO MIGRACION MULTI-LOCAL
+             ref.doc(empId).delete().catch(console.error);
         });
 
         DataManager.saveState();
