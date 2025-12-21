@@ -951,7 +951,8 @@ export const ScheduleManager = {
             role: el("#activeRole").value,
             startSlot: start,
             endSlot: end,
-            employeeId: null
+            employeeId: null,
+            ignoreRestrictions: false
         };
 
         const state = store.getState();
@@ -1347,12 +1348,19 @@ export const ScheduleManager = {
 
         const c = create("div", { className:"card-c stack" });
         const listContainer = create("div", { className:"assign-employee-list", style: { maxHeight: "400px", overflowY: "auto" } });
+        const ignoreRestrictions = !!shift.ignoreRestrictions;
+
+        if (ignoreRestrictions) {
+            c.appendChild(create("div", { className: "warning-text", style: { marginBottom: "8px" }, textContent: "Este turno ignora la disponibilidad y el descanso mínimo." }));
+        }
+
         c.appendChild(listContainer);
 
         const employeesWithStar = state.employees.filter(e => (e.stars || []).includes(shift.role));
+        const candidates = ignoreRestrictions ? state.employees : employeesWithStar;
 
-        if (employeesWithStar.length === 0) {
-            listContainer.textContent = "No hay empleados con la estrella requerida.";
+        if (candidates.length === 0) {
+            listContainer.textContent = ignoreRestrictions ? "No hay empleados para asignar." : "No hay empleados con la estrella requerida.";
         } else {
             // Logic for sorting and checking warnings
             const available = [];
@@ -1361,8 +1369,7 @@ export const ScheduleManager = {
             const shiftDate = new Date(state.activeWeek + "T12:00:00Z");
             shiftDate.setDate(shiftDate.getDate() + day);
 
-            employeesWithStar.forEach(emp => {
-                // Checkers (re-implement or import)
+            const evaluateEmployee = (emp) => {
                 const isMinor = emp.isMinor;
                 const sanctionCheck = isDateInSanctionPeriod(shiftDate, emp.sanctions);
 
@@ -1384,9 +1391,26 @@ export const ScheduleManager = {
                 const consec = calculateConsecutiveWorkDays(emp.id, state.activeWeek, day);
                 if(consec > 5) softWarnings.push(`Trabajará ${consec} días seguidos.`);
 
-                if (hardWarning) unavailable.push({ emp, hardWarning });
-                else if (softWarnings.length > 0) withWarnings.push({ emp, softWarnings });
-                else available.push({ emp, hardWarning: "" });
+                return { hardWarning, softWarnings };
+            };
+
+            candidates.forEach(emp => {
+                const { hardWarning, softWarnings } = evaluateEmployee(emp);
+                const hasRoleStar = (emp.stars || []).includes(shift.role);
+
+                if (ignoreRestrictions) {
+                    const infoWarnings = [];
+                    if (!hasRoleStar) infoWarnings.push('Sin estrella para el rol.');
+                    if (hardWarning) infoWarnings.push(hardWarning);
+                    if (softWarnings.length > 0) infoWarnings.push(softWarnings.join('. '));
+                    available.push({ emp, hardWarning: infoWarnings.filter(Boolean).join(' ') });
+                } else if (hardWarning) {
+                    unavailable.push({ emp, hardWarning });
+                } else if (softWarnings.length > 0) {
+                    withWarnings.push({ emp, softWarnings });
+                } else {
+                    available.push({ emp, hardWarning: "" });
+                }
             });
 
             // Helper to render button
@@ -1421,7 +1445,7 @@ export const ScheduleManager = {
                 listContainer.appendChild(btn);
             };
 
-            available.forEach(x => renderBtn(x, false, ""));
+            available.forEach(x => renderBtn(x, false, x.hardWarning || ""));
             withWarnings.forEach(x => renderBtn(x, false, x.softWarnings.join(". ")));
             unavailable.forEach(x => renderBtn(x, true, x.hardWarning));
         }
@@ -1461,12 +1485,21 @@ export const ScheduleManager = {
         this.optionize(endSelect, SLOTS, s=>({value:s.index, label:s.label}));
         endSelect.value = shift.endSlot + 1;
 
+        const ignoreRestrictionsCheckbox = create("input", { type: "checkbox", id: "ignore-restrictions-checkbox", checked: !!shift.ignoreRestrictions });
+        const ignoreLabel = create("label", { htmlFor: "ignore-restrictions-checkbox", textContent: "Ignorar restricciones" });
+        const ignoreHint = create("div", { className: "muted", style: { fontSize: "12px", marginTop: "4px" }, textContent: "Permite asignar sin validar disponibilidad ni descanso." });
+
         c.appendChild(create("label", { className:"muted", textContent: "Rol" }));
         c.appendChild(roleSelect);
         c.appendChild(create("label", { className:"muted", textContent: "Inicio" }));
         c.appendChild(startSelect);
         c.appendChild(create("label", { className:"muted", textContent: "Fin" }));
         c.appendChild(endSelect);
+        const ignoreRow = create("div", { style: { display: "flex", alignItems: "center", gap: "8px", marginTop: "8px" } });
+        ignoreRow.appendChild(ignoreRestrictionsCheckbox);
+        ignoreRow.appendChild(ignoreLabel);
+        c.appendChild(ignoreRow);
+        c.appendChild(ignoreHint);
 
         box.appendChild(c);
 
@@ -1481,6 +1514,7 @@ export const ScheduleManager = {
                 shift.role = roleSelect.value;
                 shift.startSlot = newStart;
                 shift.endSlot = newEnd - 1;
+                shift.ignoreRestrictions = !!ignoreRestrictionsCheckbox.checked;
             });
             wrap.remove();
         }}));
@@ -1541,11 +1575,12 @@ export const ScheduleManager = {
             if (unassignedShifts.length > 0) {
                 const shiftsContainer = create("div", { className: "shifts-container" });
                 unassignedShifts.forEach(shift => {
+                    const ignoreTag = shift.ignoreRestrictions ? '<div class="muted" style="font-size: 10px;">Ignora restricciones</div>' : '';
                     const shiftDiv = create("div", {
                         className: "schedule-list-shift unassigned-shift-item",
                         dataset: { shiftId: shift.id, dayIndex: dayIndex },
                         draggable: true,
-                        innerHTML: `<div style="font-weight: 500;">${shift.role}</div><div style="font-size: 11px;">${SLOTS[shift.startSlot].label} - ${SLOTS[shift.endSlot + 1] ? SLOTS[shift.endSlot + 1].label : "02:00"}</div>`
+                        innerHTML: `<div style="font-weight: 500;">${shift.role}</div><div style="font-size: 11px;">${SLOTS[shift.startSlot].label} - ${SLOTS[shift.endSlot + 1] ? SLOTS[shift.endSlot + 1].label : "02:00"}</div>${ignoreTag}`
                     });
 
                     const roleInfo = ROLES.find(r => r.key === shift.role);
@@ -1597,7 +1632,8 @@ export const ScheduleManager = {
 
                         const startTime = SLOTS[shift.startSlot].label;
                         const endTime = SLOTS[shift.endSlot + 1] ? SLOTS[shift.endSlot + 1].label : "02:00";
-                        let shiftText = `<div style="font-weight: 500;">${shift.role}</div><div style="font-size: 11px;">${startTime} - ${endTime}</div>`;
+                        const ignoreTag = shift.ignoreRestrictions ? '<div class="muted" style="font-size: 10px;">Ignora restricciones</div>' : '';
+                        let shiftText = `<div style="font-weight: 500;">${shift.role}</div><div style="font-size: 11px;">${startTime} - ${endTime}</div>${ignoreTag}`;
 
                         if (shift.replacement && shift.replacement.originalEmployeeId) {
                             const originalEmp = state.employees.find(e => e.id === shift.replacement.originalEmployeeId);

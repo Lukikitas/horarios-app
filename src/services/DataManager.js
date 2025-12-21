@@ -282,4 +282,49 @@ export const DataManager = {
             store.setState({ isLoading: false });
         }
     }
+
+    async getWeekData(weekId) {
+        const state = store.getState();
+        const storeId = state.activeStoreId;
+        if (!storeId) {
+            console.warn('Intento de obtener semana sin store activo');
+            return {};
+        }
+
+        if (state.schedules[weekId]) return state.schedules[weekId];
+
+        const weeksRef = storeWeeksRef(storeId);
+        let weekData = {};
+
+        try {
+            const weekDoc = await weeksRef.doc(weekId).get();
+            if (weekDoc.exists) {
+                weekData = weekDoc.data();
+            } else {
+                const mainDoc = await legacySchedulesRef().doc("main").get();
+                if (mainDoc.exists) {
+                    const data = mainDoc.data();
+                    const legacySchedules = data.schedules || {};
+                    if (legacySchedules[weekId]) {
+                        weekData = legacySchedules[weekId];
+                        await weeksRef.doc(weekId).set(weekData);
+                    }
+                } else {
+                    const legacyWeekDoc = await legacyWeeksRef().doc(weekId).get();
+                    if (legacyWeekDoc.exists) weekData = legacyWeekDoc.data();
+                }
+            }
+
+            store.setState({
+                schedules: {
+                    ...store.getState().schedules,
+                    [weekId]: weekData
+                }
+            });
+        } catch (err) {
+            console.error(err);
+        }
+
+        return weekData;
+    }
 };
