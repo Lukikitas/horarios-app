@@ -300,14 +300,14 @@ export const StatsManager = {
         const file = e.target.files?.[0];
         if (!file) return;
         const reader = new FileReader();
-        reader.onload = (event) => {
+        reader.onload = async (event) => {
             try {
                 const data = new Uint8Array(event.target.result);
                 const workbook = XLSX.read(data, { type: 'array', cellDates: true });
                 const sheetName = workbook.SheetNames[0];
                 const worksheet = workbook.Sheets[sheetName];
                 const json = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-                this.processAndCompareClockIns(json);
+                await this.processAndCompareClockIns(json);
             } catch (err) {
                 console.error(err);
                 alert("Error procesando fichero.");
@@ -316,7 +316,7 @@ export const StatsManager = {
         reader.readAsArrayBuffer(file);
     },
 
-    processAndCompareClockIns(data) {
+    async processAndCompareClockIns(data) {
         const state = store.getState();
         const reportDataByEmployee = {};
 
@@ -342,7 +342,8 @@ export const StatsManager = {
             const dateKey = toISODateString(normalizedDate);
 
             if (!clockInsByEmployee[employeeName]) clockInsByEmployee[employeeName] = {};
-            clockInsByEmployee[employeeName][dateKey] = { clockInDate: clockInDateTime, clockOutDate: clockOutDateTime };
+            if (!clockInsByEmployee[employeeName][dateKey]) clockInsByEmployee[employeeName][dateKey] = [];
+            clockInsByEmployee[employeeName][dateKey].push({ clockInDate: clockInDateTime, clockOutDate: clockOutDateTime });
 
             if (!minDate || normalizedDate < minDate) minDate = normalizedDate;
             if (!maxDate || normalizedDate > maxDate) maxDate = normalizedDate;
@@ -354,13 +355,26 @@ export const StatsManager = {
             return;
         }
 
+        const weeksNeeded = new Set();
+        for (let d = new Date(minDate); d <= maxDate; d.setDate(d.getDate() + 1)) {
+            weeksNeeded.add(toISODateString(getMonday(new Date(d))));
+        }
+
+        const scheduleCache = { ...store.getState().schedules };
+        for (const weekKey of weeksNeeded) {
+            if (!scheduleCache[weekKey]) {
+                const weekData = await DataManager.getWeekData(weekKey);
+                scheduleCache[weekKey] = weekData || {};
+            }
+        }
+
         const getScheduleForDate = (d) => {
             // Normalize date to noon to avoid timezone shifts when getting the Monday key
             const localDate = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0, 0);
             const monday = getMonday(localDate);
             const weekKey = toISODateString(monday);
             const dayIndex = localDate.getDay() === 0 ? 6 : localDate.getDay() - 1;
-            const weekSchedule = state.schedules[weekKey] || {};
+            const weekSchedule = scheduleCache[weekKey] || {};
             return weekSchedule[dayIndex] || [];
         };
 
@@ -372,9 +386,9 @@ export const StatsManager = {
                 const currentDate = normalizeDate(new Date(d));
                 const dateKey = toISODateString(currentDate);
                 const scheduledShift = getScheduleForDate(currentDate).find(s => String(s.employeeId) === String(employee.id));
-                const clockInData = clockInsByEmployee[employeeNameNormalized]?.[dateKey];
+                const clockInDataList = clockInsByEmployee[employeeNameNormalized]?.[dateKey] || [];
 
-                if (!scheduledShift && !clockInData) continue;
+                if (!scheduledShift && clockInDataList.length === 0) continue;
 
                 if (!reportDataByEmployee[employeeKey]) {
                     reportDataByEmployee[employeeKey] = { name: employeeKey, records: [], totalHours: 0, status: 'ok' };
@@ -388,63 +402,67 @@ export const StatsManager = {
                     scheduledTime = `${startTime} - ${endTime} (${scheduledShift.role})`;
                 }
 
-                if (clockInData) {
-                    const clockInDateTime = new Date(clockInData.clockInDate);
-                    const rawClockOutTime = new Date(clockInData.clockOutDate);
+                if (clockInDataList.length > 0) {
+                    clockInDataList
+                        .sort((a, b) => new Date(a.clockInDate) - new Date(b.clockInDate))
+                        .forEach(clockInData => {
+                            const clockInDateTime = new Date(clockInData.clockInDate);
+                            const rawClockOutTime = new Date(clockInData.clockOutDate);
 
-                    // Combine the clock-out time with the clock-in date to avoid Excel date defaults (e.g., 1899)
-                    const clockOutDateTime = new Date(clockInDateTime);
-                    clockOutDateTime.setHours(
-                        rawClockOutTime.getHours(),
-                        rawClockOutTime.getMinutes(),
-                        rawClockOutTime.getSeconds(),
-                        rawClockOutTime.getMilliseconds()
-                    );
+                            // Combine the clock-out time with the clock-in date to avoid Excel date defaults (e.g., 1899)
+                            const clockOutDateTime = new Date(clockInDateTime);
+                            clockOutDateTime.setHours(
+                                rawClockOutTime.getHours(),
+                                rawClockOutTime.getMinutes(),
+                                rawClockOutTime.getSeconds(),
+                                rawClockOutTime.getMilliseconds()
+                            );
 
-                    // Handle shifts that end after midnight by rolling the clock-out date forward
-                    if (clockOutDateTime <= clockInDateTime) clockOutDateTime.setDate(clockOutDateTime.getDate() + 1);
+                            // Handle shifts that end after midnight by rolling the clock-out date forward
+                            if (clockOutDateTime <= clockInDateTime) clockOutDateTime.setDate(clockOutDateTime.getDate() + 1);
 
-                    let status = 'ok';
-                    let note = '';
+                            let status = 'ok';
+                            let note = '';
 
-                    if (scheduledShift) {
-                        const [scheduledStartH, scheduledStartM] = SLOTS[scheduledShift.startSlot].label.split(':').map(Number);
-                        const scheduledStart = new Date(currentDate);
-                        scheduledStart.setHours(scheduledStartH, scheduledStartM, 0, 0);
+                            if (scheduledShift) {
+                                const [scheduledStartH, scheduledStartM] = SLOTS[scheduledShift.startSlot].label.split(':').map(Number);
+                                const scheduledStart = new Date(currentDate);
+                                scheduledStart.setHours(scheduledStartH, scheduledStartM, 0, 0);
 
-                        const endLabel = SLOTS[scheduledShift.endSlot + 1]?.label || '02:00';
-                        const [scheduledEndH, scheduledEndM] = endLabel.split(':').map(Number);
-                        const scheduledEnd = new Date(currentDate);
-                        scheduledEnd.setHours(scheduledEndH, scheduledEndM, 0, 0);
-                        if (scheduledEnd <= scheduledStart) scheduledEnd.setDate(scheduledEnd.getDate() + 1);
+                                const endLabel = SLOTS[scheduledShift.endSlot + 1]?.label || '02:00';
+                                const [scheduledEndH, scheduledEndM] = endLabel.split(':').map(Number);
+                                const scheduledEnd = new Date(currentDate);
+                                scheduledEnd.setHours(scheduledEndH, scheduledEndM, 0, 0);
+                                if (scheduledEnd <= scheduledStart) scheduledEnd.setDate(scheduledEnd.getDate() + 1);
 
-                        const diffStart = Math.abs(clockInDateTime - scheduledStart) / (1000 * 60);
-                        const diffEnd = Math.abs(clockOutDateTime - scheduledEnd) / (1000 * 60);
+                                const diffStart = Math.abs(clockInDateTime - scheduledStart) / (1000 * 60);
+                                const diffEnd = Math.abs(clockOutDateTime - scheduledEnd) / (1000 * 60);
 
-                        if (diffStart > 15 || diffEnd > 15) {
-                            status = 'warning';
-                            const parts = [];
-                            if (diffStart > 15) {
-                                parts.push(`Entrada ${clockInDateTime > scheduledStart ? 'tarde' : 'temprano'} ${Math.round(diffStart)} min`);
+                                if (diffStart > 15 || diffEnd > 15) {
+                                    status = 'warning';
+                                    const parts = [];
+                                    if (diffStart > 15) {
+                                        parts.push(`Entrada ${clockInDateTime > scheduledStart ? 'tarde' : 'temprano'} ${Math.round(diffStart)} min`);
+                                    }
+                                    if (diffEnd > 15) {
+                                        parts.push(`Salida ${clockOutDateTime > scheduledEnd ? 'tarde' : 'temprano'} ${Math.round(diffEnd)} min`);
+                                    }
+                                    note = parts.join(' | ');
+                                }
                             }
-                            if (diffEnd > 15) {
-                                parts.push(`Salida ${clockOutDateTime > scheduledEnd ? 'tarde' : 'temprano'} ${Math.round(diffEnd)} min`);
-                            }
-                            note = parts.join(' | ');
-                        }
-                    }
 
-                    const actualHours = (clockOutDateTime - clockInDateTime) / (1000 * 60 * 60);
-                    reportDataByEmployee[employeeKey].records.push({
-                        isoDate: dateKey,
-                        date: `${dayName}, ${formatDate(currentDate)}`,
-                        scheduled: scheduledTime,
-                        clockIn: formatTime(clockInData.clockInDate),
-                        clockOut: formatTime(clockInData.clockOutDate),
-                        actual: `${actualHours.toFixed(2).replace('.',',')}hs`,
-                        status,
-                        note
-                    });
+                            const actualHours = (clockOutDateTime - clockInDateTime) / (1000 * 60 * 60);
+                            reportDataByEmployee[employeeKey].records.push({
+                                isoDate: dateKey,
+                                date: `${dayName}, ${formatDate(currentDate)}`,
+                                scheduled: scheduledTime,
+                                clockIn: formatTime(clockInData.clockInDate),
+                                clockOut: formatTime(clockInData.clockOutDate),
+                                actual: `${actualHours.toFixed(2).replace('.',',')}hs`,
+                                status,
+                                note
+                            });
+                        });
                 } else if (scheduledShift) {
                     reportDataByEmployee[employeeKey].records.push({
                         isoDate: dateKey,
