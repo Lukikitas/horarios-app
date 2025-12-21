@@ -300,14 +300,14 @@ export const StatsManager = {
         const file = e.target.files?.[0];
         if (!file) return;
         const reader = new FileReader();
-        reader.onload = (event) => {
+        reader.onload = async (event) => {
             try {
                 const data = new Uint8Array(event.target.result);
                 const workbook = XLSX.read(data, { type: 'array', cellDates: true });
                 const sheetName = workbook.SheetNames[0];
                 const worksheet = workbook.Sheets[sheetName];
                 const json = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-                this.processAndCompareClockIns(json);
+                await this.processAndCompareClockIns(json);
             } catch (err) {
                 console.error(err);
                 alert("Error procesando fichero.");
@@ -316,7 +316,7 @@ export const StatsManager = {
         reader.readAsArrayBuffer(file);
     },
 
-    processAndCompareClockIns(data) {
+    async processAndCompareClockIns(data) {
         const state = store.getState();
         const reportDataByEmployee = {};
 
@@ -354,13 +354,26 @@ export const StatsManager = {
             return;
         }
 
+        const weeksNeeded = new Set();
+        for (let d = new Date(minDate); d <= maxDate; d.setDate(d.getDate() + 1)) {
+            weeksNeeded.add(toISODateString(getMonday(new Date(d))));
+        }
+
+        const scheduleCache = { ...store.getState().schedules };
+        for (const weekKey of weeksNeeded) {
+            if (!scheduleCache[weekKey]) {
+                const weekData = await DataManager.getWeekData(weekKey);
+                scheduleCache[weekKey] = weekData || {};
+            }
+        }
+
         const getScheduleForDate = (d) => {
             // Normalize date to noon to avoid timezone shifts when getting the Monday key
             const localDate = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0, 0);
             const monday = getMonday(localDate);
             const weekKey = toISODateString(monday);
             const dayIndex = localDate.getDay() === 0 ? 6 : localDate.getDay() - 1;
-            const weekSchedule = state.schedules[weekKey] || {};
+            const weekSchedule = scheduleCache[weekKey] || {};
             return weekSchedule[dayIndex] || [];
         };
 
