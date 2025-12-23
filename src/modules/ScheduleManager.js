@@ -1524,6 +1524,21 @@ export const ScheduleManager = {
         document.body.appendChild(wrap);
     },
 
+    getDayRestrictionInfo(employee, shiftDate, shiftDateString) {
+        if (!employee) return { blocked: false, reason: '' };
+
+        if (isDateInSanctionPeriod(shiftDate, employee.sanctions)) {
+            return { blocked: true, reason: 'Licencia activa' };
+        }
+
+        const hasFullDayException = (employee.exceptions || []).some(ex => ex.date === shiftDateString && !ex.start && !ex.end);
+        if (hasFullDayException) {
+            return { blocked: true, reason: 'Excepción de día completo' };
+        }
+
+        return { blocked: false, reason: '' };
+    },
+
     renderScheduleList() {
         const content = el("#schedule-list-content");
         if(!content) return;
@@ -1614,6 +1629,17 @@ export const ScheduleManager = {
 
             for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
                 const dayCell = create("td", { dataset: { day: dayIndex } });
+                const shiftDate = new Date(weekMonday);
+                shiftDate.setDate(weekMonday.getDate() + dayIndex);
+                const shiftDateString = toISODateString(shiftDate);
+
+                const restrictionInfo = this.getDayRestrictionInfo(emp, shiftDate, shiftDateString);
+                if (restrictionInfo.blocked) {
+                    const warningEl = create("div", { className: "schedule-list-warning", title: restrictionInfo.reason });
+                    warningEl.innerHTML = `⚠️ <span>${restrictionInfo.reason}</span>`;
+                    dayCell.appendChild(warningEl);
+                }
+
                 const dayShifts = (schedule[dayIndex] || []).filter(s => s.employeeId === emp.id);
                 if (dayShifts.length > 0) {
                     const shiftsContainer = create("div", { className: "shifts-container" });
@@ -1644,14 +1670,10 @@ export const ScheduleManager = {
                         }
                         shiftDiv.innerHTML = shiftText;
 
-                        // Sanction conflict visual
-                        const weekMonday = new Date(state.activeWeek + "T12:00:00Z");
-                        const shiftDate = new Date(weekMonday);
-                        shiftDate.setDate(shiftDate.getDate() + dayIndex);
-
-                        if (isDateInSanctionPeriod(shiftDate, emp.sanctions) && !shift.replacement) {
+                        // Day restriction visual
+                        if (restrictionInfo.blocked && !shift.replacement) {
                             shiftDiv.style.border = `2px solid var(--c-danger)`;
-                            shiftDiv.title = 'Conflicto con sanción/licencia';
+                            shiftDiv.title = restrictionInfo.reason;
                         }
 
                         shiftDiv.addEventListener('dragstart', (e) => {
