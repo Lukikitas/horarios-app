@@ -1,9 +1,9 @@
 import { el, create, clear } from '../utils/dom.js';
 import { store } from '../store/Store.js';
 import { DataManager } from '../services/DataManager.js';
-import { getActiveSchedule } from '../store/Store.js';
-import { ROLES } from '../config.js';
+import { ROLES, SLOTS } from '../config.js';
 import { storeEmployeesRef, legacyEmployeesRef } from '../services/firestoreRefs.js';
+import { getMonday, toISODateString } from '../utils/date.js';
 
 const EXPORT_FIELD_CONFIG = {
     name: { label: 'Nombre completo', getter: (e) => e.name || '' },
@@ -613,7 +613,7 @@ export const EmployeeManager = {
         const startInput = create("input", { type: "time", className: "input", title: "Inicio (opcional)" });
         const endInput = create("input", { type: "time", className: "input", title: "Fin (opcional)" });
 
-        const addBtn = create("button", { className: "btn", textContent: "Añadir", onClick: () => {
+        const addBtn = create("button", { className: "btn", textContent: "Añadir", onClick: async () => {
             if(dateInput.value) {
                 if(!emp.exceptions) emp.exceptions = [];
                 const newEx = {
@@ -626,6 +626,19 @@ export const EmployeeManager = {
                 if ((newEx.start && !newEx.end) || (!newEx.start && newEx.end)) {
                     alert("Para excepción parcial, ingresa Inicio y Fin.");
                     return;
+                }
+
+                const conflictShifts = await this.getEmployeeShiftsForDate(emp.id, dateInput.value);
+                if (conflictShifts.length > 0) {
+                    const summary = conflictShifts.map(s => this.formatShiftRange(s)).filter(Boolean).join(' | ');
+                    const promptText = [
+                        `⚠️ ${emp.name} ya tiene ${conflictShifts.length === 1 ? 'un turno' : `${conflictShifts.length} turnos`} asignado${conflictShifts.length === 1 ? '' : 's'} ese día.`,
+                        summary ? `Horarios: ${summary}.` : '',
+                        '',
+                        '¿Querés registrar la excepción igualmente?'
+                    ].filter(Boolean).join('\n');
+                    const proceed = confirm(promptText);
+                    if (!proceed) return;
                 }
 
                 emp.exceptions.push(newEx);
@@ -648,6 +661,33 @@ export const EmployeeManager = {
         panel.appendChild(create("div", { className: "hr" }));
         panel.appendChild(addRow);
         container.appendChild(panel);
+    },
+
+    async getEmployeeShiftsForDate(empId, dateString) {
+        if (!dateString) return [];
+
+        const parsedDate = new Date(`${dateString}T12:00:00.000Z`);
+        if (Number.isNaN(parsedDate.getTime())) return [];
+
+        const monday = getMonday(parsedDate);
+        const weekId = toISODateString(monday);
+        const dayIndex = parsedDate.getDay() === 0 ? 6 : parsedDate.getDay() - 1;
+
+        const weekData = await DataManager.getWeekData(weekId);
+        const dayShifts = Array.isArray(weekData?.[dayIndex]) ? weekData[dayIndex] : [];
+
+        return dayShifts.filter(shift => shift?.employeeId === empId);
+    },
+
+    formatShiftRange(shift) {
+        if (!shift) return '';
+        const startLabel = SLOTS[shift.startSlot]?.label || '';
+        const endLabel = SLOTS[shift.endSlot + 1]?.label || '';
+
+        if (!startLabel && !endLabel) return '';
+        if (!startLabel || !endLabel) return `${startLabel || endLabel}`;
+
+        return `${startLabel} - ${endLabel}`;
     },
 
     renderSanctionsPanel(container, empId) {
