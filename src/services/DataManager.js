@@ -1,6 +1,7 @@
 import { store, getActiveSchedule } from '../store/Store.js';
 import { ROLES, setRoles, DEFAULT_ROLES } from '../config.js';
 import { getDb, initFirebase } from './firebase.js';
+import { showToast } from '../utils/feedback.js';
 export { getDb } from './firebase.js';
 import {
     legacyEmployeesRef,
@@ -225,7 +226,7 @@ export const DataManager = {
             console.log("State saved.");
         } catch (error) {
             console.error("Error saving state:", error);
-            alert("Error guardando: " + error.message);
+            showToast("Error guardando: " + error.message, "error");
         }
     },
 

@@ -2,6 +2,7 @@ import { el, create, clear } from '../utils/dom.js';
 import { store } from '../store/Store.js';
 import { ROLES, setRoles, DEFAULT_ROLES } from '../config.js';
 import { DataManager } from '../services/DataManager.js';
+import { showToast, showConfirmDialog } from '../utils/feedback.js';
 
 export const OptionsManager = {
     init() {
@@ -31,11 +32,11 @@ export const OptionsManager = {
         if (!nameInput || !colorInput || !darkTextInput) return;
 
         const name = nameInput.value.trim();
-        if (!name) return alert('Ingresá un nombre para el puesto.');
+        if (!name) return showToast('Ingresá un nombre para el puesto.', 'warning');
 
         const roles = this.getRoles();
         if (roles.some(r => r.key.toLowerCase() === name.toLowerCase())) {
-            return alert('Ya existe un puesto con ese nombre.');
+            return showToast('Ya existe un puesto con ese nombre.', 'warning');
         }
 
         const newRole = {
@@ -49,8 +50,12 @@ export const OptionsManager = {
         nameInput.value = '';
     },
 
-    handleReset() {
-        if (!confirm('¿Restaurar la lista de puestos original?')) return;
+    async handleReset() {
+        const confirmed = await showConfirmDialog({
+            title: 'Restaurar puestos',
+            message: '¿Restaurar la lista de puestos original?'
+        });
+        if (!confirmed) return;
         this.persistRoles([...DEFAULT_ROLES]);
     },
 
@@ -69,11 +74,15 @@ export const OptionsManager = {
         this.persistRoles(roles);
     },
 
-    deleteRole(index) {
+    async deleteRole(index) {
         const roles = [...this.getRoles()];
         const role = roles[index];
         if (!role) return;
-        if (!confirm(`¿Eliminar el puesto "${role.key}"?`)) return;
+        const confirmed = await showConfirmDialog({
+            title: 'Eliminar puesto',
+            message: `¿Eliminar el puesto "${role.key}"?`
+        });
+        if (!confirmed) return;
         roles.splice(index, 1);
         this.persistRoles(roles);
     },

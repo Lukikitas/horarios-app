@@ -1,9 +1,10 @@
 import { el, create, clear } from '../utils/dom.js';
 import { store } from '../store/Store.js';
 import { DataManager } from '../services/DataManager.js';
-import { getActiveSchedule } from '../store/Store.js';
-import { ROLES } from '../config.js';
+import { ROLES, SLOTS } from '../config.js';
 import { storeEmployeesRef, legacyEmployeesRef } from '../services/firestoreRefs.js';
+import { getMonday, toISODateString } from '../utils/date.js';
+import { showToast, showConfirmDialog, showAlertDialog } from '../utils/feedback.js';
 
 const EXPORT_FIELD_CONFIG = {
     name: { label: 'Nombre completo', getter: (e) => e.name || '' },
@@ -191,10 +192,10 @@ export const EmployeeManager = {
 
                 store.setState({ employees });
                 DataManager.saveState();
-                alert(`Se importaron ${importedCount} empleados.`);
+                showToast(`Se importaron ${importedCount} empleados.`, "success");
             } catch (err) {
                 console.error(err);
-                alert('Error al importar empleados.');
+                showToast('Error al importar empleados.', "error");
             }
         };
         reader.readAsArrayBuffer(file);
@@ -405,8 +406,12 @@ export const EmployeeManager = {
         }
     },
 
-    removeEmployee(empId) {
-        if(!confirm("¿Eliminar empleado?")) return;
+    async removeEmployee(empId) {
+        const confirmed = await showConfirmDialog({
+            title: "Eliminar empleado",
+            message: "¿Eliminar empleado?"
+        });
+        if(!confirmed) return;
         const state = store.getState();
         const newEmployees = state.employees.filter(e => e.id !== empId);
         store.setState({ employees: newEmployees });
@@ -613,7 +618,7 @@ export const EmployeeManager = {
         const startInput = create("input", { type: "time", className: "input", title: "Inicio (opcional)" });
         const endInput = create("input", { type: "time", className: "input", title: "Fin (opcional)" });
 
-        const addBtn = create("button", { className: "btn", textContent: "Añadir", onClick: () => {
+        const addBtn = create("button", { className: "btn", textContent: "Añadir", onClick: async () => {
             if(dateInput.value) {
                 if(!emp.exceptions) emp.exceptions = [];
                 const newEx = {
@@ -624,15 +629,32 @@ export const EmployeeManager = {
                 // If only one time is set, it's invalid for range, assume full day?
                 // Or require both for partial.
                 if ((newEx.start && !newEx.end) || (!newEx.start && newEx.end)) {
-                    alert("Para excepción parcial, ingresa Inicio y Fin.");
+                    showToast("Para excepción parcial, ingresa Inicio y Fin.", "warning");
                     return;
+                }
+
+                const conflictShifts = await this.getEmployeeShiftsForDate(emp.id, dateInput.value);
+                if (conflictShifts.length > 0) {
+                    const summary = conflictShifts.map(s => this.formatShiftRange(s)).filter(Boolean).join(' | ');
+                    const promptText = [
+                        `⚠️ ${emp.name} ya tiene ${conflictShifts.length === 1 ? 'un turno' : `${conflictShifts.length} turnos`} asignado${conflictShifts.length === 1 ? '' : 's'} ese día.`,
+                        summary ? `Horarios: ${summary}.` : '',
+                        '',
+                        '¿Querés registrar la excepción igualmente?'
+                    ].filter(Boolean).join('\n');
+                    const proceed = await showConfirmDialog({
+                        title: "Conflicto de horarios",
+                        message: promptText.replace(/\n/g, "<br>"),
+                        confirmText: "Registrar igualmente"
+                    });
+                    if (!proceed) return;
                 }
 
                 emp.exceptions.push(newEx);
                 DataManager.saveState();
                 this.renderList();
             } else {
-                alert("Ingresa una fecha.");
+                showToast("Ingresa una fecha.", "warning");
             }
         }});
 
@@ -648,6 +670,33 @@ export const EmployeeManager = {
         panel.appendChild(create("div", { className: "hr" }));
         panel.appendChild(addRow);
         container.appendChild(panel);
+    },
+
+    async getEmployeeShiftsForDate(empId, dateString) {
+        if (!dateString) return [];
+
+        const parsedDate = new Date(`${dateString}T12:00:00.000Z`);
+        if (Number.isNaN(parsedDate.getTime())) return [];
+
+        const monday = getMonday(parsedDate);
+        const weekId = toISODateString(monday);
+        const dayIndex = parsedDate.getDay() === 0 ? 6 : parsedDate.getDay() - 1;
+
+        const weekData = await DataManager.getWeekData(weekId);
+        const dayShifts = Array.isArray(weekData?.[dayIndex]) ? weekData[dayIndex] : [];
+
+        return dayShifts.filter(shift => shift?.employeeId === empId);
+    },
+
+    formatShiftRange(shift) {
+        if (!shift) return '';
+        const startLabel = SLOTS[shift.startSlot]?.label || '';
+        const endLabel = SLOTS[shift.endSlot + 1]?.label || '';
+
+        if (!startLabel && !endLabel) return '';
+        if (!startLabel || !endLabel) return `${startLabel || endLabel}`;
+
+        return `${startLabel} - ${endLabel}`;
     },
 
     renderSanctionsPanel(container, empId) {
@@ -719,7 +768,7 @@ export const EmployeeManager = {
 
         actionRow.appendChild(create("button", { className: "btn", textContent: "Añadir", onClick: () => {
             if (startInput.value && endInput.value && descInput.value) {
-                if (new Date(endInput.value) < new Date(startInput.value)) { alert("Fin < Inicio"); return; }
+                if (new Date(endInput.value) < new Date(startInput.value)) { showToast("La fecha de fin no puede ser menor que la de inicio.", "warning"); return; }
                 if(!emp.sanctions) emp.sanctions = [];
                 emp.sanctions.push({
                     id: crypto.randomUUID(),
@@ -730,7 +779,7 @@ export const EmployeeManager = {
                 });
                 this.renderSanctionsPanel(container, empId);
             } else {
-                alert("Complete todos los campos.");
+                showToast("Complete todos los campos.", "warning");
             }
         }}));
         stack.appendChild(actionRow);
@@ -798,13 +847,13 @@ export const EmployeeManager = {
     exportSelected(format = 'excel') {
         const selectedFields = this.getSelectedExportFields();
         if (!selectedFields.length) {
-            alert('Seleccioná al menos un dato para exportar.');
+            showToast('Seleccioná al menos un dato para exportar.', 'warning');
             return;
         }
 
         const employees = Array.isArray(store.getState().employees) ? store.getState().employees : [];
         if (!employees.length) {
-            alert('No hay empleados para exportar.');
+            showToast('No hay empleados para exportar.', 'info');
             return;
         }
 
@@ -834,7 +883,7 @@ export const EmployeeManager = {
         if (!rows.length) return;
         const jspdfLib = window.jspdf;
         if (!jspdfLib || !jspdfLib.jsPDF) {
-            alert('No se pudo cargar el exportador PDF.');
+            showToast('No se pudo cargar el exportador PDF.', 'error');
             return;
         }
         const { jsPDF } = jspdfLib;

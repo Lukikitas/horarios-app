@@ -4,6 +4,7 @@ import { DAYS, SLOTS } from '../config.js';
 import { toISODateString, getMonday } from '../utils/date.js';
 import { ScheduleManager } from './ScheduleManager.js';
 import { DataManager } from '../services/DataManager.js';
+import { showToast } from '../utils/feedback.js';
 
 export const StatsManager = {
     init() {
@@ -310,7 +311,7 @@ export const StatsManager = {
                 await this.processAndCompareClockIns(json);
             } catch (err) {
                 console.error(err);
-                alert("Error procesando fichero.");
+                showToast("Error procesando fichero.", "error");
             }
         };
         reader.readAsArrayBuffer(file);
