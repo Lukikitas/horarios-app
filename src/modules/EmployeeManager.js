@@ -1,10 +1,11 @@
 import { el, create, clear } from '../utils/dom.js';
 import { store } from '../store/Store.js';
 import { DataManager } from '../services/DataManager.js';
-import { ROLES, SLOTS } from '../config.js';
+import { ROLES, SLOTS, DAYS } from '../config.js';
 import { storeEmployeesRef, legacyEmployeesRef } from '../services/firestoreRefs.js';
 import { getMonday, toISODateString } from '../utils/date.js';
 import { showToast, showConfirmDialog, showAlertDialog } from '../utils/feedback.js';
+import { checkEmployeeAvailability } from '../utils/rules.js';
 
 const EXPORT_FIELD_CONFIG = {
     name: { label: 'Nombre completo', getter: (e) => e.name || '' },
@@ -488,6 +489,12 @@ export const EmployeeManager = {
         const stack = create("div", { className: "stack" });
         stack.appendChild(create("strong", { textContent: "Disponibilidad Semanal" }));
 
+        const conflicts = this.findAvailabilityConflicts(emp);
+        if (conflicts.length > 0) {
+            stack.appendChild(create("div", { className: "warning-text", innerHTML: conflicts.join("<br>") }));
+            stack.appendChild(create("div", { className: "hr" }));
+        }
+
         const DAYS = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"];
         import('../config.js').then(({ SLOTS }) => {
             if (!SLOTS) {
@@ -579,7 +586,15 @@ export const EmployeeManager = {
             content.appendChild(create("div", { className: "hr" }));
 
             const footer = create("div", { style: { textAlign: "right" } });
-            footer.appendChild(create("button", { className: "btn", textContent: "Guardar y Cerrar", onClick: () => {
+            footer.appendChild(create("button", { className: "btn", textContent: "Guardar y Cerrar", onClick: async () => {
+                const newConflicts = this.findAvailabilityConflicts(emp);
+                if (newConflicts.length > 0) {
+                    await showAlertDialog({
+                        title: "Conflictos con turnos asignados",
+                        message: newConflicts.join("<br>")
+                    });
+                    return;
+                }
                 DataManager.saveState();
                 store.setState({ activeDetailEmployeeId: null });
                 this.renderList();
@@ -598,6 +613,12 @@ export const EmployeeManager = {
 
         const panel = create("div", { className: "employee-detail-panel" });
         const list = create("div", { className: "stack" });
+
+        const conflicts = this.findAvailabilityConflicts(emp);
+        if (conflicts.length > 0) {
+            panel.appendChild(create("div", { className: "warning-text", innerHTML: conflicts.join("<br>") }));
+            panel.appendChild(create("div", { className: "hr" }));
+        }
 
         (emp.exceptions || []).forEach(ex => {
             const row = create("div", { className: "row", style: { justifyContent: "space-between" } });
@@ -620,6 +641,10 @@ export const EmployeeManager = {
 
         const addBtn = create("button", { className: "btn", textContent: "Añadir", onClick: async () => {
             if(dateInput.value) {
+                const selectedDate = new Date(`${dateInput.value}T00:00:00`);
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+
                 if(!emp.exceptions) emp.exceptions = [];
                 const newEx = {
                     date: dateInput.value,
@@ -634,23 +659,31 @@ export const EmployeeManager = {
                 }
 
                 const conflictShifts = await this.getEmployeeShiftsForDate(emp.id, dateInput.value);
-                if (conflictShifts.length > 0) {
+                if (conflictShifts.length > 0 && selectedDate >= today) {
                     const summary = conflictShifts.map(s => this.formatShiftRange(s)).filter(Boolean).join(' | ');
                     const promptText = [
-                        `⚠️ ${emp.name} ya tiene ${conflictShifts.length === 1 ? 'un turno' : `${conflictShifts.length} turnos`} asignado${conflictShifts.length === 1 ? '' : 's'} ese día.`,
-                        summary ? `Horarios: ${summary}.` : '',
-                        '',
-                        '¿Querés registrar la excepción igualmente?'
-                    ].filter(Boolean).join('\n');
-                    const proceed = await showConfirmDialog({
-                        title: "Conflicto de horarios",
-                        message: promptText.replace(/\n/g, "<br>"),
-                        confirmText: "Registrar igualmente"
+                        `${emp.name} ya tiene ${conflictShifts.length === 1 ? 'un turno' : `${conflictShifts.length} turnos`} asignado${conflictShifts.length === 1 ? '' : 's'} ese día.`,
+                        summary ? `Horarios: ${summary}.` : ''
+                    ].filter(Boolean).join('<br>');
+                    await showAlertDialog({
+                        title: "Conflicto con turnos asignados",
+                        message: promptText
                     });
-                    if (!proceed) return;
+                    return;
                 }
 
                 emp.exceptions.push(newEx);
+
+                const availabilityConflicts = this.findAvailabilityConflicts(emp);
+                if (availabilityConflicts.length > 0) {
+                    emp.exceptions.pop();
+                    await showAlertDialog({
+                        title: "Conflictos con turnos asignados",
+                        message: availabilityConflicts.join("<br>")
+                    });
+                    return;
+                }
+
                 DataManager.saveState();
                 this.renderList();
             } else {
@@ -831,6 +864,45 @@ export const EmployeeManager = {
         if (daysWithRules > 0) parts.push(`${daysWithRules} día${daysWithRules === 1 ? '' : 's'} con disponibilidad`);
         if (exceptionsCount > 0) parts.push(`${exceptionsCount} excepción${exceptionsCount === 1 ? '' : 'es'}`);
         return parts.join(" · ");
+    },
+
+    getShiftDateFromWeekDay(weekId, dayIndex) {
+        const monday = new Date(`${weekId}T12:00:00.000Z`);
+        const date = new Date(monday);
+        date.setUTCDate(monday.getUTCDate() + dayIndex);
+        return date;
+    },
+
+    findAvailabilityConflicts(emp) {
+        if (!emp) return [];
+
+        const schedules = store.getState().schedules || {};
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const conflicts = [];
+
+        Object.entries(schedules).forEach(([weekId, weekSchedule]) => {
+            if (!weekSchedule) return;
+            for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
+                const dayShifts = weekSchedule[dayIndex] || [];
+                dayShifts.filter(s => s.employeeId === emp.id).forEach(shift => {
+                    const shiftDate = this.getShiftDateFromWeekDay(weekId, dayIndex);
+                    const localShiftDate = new Date(shiftDate);
+                    localShiftDate.setHours(0, 0, 0, 0);
+
+                    if (localShiftDate < today) return; // Skip past weeks/days
+
+                    const availabilityCheck = checkEmployeeAvailability(emp, shift, weekId, dayIndex);
+                    if (!availabilityCheck.isAvailable) {
+                        const startLabel = SLOTS[shift.startSlot]?.label || '';
+                        const endLabel = SLOTS[shift.endSlot + 1]?.label || '02:00';
+                        conflicts.push(`Conflicto el ${DAYS[dayIndex]} ${shiftDate.getUTCDate()}/${shiftDate.getUTCMonth() + 1}: Turno de ${shift.role} (${startLabel} - ${endLabel}) choca con la nueva disponibilidad/excepción.`);
+                    }
+                });
+            }
+        });
+
+        return [...new Set(conflicts)];
     },
 
     getSelectedExportFields() {
