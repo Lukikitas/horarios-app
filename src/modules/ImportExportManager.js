@@ -6,6 +6,7 @@ import { timeToSlotIndex } from '../utils/rules.js';
 import { toISODateString } from '../utils/date.js';
 import { EmployeeManager } from './EmployeeManager.js';
 import { ScheduleManager } from './ScheduleManager.js';
+import { showToast, showConfirmDialog, showAlertDialog } from '../utils/feedback.js';
 
 export const ImportExportManager = {
     init() {
@@ -34,9 +35,9 @@ export const ImportExportManager = {
         el("#file-import-week")?.addEventListener("change", (e) => this.importWeek(e));
     },
 
-    importShiftsFromText() {
+    async importShiftsFromText() {
         const text = el("#import-text-area").value.trim();
-        if (!text) { alert("Vacío."); return; }
+        if (!text) { showToast("El texto está vacío.", "warning"); return; }
 
         const lines = text.split('\n');
         const newShifts = [];
@@ -72,10 +73,17 @@ export const ImportExportManager = {
             });
         });
 
-        if (errors.length > 0) { alert("Errores:\n" + errors.join("\n")); return; }
-        if (newShifts.length === 0) { alert("Nada para importar."); return; }
+        if (errors.length > 0) {
+            await showAlertDialog({ title: "Revisá los datos", message: errors.join("<br>") });
+            return;
+        }
+        if (newShifts.length === 0) { showToast("Nada para importar.", "warning"); return; }
 
-        if (!confirm(`Importar ${newShifts.length} turnos?`)) return;
+        const confirmed = await showConfirmDialog({
+            title: "Importar turnos",
+            message: `Importar ${newShifts.length} turnos en el día seleccionado?`
+        });
+        if (!confirmed) return;
 
         const state = store.getState();
         ScheduleManager.commitChange(() => {
@@ -84,7 +92,7 @@ export const ImportExportManager = {
         });
 
         el("#import-text-modal").style.display = "none";
-        alert("Importado.");
+        showToast("Turnos importados correctamente.", "success");
     },
 
     exportEmployees() {
@@ -95,7 +103,7 @@ export const ImportExportManager = {
         const file = e.target.files?.[0];
         if (!file) return;
         const reader = new FileReader();
-        reader.onload = (ev) => {
+        reader.onload = async (ev) => {
             try {
                 const imported = JSON.parse(ev.target.result);
                 if (!Array.isArray(imported)) throw new Error("No es array");
@@ -103,15 +111,19 @@ export const ImportExportManager = {
                 const existingIds = new Set(current.map(emp => emp.id));
                 const newEmps = imported.filter(emp => emp.id && !existingIds.has(emp.id));
 
-                if (newEmps.length === 0) { alert("No hay nuevos empleados."); return; }
-                if (confirm(`Importar ${newEmps.length} empleados?`)) {
-                    store.setState({ employees: [...current, ...newEmps] });
-                    DataManager.saveState();
-                    EmployeeManager.renderList();
-                    alert("Importado.");
-                    el("#advanced-import-export-modal").style.display = "none";
-                }
-            } catch (err) { alert("Error: " + err.message); }
+                if (newEmps.length === 0) { showToast("No hay nuevos empleados.", "info"); return; }
+                const confirmed = await showConfirmDialog({
+                    title: "Importar empleados",
+                    message: `Importar ${newEmps.length} empleados nuevos?`
+                });
+                if (!confirmed) return;
+
+                store.setState({ employees: [...current, ...newEmps] });
+                DataManager.saveState();
+                EmployeeManager.renderList();
+                showToast("Empleados importados.", "success");
+                el("#advanced-import-export-modal").style.display = "none";
+            } catch (err) { showToast("Error al importar: " + err.message, "error"); }
             e.target.value = '';
         };
         reader.readAsText(file);
@@ -128,21 +140,25 @@ export const ImportExportManager = {
         const file = e.target.files?.[0];
         if (!file) return;
         const reader = new FileReader();
-        reader.onload = (ev) => {
+        reader.onload = async (ev) => {
             try {
                 const imported = JSON.parse(ev.target.result);
                 if (!Array.isArray(imported)) throw new Error("Formato inválido");
-                if (confirm("Reemplazar turnos del día actual?")) {
-                    const newShifts = imported.map(s => ({ ...s, id: crypto.randomUUID() }));
-                    const state = store.getState();
-                    ScheduleManager.commitChange(() => {
-                        const schedule = getActiveSchedule();
-                        schedule[state.activeDay] = newShifts;
-                    });
-                    alert("Importado.");
-                    el("#advanced-import-export-modal").style.display = "none";
-                }
-            } catch (err) { alert("Error: " + err.message); }
+                const confirmed = await showConfirmDialog({
+                    title: "Reemplazar turnos del día",
+                    message: "Reemplazar turnos del día actual con los importados?"
+                });
+                if (!confirmed) return;
+
+                const newShifts = imported.map(s => ({ ...s, id: crypto.randomUUID() }));
+                const state = store.getState();
+                ScheduleManager.commitChange(() => {
+                    const schedule = getActiveSchedule();
+                    schedule[state.activeDay] = newShifts;
+                });
+                showToast("Turnos del día importados.", "success");
+                el("#advanced-import-export-modal").style.display = "none";
+            } catch (err) { showToast("Error al importar: " + err.message, "error"); }
             e.target.value = '';
         };
         reader.readAsText(file);
@@ -166,29 +182,33 @@ export const ImportExportManager = {
         const file = e.target.files?.[0];
         if (!file) return;
         const reader = new FileReader();
-        reader.onload = (ev) => {
+        reader.onload = async (ev) => {
             try {
                 const imported = JSON.parse(ev.target.result);
                 if (typeof imported !== 'object') throw new Error("Formato inválido");
-                if (confirm("Reemplazar semana actual?")) {
-                    const newWeek = JSON.parse(JSON.stringify(imported));
-                    for (const day in newWeek) {
-                        if (Array.isArray(newWeek[day])) {
-                            newWeek[day].forEach(s => s.id = crypto.randomUUID());
-                        }
+                const confirmed = await showConfirmDialog({
+                    title: "Reemplazar semana",
+                    message: "Reemplazar la semana actual con el archivo importado?"
+                });
+                if (!confirmed) return;
+
+                const newWeek = JSON.parse(JSON.stringify(imported));
+                for (const day in newWeek) {
+                    if (Array.isArray(newWeek[day])) {
+                        newWeek[day].forEach(s => s.id = crypto.randomUUID());
                     }
-                    store.setState({
-                        schedules: {
-                            ...store.getState().schedules,
-                            [store.getState().activeWeek]: newWeek
-                        }
-                    });
-                    DataManager.saveState();
-                    ScheduleManager.render();
-                    alert("Importado.");
-                    el("#advanced-import-export-modal").style.display = "none";
                 }
-            } catch (err) { alert("Error: " + err.message); }
+                store.setState({
+                    schedules: {
+                        ...store.getState().schedules,
+                        [store.getState().activeWeek]: newWeek
+                    }
+                });
+                DataManager.saveState();
+                ScheduleManager.render();
+                showToast("Semana importada.", "success");
+                el("#advanced-import-export-modal").style.display = "none";
+            } catch (err) { showToast("Error al importar: " + err.message, "error"); }
             e.target.value = '';
         };
         reader.readAsText(file);

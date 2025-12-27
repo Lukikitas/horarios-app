@@ -1,6 +1,7 @@
 import { store } from '../store/Store.js';
 import { initFirebase, getAuth, getDb } from './firebase.js';
 import { userDocRef } from './firestoreRefs.js';
+import { showToast } from '../utils/feedback.js';
 
 const STORAGE_KEY = 'activeStoreId';
 
@@ -93,7 +94,7 @@ export const SessionService = {
           const profileSnap = await userDocRef(user.uid).get();
           if (!profileSnap.exists) {
             console.error('Usuario sin permisos');
-            alert('Usuario sin permisos.');
+            showToast('Usuario sin permisos.', 'error');
             await auth.signOut();
             window.location.href = 'index.html';
             return;
@@ -147,7 +148,7 @@ export const SessionService = {
           } else if (allowedStores.length > 1) {
             createSelectionUI(allowedStores, handleSelect, logout);
           } else {
-            alert('No hay locales habilitados para este usuario.');
+            showToast('No hay locales habilitados para este usuario.', 'error');
             reject(new Error('Sin locales')); // will show overlay still
           }
         } catch (err) {

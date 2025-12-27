@@ -13,6 +13,7 @@ import {
 } from '../utils/rules.js';
 import { getMonday, toISODateString } from '../utils/date.js';
 import { EmployeeManager } from './EmployeeManager.js';
+import { showToast, showConfirmDialog, showAlertDialog } from '../utils/feedback.js';
 
 export const ScheduleManager = {
     init() {
@@ -282,11 +283,23 @@ export const ScheduleManager = {
             const actions = create("div", { style: { display: "flex", gap: "5px" } });
             actions.appendChild(create("button", {
                 className: "btn small", textContent: "Aplicar",
-                onClick: () => { if(confirm(`¿Aplicar plantilla "${name}"? Esto sobrescribirá el día actual.`)) this.applyTemplate(name); }
+                onClick: async () => {
+                    const confirmed = await showConfirmDialog({
+                        title: "Aplicar plantilla",
+                        message: `¿Aplicar plantilla "${name}"? Esto sobrescribirá el día actual.`
+                    });
+                    if (confirmed) this.applyTemplate(name);
+                }
             }));
             actions.appendChild(create("button", {
                 className: "btn small secondary del", innerHTML: "&times;",
-                onClick: () => { if(confirm(`¿Eliminar plantilla "${name}"?`)) this.deleteTemplate(name); }
+                onClick: async () => {
+                    const confirmed = await showConfirmDialog({
+                        title: "Eliminar plantilla",
+                        message: `¿Eliminar plantilla "${name}"?`
+                    });
+                    if (confirmed) this.deleteTemplate(name);
+                }
             }));
 
             item.appendChild(actions);
@@ -294,7 +307,7 @@ export const ScheduleManager = {
         });
     },
 
-    saveCurrentDayAsTemplate() {
+    async saveCurrentDayAsTemplate() {
         const nameInp = el("#inpTemplateName");
         const descInp = el("#inpTemplateDesc");
         if (!nameInp) return;
@@ -302,11 +315,15 @@ export const ScheduleManager = {
         const name = nameInp.value.trim();
         const description = descInp ? descInp.value.trim() : "";
 
-        if (!name) { alert("Ingresa un nombre para la plantilla."); return; }
+        if (!name) { showToast("Ingresa un nombre para la plantilla.", "warning"); return; }
 
         const state = store.getState();
         if (state.templates && state.templates[name]) {
-            if (!confirm(`La plantilla "${name}" ya existe. ¿Sobrescribirla?`)) return;
+            const confirmed = await showConfirmDialog({
+                title: "Sobrescribir plantilla",
+                message: `La plantilla "${name}" ya existe. ¿Sobrescribirla?`
+            });
+            if (!confirmed) return;
         }
 
         const schedule = getActiveSchedule();
@@ -328,7 +345,7 @@ export const ScheduleManager = {
         nameInp.value = "";
         if(descInp) descInp.value = "";
         this.renderTemplateList();
-        alert("Plantilla guardada.");
+        showToast("Plantilla guardada.", "success");
     },
 
     applyTemplate(name) {
@@ -523,7 +540,14 @@ export const ScheduleManager = {
                 actionsDiv.appendChild(create("button", {
                     className: "btn secondary del", innerHTML: "&times;",
                     style: { padding: "2px 6px", fontSize: "10px" }, title: "Eliminar turno",
-                    onClick: (e) => { e.stopPropagation(); if(confirm("¿Eliminar este turno?")) this.deleteShift(shift.id); }
+                    onClick: async (e) => {
+                        e.stopPropagation();
+                        const confirmed = await showConfirmDialog({
+                            title: "Eliminar turno",
+                            message: "¿Eliminar este turno?"
+                        });
+                        if (confirmed) this.deleteShift(shift.id);
+                    }
                 }));
                 namecol.appendChild(actionsDiv);
                 row.appendChild(namecol);
@@ -684,7 +708,7 @@ export const ScheduleManager = {
         const startSlot = Number(el("#formStart").value);
         const endSlot = Number(el("#formEnd").value);
         if(Number.isNaN(startSlot) || Number.isNaN(endSlot) || endSlot <= startSlot) {
-            alert("La hora de fin debe ser posterior a la hora de inicio.");
+            showToast("La hora de fin debe ser posterior a la hora de inicio.", "warning");
             return;
         }
 
@@ -1217,7 +1241,7 @@ export const ScheduleManager = {
         DataManager.loadWeek(newWeek);
     },
 
-    autoAssignShifts() {
+    async autoAssignShifts() {
         const schedule = getActiveSchedule();
         const state = store.getState();
         let assignedCount = 0;
@@ -1235,11 +1259,15 @@ export const ScheduleManager = {
         }
 
         if (totalUnassigned.length === 0) {
-            alert("No hay turnos vacíos para asignar.");
+            showToast("No hay turnos vacíos para asignar.", "info");
             return;
         }
 
-        if (!confirm(`Se encontraron ${totalUnassigned.length} turnos vacíos.\n\nEl sistema asignará turnos respetando:\n1. Mínimo de 14hs semanales.\n2. Prioridad (Muy Alta > Muy Baja).\n3. Menor carga horaria actual.\n\n¿Continuar?`)) {
+        const confirmed = await showConfirmDialog({
+            title: "Autoasignar turnos",
+            message: `Se encontraron ${totalUnassigned.length} turnos vacíos.<br><br>El sistema asignará turnos respetando:<br>1. Mínimo de 14hs semanales.<br>2. Prioridad (Muy Alta > Muy Baja).<br>3. Menor carga horaria actual.<br><br>¿Continuar?`
+        });
+        if (!confirmed) {
             return;
         }
 
@@ -1329,7 +1357,10 @@ export const ScheduleManager = {
             }
         });
 
-        alert(`Proceso completado.\n\n- Asignados: ${assignedCount}\n- Sin candidato válido: ${skippedCount}`);
+        showAlertDialog({
+            title: "Autoasignación completada",
+            message: `Asignados: ${assignedCount}<br>Sin candidato válido: ${skippedCount}`
+        });
     },
 
 
@@ -1339,7 +1370,7 @@ export const ScheduleManager = {
         this.ensureDay(day);
         const schedule = getActiveSchedule();
         const shift = schedule[day].find(s => s.id === shiftId);
-        if (!shift) { alert("No se encontró el turno."); return; }
+        if (!shift) { showToast("No se encontró el turno.", "error"); return; }
 
         const wrap = create("div", { style: { position:"fixed", inset:"0", background:"rgba(0,0,0,.35)", display:"flex", alignItems:"center", justifyContent:"center", padding:"16px", zIndex:1000 }});
         const box = create("div", { className:"card", style:{ maxWidth:"600px", width:"100%" } });
@@ -1436,8 +1467,14 @@ export const ScheduleManager = {
                     btn.disabled = true;
                     btn.style.opacity = 0.6;
                 } else {
-                    btn.onclick = () => {
-                         if(warningText && !confirm(warningText + "\n\n¿Asignar de todos modos?")) return;
+                    btn.onclick = async () => {
+                        if(warningText) {
+                            const confirmed = await showConfirmDialog({
+                                title: "Asignar con advertencias",
+                                message: `${warningText.replace(/\n/g, "<br>")}<br><br>¿Asignar de todos modos?`
+                            });
+                            if(!confirmed) return;
+                        }
                         this.commitChange(() => { shift.employeeId = emp.id; });
                         wrap.remove();
                     };
@@ -1508,7 +1545,7 @@ export const ScheduleManager = {
         f.appendChild(create("button", { className:"btn", textContent:"Guardar", onClick: () => {
             const newStart = Number(startSelect.value);
             const newEnd = Number(endSelect.value);
-            if (newEnd <= newStart) { alert("Fin debe ser mayor a Inicio"); return; }
+            if (newEnd <= newStart) { showToast("Fin debe ser mayor a Inicio", "warning"); return; }
 
             this.commitChange(() => {
                 shift.role = roleSelect.value;
@@ -1522,6 +1559,21 @@ export const ScheduleManager = {
 
         wrap.appendChild(box);
         document.body.appendChild(wrap);
+    },
+
+    getDayRestrictionInfo(employee, shiftDate, shiftDateString) {
+        if (!employee) return { blocked: false, reason: '' };
+
+        if (isDateInSanctionPeriod(shiftDate, employee.sanctions)) {
+            return { blocked: true, reason: 'Licencia activa' };
+        }
+
+        const hasFullDayException = (employee.exceptions || []).some(ex => ex.date === shiftDateString && !ex.start && !ex.end);
+        if (hasFullDayException) {
+            return { blocked: true, reason: 'Excepción de día completo' };
+        }
+
+        return { blocked: false, reason: '' };
     },
 
     renderScheduleList() {
@@ -1614,6 +1666,19 @@ export const ScheduleManager = {
 
             for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
                 const dayCell = create("td", { dataset: { day: dayIndex } });
+                const shiftDate = new Date(weekMonday);
+                shiftDate.setDate(weekMonday.getDate() + dayIndex);
+                const shiftDateString = toISODateString(shiftDate);
+
+                const restrictionInfo = this.getDayRestrictionInfo(emp, shiftDate, shiftDateString);
+                let warningContainer = null;
+                if (restrictionInfo.blocked) {
+                    dayCell.classList.add("warning-cell");
+                    warningContainer = create("div", { className: "warning-cell-content", title: restrictionInfo.reason });
+                    warningContainer.innerHTML = `<div>⚠️ No disponible</div><span>${restrictionInfo.reason}</span>`;
+                    dayCell.appendChild(warningContainer);
+                }
+
                 const dayShifts = (schedule[dayIndex] || []).filter(s => s.employeeId === emp.id);
                 if (dayShifts.length > 0) {
                     const shiftsContainer = create("div", { className: "shifts-container" });
@@ -1644,14 +1709,10 @@ export const ScheduleManager = {
                         }
                         shiftDiv.innerHTML = shiftText;
 
-                        // Sanction conflict visual
-                        const weekMonday = new Date(state.activeWeek + "T12:00:00Z");
-                        const shiftDate = new Date(weekMonday);
-                        shiftDate.setDate(shiftDate.getDate() + dayIndex);
-
-                        if (isDateInSanctionPeriod(shiftDate, emp.sanctions) && !shift.replacement) {
+                        // Day restriction visual
+                        if (restrictionInfo.blocked && !shift.replacement) {
                             shiftDiv.style.border = `2px solid var(--c-danger)`;
-                            shiftDiv.title = 'Conflicto con sanción/licencia';
+                            shiftDiv.title = restrictionInfo.reason;
                         }
 
                         shiftDiv.addEventListener('dragstart', (e) => {
@@ -1668,7 +1729,11 @@ export const ScheduleManager = {
 
                         shiftsContainer.appendChild(shiftDiv);
                     });
-                    dayCell.appendChild(shiftsContainer);
+                    if (warningContainer) {
+                        warningContainer.appendChild(shiftsContainer);
+                    } else {
+                        dayCell.appendChild(shiftsContainer);
+                    }
                 }
                 this.addDropListeners(dayCell);
                 row.appendChild(dayCell);
@@ -1800,7 +1865,7 @@ export const ScheduleManager = {
         setTimeout(() => document.addEventListener('click', closeListener), 0);
     },
 
-    handleSlotClick(shift, slotIndex) {
+    async handleSlotClick(shift, slotIndex) {
         const state = store.getState();
         const emp = shift.employeeId ? state.employees.find(e => e.id === shift.employeeId) : null;
         const dayIndex = typeof state.activeDay === 'number' ? state.activeDay : 0;
@@ -1826,7 +1891,11 @@ export const ScheduleManager = {
             const isUnavailable = emp && isSlotUnavailable(emp, slotIndex, state.activeWeek, dayIndex);
             if (isUnavailable) {
                 const confirmMessage = 'Esta celda está marcada como no disponible para este empleado. ¿Querés continuar de todos modos?';
-                if (!confirm(confirmMessage)) return;
+                const confirmed = await showConfirmDialog({
+                    title: "Celda no disponible",
+                    message: confirmMessage
+                });
+                if (!confirmed) return;
             }
 
             this.commitChange(() => {
