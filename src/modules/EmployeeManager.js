@@ -17,7 +17,9 @@ const EXPORT_FIELD_CONFIG = {
     allStar: { label: 'All Star', getter: (e) => e.isAllStar ? 'Sí' : 'No' },
     minor: { label: 'Menor', getter: (e) => e.isMinor ? 'Sí' : 'No' },
     availability: { label: 'Disponibilidad (resumen)', getter: (e, ctx) => ctx.getAvailabilitySummary(e) },
+    availabilityByDay: { label: 'Disponibilidad (por día)', getter: (e, ctx) => ctx.getAvailabilityByDay(e) },
     exceptions: { label: 'Excepciones', getter: (e) => `${(e.exceptions || []).length}` },
+    exceptionsDetailed: { label: 'Excepciones (detalle)', getter: (e, ctx) => ctx.getExceptionsDetail(e) },
     sanctions: { label: 'Licencias / sanciones', getter: (e) => `${(e.sanctions || []).length}` },
     priority: { label: 'Prioridad', getter: (e, ctx) => ctx.priorityLabel(e.priority) }
 };
@@ -872,6 +874,63 @@ export const EmployeeManager = {
         if (daysWithRules > 0) parts.push(`${daysWithRules} día${daysWithRules === 1 ? '' : 's'} con disponibilidad`);
         if (exceptionsCount > 0) parts.push(`${exceptionsCount} excepción${exceptionsCount === 1 ? '' : 'es'}`);
         return parts.join(" · ");
+    },
+
+    getSlotLabelSafe(value, fallbackSlotIndex, isEnd = false) {
+        if (typeof value === 'string') {
+            const normalized = value.trim().substring(0, 5);
+            const padded = normalized.length === 4 ? `0${normalized}` : normalized;
+            const match = SLOTS.find(s => s.label === padded);
+            if (match) return match.label;
+        }
+        if (typeof fallbackSlotIndex === 'number') {
+            const idx = isEnd ? fallbackSlotIndex + 1 : fallbackSlotIndex;
+            return SLOTS[idx]?.label || '';
+        }
+        return '';
+    },
+
+    getAvailabilityByDay(emp) {
+        if (!emp || !emp.availability) return '';
+        const mapRange = (slot) => {
+            const start = this.getSlotLabelSafe(slot.start, slot.startSlot, false) || 'Apertura';
+            const end = this.getSlotLabelSafe(slot.end, slot.endSlot, true) || 'Cierre';
+            return `${start} - ${end}`;
+        };
+
+        return DAYS.map((dayLabel, idx) => {
+            const dayAvailability = emp.availability[idx] || emp.availability[String(idx)] || [];
+            if (!dayAvailability || dayAvailability.length === 0) return `${dayLabel}: Libre`;
+            const ranges = dayAvailability.map(mapRange).join(' | ');
+            return `${dayLabel}: ${ranges}`;
+        }).join('\n');
+    },
+
+    getExceptionsDetail(emp) {
+        const exceptions = emp?.exceptions || [];
+        if (exceptions.length === 0) return '';
+
+        const formatDateInfo = (dateStr) => {
+            const parsed = new Date(`${dateStr}T12:00:00Z`);
+            const dayIndex = Number.isNaN(parsed.getTime()) ? null : (parsed.getUTCDay() === 0 ? 6 : parsed.getUTCDay() - 1);
+            const dayLabel = dayIndex !== null && DAYS[dayIndex] ? DAYS[dayIndex] : 'Fecha';
+            const isWeekend = dayIndex === 5 || dayIndex === 6;
+            const formatted = `${dayLabel} ${dateStr}`;
+            return { formatted, isWeekend };
+        };
+
+        const describeException = (ex) => {
+            const { formatted, isWeekend } = formatDateInfo(ex.date);
+            if (!ex.start && !ex.end) {
+                return `${formatted}: Día completo${isWeekend ? ' (fin de semana)' : ''}`;
+            }
+            const start = this.getSlotLabelSafe(ex.start, ex.startSlot, false);
+            const end = this.getSlotLabelSafe(ex.end, ex.endSlot, true);
+            const range = start && end ? `${start} - ${end}` : 'Parcial';
+            return `${formatted}: Parcial ${range}${isWeekend ? ' (fin de semana)' : ''}`;
+        };
+
+        return exceptions.map(describeException).join('\n');
     },
 
     getShiftDateFromWeekDay(weekId, dayIndex) {
