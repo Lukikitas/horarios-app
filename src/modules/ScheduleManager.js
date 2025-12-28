@@ -661,6 +661,37 @@ export const ScheduleManager = {
         schedule[d] = schedule[d] || [];
     },
 
+    validateShiftForEmployee(employee, shift, dayIndex, weekId, shiftsToIgnore = []) {
+        if (!employee) return { pass: false, message: "Empleado no encontrado." };
+        if (!shift && shift !== 0) return { pass: false, message: "Turno no válido." };
+
+        if (shift.ignoreRestrictions) return { pass: true, message: "" };
+
+        const shiftDate = new Date(`${weekId}T12:00:00.000Z`);
+        shiftDate.setUTCDate(shiftDate.getUTCDate() + dayIndex);
+
+        if (isDateInSanctionPeriod(shiftDate, employee.sanctions)) {
+            return { pass: false, message: "El empleado tiene una licencia activa." };
+        }
+
+        if (employee.isMinor && shift.endSlot > MAX_SLOT_FOR_MINOR) {
+            return { pass: false, message: "El empleado es menor y no puede trabajar en este horario." };
+        }
+
+        const overlapCheck = checkShiftOverlap(employee.id, shift, dayIndex, shiftsToIgnore);
+        if (!overlapCheck.pass) return overlapCheck;
+
+        const restCheck = checkRestTime(employee.id, shift, weekId, dayIndex);
+        if (!restCheck.pass) return restCheck;
+
+        const availabilityCheck = checkEmployeeAvailability(employee, shift, weekId, dayIndex);
+        if (!availabilityCheck.isAvailable) {
+            return { pass: false, message: availabilityCheck.reason };
+        }
+
+        return { pass: true, message: "" };
+    },
+
     commitChange(action) {
         const currentSchedule = getActiveSchedule();
         historyManager.push(currentSchedule);
@@ -1768,48 +1799,72 @@ export const ScheduleManager = {
             const sourceShift = schedule[sourceDayIndex]?.find(s => s.id === sourceShiftId);
             if (!sourceShift) return;
 
-            this.commitChange(() => {
-                // Scenario 1: Unassign
-                if (targetEmployeeId === 'unassigned') {
-                    if (!sourceShift.employeeId) return;
+            const state = store.getState();
+            const weekId = state.activeWeek;
+            this.ensureDay(sourceDayIndex);
+            this.ensureDay(targetDayIndex);
+
+            // Scenario 1: Unassign
+            if (targetEmployeeId === 'unassigned') {
+                if (!sourceShift.employeeId) return;
+                this.commitChange(() => {
                     sourceShift.employeeId = null;
+                });
+                return;
+            }
+
+            const targetEmployee = state.employees.find(e => e.id === targetEmployeeId);
+            if (!targetEmployee) return;
+
+            // Scenario 2: Swap
+            if (targetShiftElement) {
+                const targetShiftId = targetShiftElement.dataset.shiftId;
+                if (sourceShiftId === targetShiftId) return;
+
+                const targetShift = schedule[targetDayIndex]?.find(s => s.id === targetShiftId);
+                const sourceEmployee = state.employees.find(e => e.id === sourceShift.employeeId);
+                if (!targetShift || !targetShift.employeeId || !sourceEmployee) return;
+
+                const validationForTarget = this.validateShiftForEmployee(targetEmployee, sourceShift, targetDayIndex, weekId, [targetShift.id]);
+                if (!validationForTarget.pass) {
+                    showToast(validationForTarget.message, "error");
                     return;
                 }
 
-                const targetEmployee = store.getState().employees.find(e => e.id === targetEmployeeId);
-                if (!targetEmployee) return;
-
-                // Scenario 2: Swap
-                if (targetShiftElement) {
-                    const targetShiftId = targetShiftElement.dataset.shiftId;
-                    if (sourceShiftId === targetShiftId) return;
-
-                    const targetShift = schedule[targetDayIndex]?.find(s => s.id === targetShiftId);
-                    if (!targetShift || !targetShift.employeeId) return;
-
-                    // Swap logic (simplified check)
-                    [targetShift.employeeId, sourceShift.employeeId] = [sourceShift.employeeId, targetShift.employeeId];
+                const validationForSource = this.validateShiftForEmployee(sourceEmployee, targetShift, sourceDayIndex, weekId, [sourceShift.id]);
+                if (!validationForSource.pass) {
+                    showToast(validationForSource.message, "error");
+                    return;
                 }
-                // Scenario 3: Move/Assign
-                else {
-                    const sourceEmployeeId = sourceShift.employeeId;
-                    if (sourceEmployeeId === targetEmployeeId && sourceDayIndex === targetDayIndex) return;
 
-                    // Move logic
-                    // If moving day, need to splice and push.
-                    if (sourceDayIndex !== targetDayIndex) {
-                        const originalDayShifts = schedule[sourceDayIndex];
-                        const shiftIndex = originalDayShifts.findIndex(s => s.id === sourceShift.id);
-                        if (shiftIndex > -1) {
-                            const [shiftToMove] = originalDayShifts.splice(shiftIndex, 1);
-                            shiftToMove.employeeId = targetEmployee.id;
-                            this.ensureDay(targetDayIndex);
-                            schedule[targetDayIndex].push(shiftToMove);
-                        }
-                    } else {
-                        // Same day, just reassign
-                        sourceShift.employeeId = targetEmployee.id;
+                this.commitChange(() => {
+                    [targetShift.employeeId, sourceShift.employeeId] = [sourceShift.employeeId, targetShift.employeeId];
+                });
+                return;
+            }
+
+            // Scenario 3: Move/Assign
+            const sourceEmployeeId = sourceShift.employeeId;
+            if (sourceEmployeeId === targetEmployeeId && sourceDayIndex === targetDayIndex) return;
+
+            const validation = this.validateShiftForEmployee(targetEmployee, sourceShift, targetDayIndex, weekId, [sourceShift.id]);
+            if (!validation.pass) {
+                showToast(validation.message, "error");
+                return;
+            }
+
+            this.commitChange(() => {
+                if (sourceDayIndex !== targetDayIndex) {
+                    const originalDayShifts = schedule[sourceDayIndex];
+                    const shiftIndex = originalDayShifts.findIndex(s => s.id === sourceShift.id);
+                    if (shiftIndex > -1) {
+                        const [shiftToMove] = originalDayShifts.splice(shiftIndex, 1);
+                        shiftToMove.employeeId = targetEmployee.id;
+                        this.ensureDay(targetDayIndex);
+                        schedule[targetDayIndex].push(shiftToMove);
                     }
+                } else {
+                    sourceShift.employeeId = targetEmployee.id;
                 }
             });
         });
