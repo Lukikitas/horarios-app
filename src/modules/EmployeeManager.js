@@ -589,11 +589,13 @@ export const EmployeeManager = {
             footer.appendChild(create("button", { className: "btn", textContent: "Guardar y Cerrar", onClick: async () => {
                 const newConflicts = this.findAvailabilityConflicts(emp);
                 if (newConflicts.length > 0) {
-                    await showAlertDialog({
+                    const proceed = await showConfirmDialog({
                         title: "Conflictos con turnos asignados",
-                        message: newConflicts.join("<br>")
+                        message: `${newConflicts.join("<br>")}<br><br>¿Guardar de todos modos?`,
+                        confirmText: "Guardar igualmente",
+                        cancelText: "Cancelar"
                     });
-                    return;
+                    if (!proceed) return;
                 }
                 DataManager.saveState();
                 store.setState({ activeDetailEmployeeId: null });
@@ -665,23 +667,29 @@ export const EmployeeManager = {
                         `${emp.name} ya tiene ${conflictShifts.length === 1 ? 'un turno' : `${conflictShifts.length} turnos`} asignado${conflictShifts.length === 1 ? '' : 's'} ese día.`,
                         summary ? `Horarios: ${summary}.` : ''
                     ].filter(Boolean).join('<br>');
-                    await showAlertDialog({
+                    const proceed = await showConfirmDialog({
                         title: "Conflicto con turnos asignados",
-                        message: promptText
+                        message: `${promptText}<br><br>¿Registrar la excepción igualmente?`,
+                        confirmText: "Registrar igual",
+                        cancelText: "Cancelar"
                     });
-                    return;
+                    if (!proceed) return;
                 }
 
                 emp.exceptions.push(newEx);
 
                 const availabilityConflicts = this.findAvailabilityConflicts(emp);
                 if (availabilityConflicts.length > 0) {
-                    emp.exceptions.pop();
-                    await showAlertDialog({
+                    const proceedAvail = await showConfirmDialog({
                         title: "Conflictos con turnos asignados",
-                        message: availabilityConflicts.join("<br>")
+                        message: `${availabilityConflicts.join("<br>")}<br><br>¿Guardar la excepción igualmente?`,
+                        confirmText: "Guardar igual",
+                        cancelText: "Cancelar"
                     });
-                    return;
+                    if (!proceedAvail) {
+                        emp.exceptions.pop();
+                        return;
+                    }
                 }
 
                 DataManager.saveState();
