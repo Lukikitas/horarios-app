@@ -456,6 +456,11 @@ body.dark-mode .b-warning { background: rgba(251, 191, 36, 0.16); color: #fde68a
   overflow: visible;
 }
 
+/* Allow dropdowns and overflows (como exportar) without recortar contenido */
+.control-card {
+  overflow: visible;
+}
+
 /* width balancing handled via grid auto-fit */
 
 .control-card-head {
@@ -471,6 +476,15 @@ body.dark-mode .b-warning { background: rgba(251, 191, 36, 0.16); color: #fde68a
 
 .employee-form-row {
   gap: 8px;
+  flex-wrap: wrap;
+}
+
+.employee-form-row .input {
+  flex: 1 1 200px;
+}
+
+.employee-form-row #btnAddEmp {
+  flex: 0 0 auto;
 }
 
 .filter-badges {
