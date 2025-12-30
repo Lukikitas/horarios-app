@@ -692,7 +692,7 @@ export const ScheduleManager = {
         return { pass: true, message: "" };
     },
 
-    commitChange(action) {
+    async commitChange(action) {
         const currentSchedule = getActiveSchedule();
         historyManager.push(currentSchedule);
         action();
@@ -700,7 +700,11 @@ export const ScheduleManager = {
         const btnUndo = el("#btnUndo");
         if(btnUndo) btnUndo.disabled = !historyManager.canUndo();
 
-        DataManager.saveState();
+        try {
+            await DataManager.saveState();
+        } catch (err) {
+            console.error("Error al guardar cambios de horario:", err);
+        }
         this.render();
     },
 

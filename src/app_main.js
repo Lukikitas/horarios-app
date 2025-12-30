@@ -56,6 +56,11 @@ async function init() {
     // Initial Load
     await DataManager.loadState(store.getState().activeStoreId);
 
+    // Try to persist pending cambios antes de salir/cerrar pestaña
+    window.addEventListener('beforeunload', () => {
+        DataManager.saveState();
+    });
+
     document.addEventListener('store-changed', async (event) => {
         const storeId = event.detail?.storeId;
         if (!storeId) return;
