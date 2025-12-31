@@ -661,6 +661,32 @@ export const ScheduleManager = {
         schedule[d] = schedule[d] || [];
     },
 
+    ensureSavingIndicator() {
+        const container = el("#week-selector-container");
+        if (!container) return;
+
+        let badge = el("#schedule-saving-indicator");
+        if (!badge) {
+            badge = create("span", { id: "schedule-saving-indicator", className: "saving-indicator", textContent: "Sincronizado" });
+            container.appendChild(badge);
+        }
+    },
+
+    setSavingStatus(isSaving, hasError = false) {
+        const badge = el("#schedule-saving-indicator");
+        if (!badge) return;
+
+        badge.classList.toggle("active", isSaving);
+        badge.classList.toggle("error", !!hasError);
+        if (hasError) {
+            badge.textContent = "Error al guardar";
+        } else if (isSaving) {
+            badge.textContent = "Guardando…";
+        } else {
+            badge.textContent = "Sincronizado";
+        }
+    },
+
     validateShiftForEmployee(employee, shift, dayIndex, weekId, shiftsToIgnore = []) {
         if (!employee) return { pass: false, message: "Empleado no encontrado." };
         if (!shift && shift !== 0) return { pass: false, message: "Turno no válido." };
@@ -692,7 +718,7 @@ export const ScheduleManager = {
         return { pass: true, message: "" };
     },
 
-    async commitChange(action) {
+    commitChange(action) {
         const currentSchedule = getActiveSchedule();
         historyManager.push(currentSchedule);
         action();
@@ -700,12 +726,15 @@ export const ScheduleManager = {
         const btnUndo = el("#btnUndo");
         if(btnUndo) btnUndo.disabled = !historyManager.canUndo();
 
-        try {
-            await DataManager.saveState();
-        } catch (err) {
-            console.error("Error al guardar cambios de horario:", err);
-        }
         this.render();
+
+        this.setSavingStatus(true);
+        DataManager.saveState()
+            .then(() => this.setSavingStatus(false))
+            .catch((err) => {
+                console.error("Error al guardar cambios de horario:", err);
+                this.setSavingStatus(false, true);
+            });
     },
 
     undoLastAction() {
@@ -1226,6 +1255,9 @@ export const ScheduleManager = {
 
         const format = (d) => `${d.getDate()}/${d.getMonth()+1}`;
         btn.textContent = `${format(monday)} - ${format(sunday)}`;
+
+        this.ensureSavingIndicator();
+        this.setSavingStatus(false);
     },
 
     renderWeeklyStats() {
