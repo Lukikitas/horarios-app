@@ -58,17 +58,11 @@ function showSessionBanner(onChangeStore, onLogout) {
       <div class="row" style="gap:8px; align-items:center;">
         <span class="pill" id="session-user-label"></span>
         <span class="pill pill-neutral" id="session-store-label"></span>
-        <button id="change-store-btn" class="btn secondary">Cambiar local</button>
-        <button id="logout-btn" class="btn secondary">Salir</button>
       </div>
     `;
     const bar = document.querySelector('.bar-inner');
     if (bar) bar.appendChild(banner); else document.body.prepend(banner);
   }
-  const changeBtn = banner.querySelector('#change-store-btn');
-  changeBtn.onclick = onChangeStore;
-  const logoutBtn = banner.querySelector('#logout-btn');
-  logoutBtn.onclick = onLogout;
   banner.style.display = 'block';
 
   // Inline buttons in Acciones dropdown
