@@ -46,7 +46,8 @@
 .main-bar-row{width:100%;gap:10px;align-items:center;flex-wrap:wrap;}
 .main-menu{display:flex;flex-wrap:wrap;gap:8px;flex:1;align-items:center;min-width: 320px;}
 .actions-dropdown{margin-left:auto;}
-.week-selector{gap:6px;}
+.more-dropdown{margin-left:auto;}
+.week-selector{gap:6px; justify-content:center; flex: 0 0 auto;}
   h1{margin:0;font-size:18px}
 .btn{border:1px solid var(--ink);background:var(--ink);color:#fff;border-radius:4px;padding:8px 12px;cursor:pointer;white-space:nowrap}
 .btn.secondary{background:#fff;color:var(--ink);border-color:var(--border)}
