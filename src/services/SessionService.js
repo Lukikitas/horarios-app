@@ -70,6 +70,12 @@ function showSessionBanner(onChangeStore, onLogout) {
   const logoutBtn = banner.querySelector('#logout-btn');
   logoutBtn.onclick = onLogout;
   banner.style.display = 'block';
+
+  // Inline buttons in Acciones dropdown
+  const changeInline = document.getElementById('change-store-inline');
+  const logoutInline = document.getElementById('logout-inline');
+  if (changeInline) changeInline.onclick = onChangeStore;
+  if (logoutInline) logoutInline.onclick = onLogout;
 }
 
 function updateBannerLabels() {

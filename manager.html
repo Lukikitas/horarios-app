@@ -18,9 +18,8 @@
   </div>
   <div class="bar">
     <div class="bar-inner">
-      <div class="row">
-        <h1 style="font-size: 1.1em; white-space: nowrap;">Planificador de Horarios</h1>
-        <div id="main-menu" style="margin-left: 16px;">
+      <div class="row main-bar-row">
+        <div id="main-menu" class="main-menu">
           <button id="btn-view-schedule" class="btn main-menu-btn">Horarios</button>
           <button id="btn-view-employees" class="btn secondary main-menu-btn">Empleados</button>
           <button id="btn-view-templates" class="btn secondary main-menu-btn">Plantillas</button>
@@ -32,13 +31,13 @@
           <button id="btn-planilla-turno" class="btn secondary main-menu-btn">Planilla de Turno</button>
           <button id="btn-view-options" class="btn secondary main-menu-btn">Opciones</button>
         </div>
-        <div id="week-selector-container" class="row" style="margin-left: 16px;">
+        <div id="week-selector-container" class="row week-selector">
             <button id="btn-lock-week" class="btn secondary">🔓</button>
             <button id="btn-prev-week" class="btn secondary">◄</button>
             <button id="week-display" class="btn secondary"></button>
             <button id="btn-next-week" class="btn secondary">►</button>
         </div>
-        <div class="dropdown" style="margin-left: 8px;">
+        <div class="dropdown actions-dropdown">
           <button id="btn-actions" class="btn secondary">Acciones ▾</button>
           <div id="actions-dropdown" class="dropdown-content">
             <button id="btnPrint" class="dropdown-item">Imprimir</button>
@@ -46,9 +45,12 @@
             <button id="btn-auto-assign" class="dropdown-item">Auto-completar Semana</button>
             <div class="dropdown-divider"></div>
             <button id="btn-advanced-import-export" class="dropdown-item">Importar/Exportar (Avanzado)</button>
+            <div class="dropdown-divider"></div>
+            <button id="change-store-inline" class="dropdown-item">Cambiar local</button>
+            <button id="logout-inline" class="dropdown-item">Salir</button>
           </div>
         </div>
-        <button id="btn-dark-mode" class="btn secondary" style="margin-left:auto;">🌙</button>
+        <button id="btn-dark-mode" class="btn secondary">🌙</button>
       </div>
     </div>
   </div>
