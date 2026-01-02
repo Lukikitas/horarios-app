@@ -55,13 +55,11 @@ function showSessionBanner(onChangeStore, onLogout) {
     banner.id = 'session-banner';
     banner.className = 'session-banner';
     banner.innerHTML = `
-      <div class="row" style="gap:8px; align-items:center;">
         <span class="pill" id="session-user-label"></span>
         <span class="pill pill-neutral" id="session-store-label"></span>
-      </div>
     `;
-    const bar = document.querySelector('.bar-inner');
-    if (bar) bar.appendChild(banner); else document.body.prepend(banner);
+    const container = document.querySelector('.main-bar-right') || document.querySelector('.bar-inner') || document.body;
+    container.prepend(banner);
   }
   banner.style.display = 'block';
 
