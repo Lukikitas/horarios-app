@@ -811,6 +811,10 @@ export const ScheduleManager = {
             return { pass: false, message: "El empleado es menor y no puede trabajar en este horario." };
         }
 
+        if (!shift.ignoreRestrictions && shift.role && !(employee.stars || []).includes(shift.role)) {
+            return { pass: false, message: `El empleado no tiene la estrella requerida para ${shift.role}.` };
+        }
+
         const overlapCheck = checkShiftOverlap(employee.id, shift, dayIndex, shiftsToIgnore);
         if (!overlapCheck.pass) return overlapCheck;
 
