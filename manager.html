@@ -333,16 +333,12 @@
       <section class="card">
         <div class="card-h"><strong>Listado de Horarios</strong></div>
         <div class="card-c" id="schedule-list-filter-bar">
-            <div class="row" style="justify-content: flex-end; width: 100%; gap: 12px; flex-wrap: wrap;">
+            <div class="row" style="justify-content: flex-end; width: 100%; gap: 12px; flex-wrap: wrap; align-items: flex-end;">
                 <div class="stack" style="min-width: 220px; flex: 1;">
                     <label class="muted mini-label" for="schedule-list-search">Buscar por empleado</label>
                     <input id="schedule-list-search" class="input" placeholder="Nombre o apellido">
                 </div>
-                <div class="stack" style="min-width: 240px; flex: 1;">
-                    <label class="muted mini-label" for="schedule-list-employee-filter">Seleccionar múltiples empleados</label>
-                    <select id="schedule-list-employee-filter" class="select" multiple size="6" style="width:100%;"></select>
-                    <button id="schedule-list-clear-filter" class="btn secondary" style="margin-top:6px; width:max-content;">Limpiar selección</button>
-                </div>
+                <button id="schedule-list-multi-btn" class="btn secondary" style="white-space: nowrap;">Selección múltiple</button>
             </div>
         </div>
         <div id="schedule-list-content" class="card-c">
@@ -539,6 +535,24 @@
             <button id="btn-print-daily-planning" class="btn">Planificación diaria</button>
           </div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Schedule List Multi-Select Modal -->
+  <div id="schedule-list-multi-modal" class="modal-overlay" style="display:none; z-index: 1500;">
+    <div class="modal-content card" style="max-width: 520px;">
+      <div class="card-h" style="display:flex; align-items:center; justify-content:space-between;">
+        <strong>Seleccionar múltiples empleados</strong>
+        <button id="schedule-list-multi-close" class="btn secondary del" style="margin-left:auto;">&times;</button>
+      </div>
+      <div class="card-c stack" style="max-height: 420px; overflow: auto; gap: 8px;">
+        <p class="muted" style="margin:0;">Usá el nombre de planilla para comparar horarios.</p>
+        <div id="schedule-list-multi-container" class="stack" style="gap: 6px;"></div>
+      </div>
+      <div class="card-c" style="display:flex; justify-content: flex-end; gap: 8px;">
+        <button id="schedule-list-clear-filter" class="btn secondary">Limpiar selección</button>
+        <button id="schedule-list-multi-close-footer" class="btn">Cerrar</button>
       </div>
     </div>
   </div>

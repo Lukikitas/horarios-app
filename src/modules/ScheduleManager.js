@@ -122,15 +122,34 @@ export const ScheduleManager = {
             store.setState({ scheduleSearchTerm: e.target.value });
             this.renderScheduleList();
         });
-        el("#schedule-list-employee-filter")?.addEventListener("change", (e) => {
-            const selectedIds = Array.from(e.target.selectedOptions || []).map(opt => opt.value);
-            store.setState({ scheduleSelectedEmployeeIds: selectedIds });
-            this.renderScheduleList();
+        const openMultiModal = () => {
+            this.updateScheduleListFiltersUI();
+            const modal = el("#schedule-list-multi-modal");
+            if (modal) modal.style.display = "flex";
+        };
+        const closeMultiModal = () => {
+            const modal = el("#schedule-list-multi-modal");
+            if (modal) modal.style.display = "none";
+        };
+        el("#schedule-list-multi-btn")?.addEventListener("click", openMultiModal);
+        el("#schedule-list-multi-close")?.addEventListener("click", closeMultiModal);
+        el("#schedule-list-multi-close-footer")?.addEventListener("click", closeMultiModal);
+        el("#schedule-list-multi-modal")?.addEventListener("click", (e) => {
+            if (e.target === el("#schedule-list-multi-modal")) closeMultiModal();
         });
         el("#schedule-list-clear-filter")?.addEventListener("click", () => {
             store.setState({ scheduleSelectedEmployeeIds: [] });
-            const select = el("#schedule-list-employee-filter");
-            if (select) Array.from(select.options).forEach(o => o.selected = false);
+            this.updateScheduleListFiltersUI();
+            this.renderScheduleList();
+        });
+        el("#schedule-list-multi-container")?.addEventListener("change", (e) => {
+            const target = e.target;
+            if (!target || !target.classList?.contains("schedule-list-multi-checkbox")) return;
+            const empId = target.value;
+            const selectedSet = new Set((store.getState().scheduleSelectedEmployeeIds || []).map(String));
+            if (target.checked) selectedSet.add(empId);
+            else selectedSet.delete(empId);
+            store.setState({ scheduleSelectedEmployeeIds: Array.from(selectedSet) });
             this.renderScheduleList();
         });
 
@@ -1387,17 +1406,34 @@ export const ScheduleManager = {
             searchInput.value = state.scheduleSearchTerm || "";
         }
 
-        const select = el("#schedule-list-employee-filter");
-        if (!select) return;
+        const container = el("#schedule-list-multi-container");
+        if (!container) return;
 
         const selectedSet = new Set((state.scheduleSelectedEmployeeIds || []).map(String));
-        clear(select);
+        clear(container);
 
-        const employees = state.employees.slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        const employees = state.employees.slice().sort((a, b) => (a.displayName || a.name || '').localeCompare(b.displayName || b.name || ''));
         employees.forEach(emp => {
-            const opt = create("option", { value: String(emp.id), textContent: emp.name || '' });
-            opt.selected = selectedSet.has(String(emp.id));
-            select.appendChild(opt);
+            const checkbox = create("input", {
+                type: "checkbox",
+                className: "schedule-list-multi-checkbox",
+                value: String(emp.id),
+                checked: selectedSet.has(String(emp.id))
+            });
+            const label = create("label", {
+                className: "row",
+                style: { gap: "8px", alignItems: "center" }
+            });
+            label.appendChild(checkbox);
+
+            const textStack = create("div", { className: "stack", style: { gap: "2px" } });
+            textStack.appendChild(create("div", { textContent: emp.displayName || emp.name || "" }));
+            if (emp.displayName && emp.name && emp.displayName !== emp.name) {
+                textStack.appendChild(create("div", { className: "muted", style: { fontSize: "12px" }, textContent: emp.name }));
+            }
+
+            label.appendChild(textStack);
+            container.appendChild(label);
         });
     },
 
