@@ -243,7 +243,6 @@ export const ScheduleManager = {
         this.renderLegend();
         this.updateLockUI();
         this.updateWeekDisplay();
-        this.updateDayTitle();
         this.renderWeeklyStats();
 
         // Ensure this method exists before calling
