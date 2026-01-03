@@ -373,17 +373,17 @@ export const ScheduleManager = {
         const employeeB = state.employees.find(e => e.id === otherShiftData.shift.employeeId);
         const weekId = state.activeWeek;
 
-        const days = this.getScheduleDaysArray();
-        const shiftsDayA = (days[currentShiftData.dayIndex] || []).filter(s => s.id !== currentShiftData.shift.id && s.id !== otherShiftData.shift.id);
-        const shiftsDayB = (days[otherShiftData.dayIndex] || []).filter(s => s.id !== otherShiftData.shift.id && s.id !== currentShiftData.shift.id);
+        const isSameDay = currentShiftData.dayIndex === otherShiftData.dayIndex;
+        const ignoreForEmployeeB = isSameDay ? [otherShiftData.shift.id] : [];
+        const ignoreForEmployeeA = isSameDay ? [currentShiftData.shift.id] : [];
 
         const tempShiftForB = { ...currentShiftData.shift };
         const tempShiftForA = { ...otherShiftData.shift };
 
-        const checkB = this.validateShiftForEmployee(employeeB, tempShiftForB, currentShiftData.dayIndex, weekId, shiftsDayA);
+        const checkB = this.validateShiftForEmployee(employeeB, tempShiftForB, currentShiftData.dayIndex, weekId, ignoreForEmployeeB);
         if (!checkB.pass) issues.push(`Para ${employeeB?.name || "empleado"}: ${checkB.message}`);
 
-        const checkA = this.validateShiftForEmployee(employeeA, tempShiftForA, otherShiftData.dayIndex, weekId, shiftsDayB);
+        const checkA = this.validateShiftForEmployee(employeeA, tempShiftForA, otherShiftData.dayIndex, weekId, ignoreForEmployeeA);
         if (!checkA.pass) issues.push(`Para ${employeeA?.name || "empleado"}: ${checkA.message}`);
 
         return issues;
