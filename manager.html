@@ -17,55 +17,53 @@
     <div class="loading-text">Cargando...</div>
   </div>
   <div class="bar">
-    <div class="bar-inner">
-                <button id="btn-view-requests" class="dropdown-item">Solicitudes</button>
-        <div id="week-selector-container" class="row week-selector">
-            <button id="btn-lock-week" class="btn secondary">🔓</button>
-            <button id="btn-prev-week" class="btn secondary">◄</button>
-            <button id="week-display" class="btn secondary"></button>
-            <button id="btn-next-week" class="btn secondary">►</button>
-              <button id="btn-view-clock-ins" class="btn secondary main-menu-btn">Fichadas</button>
-              <button id="btn-view-requests" class="btn secondary main-menu-btn">Solicitudes</button>
-              <button id="btn-weekly-summary" class="btn secondary main-menu-btn">Resumen semanal</button>
-              <div class="dropdown more-dropdown">
-                <button id="btn-more" class="btn secondary">Más ▾</button>
-                <div id="more-dropdown" class="dropdown-content">
-                  <button id="btn-view-templates" class="dropdown-item">Plantillas</button>
-                  <button id="btn-view-francos" class="dropdown-item">Francos</button>
-                  <button id="btn-planilla-turno" class="dropdown-item">Planilla de Turno</button>
-                  <button id="btn-view-options" class="dropdown-item">Opciones</button>
-                </div>
-              </div>
-            </div>
-        </div>
-
-        <div id="week-selector-container" class="row week-selector">
-            <button id="btn-lock-week" class="btn secondary">🔓</button>
-            <button id="btn-prev-week" class="btn secondary">◄</button>
-            <button id="week-display" class="btn secondary"></button>
-            <button id="btn-next-week" class="btn secondary">►</button>
-        </div>
-
-        <div class="row main-bar-right">
-          <div id="session-banner" class="session-banner">
-            <span class="pill" id="session-user-label"></span>
-            <span class="pill pill-neutral" id="session-store-label"></span>
-          </div>
-          <div class="dropdown actions-dropdown">
-            <button id="btn-actions" class="btn secondary">Acciones ▾</button>
-            <div id="actions-dropdown" class="dropdown-content">
-              <button id="btnPrint" class="dropdown-item">Imprimir</button>
-              <button id="btn-import-text" class="dropdown-item">Importar desde texto</button>
-              <button id="btn-auto-assign" class="dropdown-item">Auto-completar Semana</button>
-              <div class="dropdown-divider"></div>
-              <button id="btn-advanced-import-export" class="dropdown-item">Importar/Exportar (Avanzado)</button>
-              <div class="dropdown-divider"></div>
-              <button id="change-store-inline" class="dropdown-item">Cambiar local</button>
-              <button id="logout-inline" class="dropdown-item">Salir</button>
+    <div class="bar-inner main-bar-row">
+      <div class="main-bar-left">
+        <div class="main-menu">
+          <button id="btn-view-schedule" class="btn main-menu-btn">Horarios</button>
+          <button id="btn-view-employees" class="btn secondary main-menu-btn">Empleados</button>
+          <button id="btn-schedule-list" class="btn secondary main-menu-btn">Listado</button>
+          <button id="btn-view-clock-ins" class="btn secondary main-menu-btn">Fichadas</button>
+          <button id="btn-view-requests" class="btn secondary main-menu-btn">Solicitudes</button>
+          <button id="btn-weekly-summary" class="btn secondary main-menu-btn">Resumen semanal</button>
+          <div class="dropdown more-dropdown">
+            <button id="btn-more" class="btn secondary">Más ▾</button>
+            <div id="more-dropdown" class="dropdown-content">
+              <button id="btn-view-templates" class="dropdown-item">Plantillas</button>
+              <button id="btn-view-francos" class="dropdown-item">Francos</button>
+              <button id="btn-planilla-turno" class="dropdown-item">Planilla de Turno</button>
+              <button id="btn-view-options" class="dropdown-item">Opciones</button>
             </div>
           </div>
-          <button id="btn-dark-mode" class="btn secondary">🌙</button>
         </div>
+        <div class="dropdown actions-dropdown">
+          <button id="btn-actions" class="btn secondary">Acciones ▾</button>
+          <div id="actions-dropdown" class="dropdown-content">
+            <button id="btnPrint" class="dropdown-item">Imprimir</button>
+            <button id="btn-import-text" class="dropdown-item">Importar desde texto</button>
+            <button id="btn-auto-assign" class="dropdown-item">Auto-completar Semana</button>
+            <div class="dropdown-divider"></div>
+            <button id="btn-advanced-import-export" class="dropdown-item">Importar/Exportar (Avanzado)</button>
+            <div class="dropdown-divider"></div>
+            <button id="change-store-inline" class="dropdown-item">Cambiar local</button>
+            <button id="logout-inline" class="dropdown-item">Salir</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="week-selector-container" class="row week-selector">
+        <button id="btn-lock-week" class="btn secondary">🔓</button>
+        <button id="btn-prev-week" class="btn secondary">◄</button>
+        <button id="week-display" class="btn secondary"></button>
+        <button id="btn-next-week" class="btn secondary">►</button>
+      </div>
+
+      <div class="row main-bar-right">
+        <div id="session-banner" class="session-banner">
+          <span class="pill" id="session-user-label"></span>
+          <span class="pill pill-neutral" id="session-store-label"></span>
+        </div>
+        <button id="btn-dark-mode" class="btn secondary">🌙</button>
       </div>
     </div>
   </div>
@@ -296,10 +294,12 @@
                     <div class="day-title-row">
                         <h2 id="day-title" class="day-title"></h2>
                         <div id="weekly-stats-container" class="weekly-stats"></div>
-                    </div>
-                    <div class="controls-group">
-                        <div class="control-item"><label for="projectedTickets" class="muted">Tickets</label><input id="projectedTickets" type="number" class="input"></div>
-                        <div class="control-item"><label class="muted">Prod.</label><span id="projectedProductivity" class="strong"></span></div>
+                        <div class="day-metrics">
+                            <label for="projectedTickets" class="muted mini-label">Tickets</label>
+                            <input id="projectedTickets" type="number" class="input input-compact">
+                            <span class="muted mini-label">Prod.</span>
+                            <span id="projectedProductivity" class="strong"></span>
+                        </div>
                     </div>
                 </div>
                 <div class="controls-right">
