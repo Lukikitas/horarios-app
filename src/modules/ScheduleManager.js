@@ -16,6 +16,9 @@ import { EmployeeManager } from './EmployeeManager.js';
 import { showToast, showConfirmDialog, showAlertDialog } from '../utils/feedback.js';
 
 export const ScheduleManager = {
+    swapShiftSelectionId: null,
+    activeTooltipEl: null,
+    activeTooltipAnchor: null,
     init() {
         this.bindEvents();
     },
@@ -222,6 +225,7 @@ export const ScheduleManager = {
     },
 
     render() {
+        this.hideEmployeeWeekTooltip();
         const roles = this.getRoleList();
         const activeRoleSelect = el("#activeRole");
         const filterSelect = el("#schedule-role-filter");
@@ -305,6 +309,98 @@ export const ScheduleManager = {
             item.appendChild(actions);
             list.appendChild(item);
         });
+    },
+
+    handleSwapSelection(shiftId) {
+        const currentShiftData = this.findShiftWithDay(shiftId);
+        const currentShift = currentShiftData?.shift;
+        if (!currentShift || !currentShift.employeeId) {
+            showToast("Seleccioná un turno asignado para intercambiar", "warning");
+            return;
+        }
+
+        if (!this.swapShiftSelectionId) {
+            this.swapShiftSelectionId = shiftId;
+            showToast("Turno marcado. Elegí otro turno asignado para completar el intercambio", "info");
+            this.renderTable();
+            return;
+        }
+
+        if (this.swapShiftSelectionId === shiftId) {
+            this.swapShiftSelectionId = null;
+            this.renderTable();
+            return;
+        }
+
+        const otherShiftData = this.findShiftWithDay(this.swapShiftSelectionId);
+        const otherShift = otherShiftData?.shift;
+        if (!otherShift || !otherShift.employeeId) {
+            this.swapShiftSelectionId = null;
+            showToast("El turno seleccionado ya no está asignado", "warning");
+            this.renderTable();
+            return;
+        }
+
+        const validationIssues = this.validateSwap(currentShiftData, otherShiftData);
+        const proceedSwap = () => {
+            this.commitChange(() => {
+                const tempEmp = currentShift.employeeId;
+                currentShift.employeeId = otherShift.employeeId;
+                otherShift.employeeId = tempEmp;
+            });
+            this.swapShiftSelectionId = null;
+            showToast("Turnos intercambiados", "success");
+            this.renderTable();
+        };
+
+        if (validationIssues.length) {
+            showConfirmDialog({
+                title: "Intercambio con advertencias",
+                message: validationIssues.join("<br>") + "<br><br>¿Aplicar el intercambio de todos modos?"
+            }).then(confirmed => {
+                if (confirmed) proceedSwap();
+                else this.renderTable();
+            });
+        } else {
+            proceedSwap();
+        }
+    },
+
+    validateSwap(currentShiftData, otherShiftData) {
+        const issues = [];
+        const state = store.getState();
+        const employeeA = state.employees.find(e => e.id === currentShiftData.shift.employeeId);
+        const employeeB = state.employees.find(e => e.id === otherShiftData.shift.employeeId);
+        const weekId = state.activeWeek;
+
+        const days = this.getScheduleDaysArray();
+        const shiftsDayA = (days[currentShiftData.dayIndex] || []).filter(s => s.id !== currentShiftData.shift.id && s.id !== otherShiftData.shift.id);
+        const shiftsDayB = (days[otherShiftData.dayIndex] || []).filter(s => s.id !== otherShiftData.shift.id && s.id !== currentShiftData.shift.id);
+
+        const tempShiftForB = { ...currentShiftData.shift };
+        const tempShiftForA = { ...otherShiftData.shift };
+
+        const checkB = this.validateShiftForEmployee(employeeB, tempShiftForB, currentShiftData.dayIndex, weekId, shiftsDayA);
+        if (!checkB.pass) issues.push(`Para ${employeeB?.name || "empleado"}: ${checkB.message}`);
+
+        const checkA = this.validateShiftForEmployee(employeeA, tempShiftForA, otherShiftData.dayIndex, weekId, shiftsDayB);
+        if (!checkA.pass) issues.push(`Para ${employeeA?.name || "empleado"}: ${checkA.message}`);
+
+        return issues;
+    },
+
+    findShiftById(shiftId) {
+        const result = this.findShiftWithDay(shiftId);
+        return result?.shift || null;
+    },
+
+    findShiftWithDay(shiftId) {
+        const days = this.getScheduleDaysArray();
+        for (let dayIndex = 0; dayIndex < days.length; dayIndex++) {
+            const found = days[dayIndex]?.find(s => s.id === shiftId);
+            if (found) return { shift: found, dayIndex };
+        }
+        return null;
     },
 
     async saveCurrentDayAsTemplate() {
@@ -499,6 +595,9 @@ export const ScheduleManager = {
                         }
                         const weeklyHours = this.getEmployeeWeeklyHours(emp.id);
                         empNameSpan.innerHTML = nameHtml + ` (${String(weeklyHours).replace('.', ',')}hs)`;
+                        empNameSpan.addEventListener("mouseenter", () => this.showEmployeeWeekTooltip(emp, empNameSpan));
+                        empNameSpan.addEventListener("mouseleave", () => this.hideEmployeeWeekTooltip());
+                        empNameSpan.addEventListener("mousemove", () => this.positionEmployeeWeekTooltip(empNameSpan));
                     } else {
                         empNameSpan.textContent = "Empleado no encontrado";
                     }
@@ -533,6 +632,11 @@ export const ScheduleManager = {
                 // Actions Div
                 const actionsDiv = create("div", { className: "row", style: { position: "absolute", top: "5px", right: "5px" } });
                 actionsDiv.appendChild(create("button", {
+                    className: "btn secondary swap-button", innerHTML: "⇄",
+                    style: { padding: "2px 6px", fontSize: "10px" }, title: "Intercambiar turno",
+                    onClick: (e) => { e.stopPropagation(); this.handleSwapSelection(shift.id); }
+                }));
+                actionsDiv.appendChild(create("button", {
                     className: "btn secondary", innerHTML: "&#9998;",
                     style: { padding: "2px 6px", fontSize: "10px" }, title: "Editar turno",
                     onClick: (e) => { e.stopPropagation(); this.openEditShiftModal(shift.id); }
@@ -549,6 +653,9 @@ export const ScheduleManager = {
                         if (confirmed) this.deleteShift(shift.id);
                     }
                 }));
+                if (this.swapShiftSelectionId === shift.id) {
+                    namecol.classList.add("swap-selected");
+                }
                 namecol.appendChild(actionsDiv);
                 row.appendChild(namecol);
 
@@ -1154,6 +1261,85 @@ export const ScheduleManager = {
         const formattedDate = `${dayName}, ${dayDate.getDate()} de ${dayDate.toLocaleString('es-ES', { month: 'long' })}`;
         const dayTitleEl = el("#day-title");
         if (dayTitleEl) dayTitleEl.textContent = formattedDate;
+    },
+
+    getEmployeeWeekShifts(employeeId) {
+        const days = this.getScheduleDaysArray();
+        if (!days || typeof days.forEach !== "function") return [];
+        const shifts = [];
+        days.forEach((dayShifts, dayIndex) => {
+            (dayShifts || []).forEach(s => {
+                if (s.employeeId === employeeId) {
+                    shifts.push({
+                        dayIndex,
+                        role: s.role,
+                        startSlot: s.startSlot,
+                        endSlot: s.endSlot
+                    });
+                }
+            });
+        });
+        return shifts;
+    },
+
+    showEmployeeWeekTooltip(employee, anchor) {
+        if (!employee) return;
+        const shifts = this.getEmployeeWeekShifts(employee.id);
+
+        this.hideEmployeeWeekTooltip();
+        const tooltip = create("div", { className: "employee-week-tooltip card" });
+        const content = create("div", { className: "card-c stack", style: { gap: "4px" } });
+
+        if (!shifts.length) {
+            content.appendChild(create("div", { className: "muted mini-label", textContent: "Sin turnos en la semana" }));
+        } else {
+            const maxItems = 8;
+            shifts.slice(0, maxItems).forEach(s => {
+                const startLabel = SLOTS[s.startSlot]?.label || "";
+                const endLabel = SLOTS[s.endSlot + 1]?.label || SLOTS[s.endSlot]?.label || "";
+                const dayName = DAYS[s.dayIndex] || "";
+                content.appendChild(create("div", {
+                    className: "tooltip-row",
+                    textContent: `${dayName}: ${startLabel} - ${endLabel} · ${s.role}`
+                }));
+            });
+            if (shifts.length > maxItems) {
+                content.appendChild(create("div", { className: "muted mini-label", textContent: `+${shifts.length - maxItems} turnos más` }));
+            }
+        }
+
+        tooltip.appendChild(content);
+        document.body.appendChild(tooltip);
+        this.activeTooltipEl = tooltip;
+        this.activeTooltipAnchor = anchor;
+        this.positionEmployeeWeekTooltip(anchor);
+    },
+
+    positionEmployeeWeekTooltip(anchor) {
+        if (!this.activeTooltipEl || !anchor) return;
+        const rect = anchor.getBoundingClientRect();
+        this.activeTooltipEl.style.position = "absolute";
+        this.activeTooltipEl.style.zIndex = "2000";
+        this.activeTooltipEl.style.left = `${rect.left + window.scrollX}px`;
+        this.activeTooltipEl.style.top = `${rect.bottom + window.scrollY + 6}px`;
+    },
+
+    hideEmployeeWeekTooltip() {
+        if (this.activeTooltipEl?.parentNode) {
+            this.activeTooltipEl.parentNode.removeChild(this.activeTooltipEl);
+        }
+        this.activeTooltipEl = null;
+        this.activeTooltipAnchor = null;
+    },
+
+    getScheduleDaysArray(scheduleOverride) {
+        const schedule = scheduleOverride ?? getActiveSchedule();
+        const days = Array.from({ length: 7 }, (_, i) => {
+            const direct = schedule?.[i];
+            if (Array.isArray(direct)) return direct;
+            return [];
+        });
+        return days;
     },
 
     updateScheduleFiltersUI() {
