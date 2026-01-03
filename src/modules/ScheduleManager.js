@@ -122,6 +122,17 @@ export const ScheduleManager = {
             store.setState({ scheduleSearchTerm: e.target.value });
             this.renderScheduleList();
         });
+        el("#schedule-list-employee-filter")?.addEventListener("change", (e) => {
+            const selectedIds = Array.from(e.target.selectedOptions || []).map(opt => opt.value);
+            store.setState({ scheduleSelectedEmployeeIds: selectedIds });
+            this.renderScheduleList();
+        });
+        el("#schedule-list-clear-filter")?.addEventListener("click", () => {
+            store.setState({ scheduleSelectedEmployeeIds: [] });
+            const select = el("#schedule-list-employee-filter");
+            if (select) Array.from(select.options).forEach(o => o.selected = false);
+            this.renderScheduleList();
+        });
 
         // Calendar Modal
         el("#week-display")?.addEventListener("click", () => {
@@ -1350,6 +1361,7 @@ export const ScheduleManager = {
         const state = store.getState();
         const searchInput = el("#schedule-search");
         const roleSelect = el("#schedule-role-filter");
+        const scheduleListSearch = el("#schedule-list-search");
 
         if (searchInput && searchInput.value !== (state.scheduleSearchTerm || "")) {
             searchInput.value = state.scheduleSearchTerm || "";
@@ -1361,6 +1373,32 @@ export const ScheduleManager = {
                 opt.selected = selectedValues.has(opt.value);
             });
         }
+
+        if (scheduleListSearch && scheduleListSearch.value !== (state.scheduleSearchTerm || "")) {
+            scheduleListSearch.value = state.scheduleSearchTerm || "";
+        }
+    },
+
+    updateScheduleListFiltersUI() {
+        const state = store.getState();
+
+        const searchInput = el("#schedule-list-search");
+        if (searchInput && searchInput.value !== (state.scheduleSearchTerm || "")) {
+            searchInput.value = state.scheduleSearchTerm || "";
+        }
+
+        const select = el("#schedule-list-employee-filter");
+        if (!select) return;
+
+        const selectedSet = new Set((state.scheduleSelectedEmployeeIds || []).map(String));
+        clear(select);
+
+        const employees = state.employees.slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        employees.forEach(emp => {
+            const opt = create("option", { value: String(emp.id), textContent: emp.name || '' });
+            opt.selected = selectedSet.has(String(emp.id));
+            select.appendChild(opt);
+        });
     },
 
     renderLegend() {
@@ -1838,14 +1876,19 @@ export const ScheduleManager = {
         if(!content) return;
         clear(content);
 
+        this.updateScheduleListFiltersUI();
+
         const state = store.getState();
         const schedule = getActiveSchedule();
         if(!schedule) return;
 
         const searchTerm = (state.scheduleSearchTerm || '').toLowerCase().trim();
+        const selectedIds = new Set((state.scheduleSelectedEmployeeIds || []).map(String));
+
         const employees = state.employees
             .filter(emp => this.getEmployeeWeeklyHours(emp.id) > 0)
             .filter(emp => emp.name.toLowerCase().includes(searchTerm))
+            .filter(emp => selectedIds.size === 0 || selectedIds.has(String(emp.id)))
             .sort((a, b) => a.name.localeCompare(b.name));
 
         const unassignedShiftsExist = Object.values(schedule).some(day => Array.isArray(day) && day.some(s => !s.employeeId));

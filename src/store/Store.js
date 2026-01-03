@@ -55,6 +55,7 @@ const defaultState = {
     clockInDateFilter: null,
     scheduleRoleFilters: [],
     scheduleSearchTerm: '',
+    scheduleSelectedEmployeeIds: [],
     breaks: {},
     tempPlanillaState: null,
     rappiCode: '',

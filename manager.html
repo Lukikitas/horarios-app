@@ -333,8 +333,16 @@
       <section class="card">
         <div class="card-h"><strong>Listado de Horarios</strong></div>
         <div class="card-c" id="schedule-list-filter-bar">
-            <div class="row" style="justify-content: flex-end; width: 100%;">
-                <input id="schedule-list-search" class="input" placeholder="Buscar por empleado...">
+            <div class="row" style="justify-content: flex-end; width: 100%; gap: 12px; flex-wrap: wrap;">
+                <div class="stack" style="min-width: 220px; flex: 1;">
+                    <label class="muted mini-label" for="schedule-list-search">Buscar por empleado</label>
+                    <input id="schedule-list-search" class="input" placeholder="Nombre o apellido">
+                </div>
+                <div class="stack" style="min-width: 240px; flex: 1;">
+                    <label class="muted mini-label" for="schedule-list-employee-filter">Seleccionar múltiples empleados</label>
+                    <select id="schedule-list-employee-filter" class="select" multiple size="6" style="width:100%;"></select>
+                    <button id="schedule-list-clear-filter" class="btn secondary" style="margin-top:6px; width:max-content;">Limpiar selección</button>
+                </div>
             </div>
         </div>
         <div id="schedule-list-content" class="card-c">
