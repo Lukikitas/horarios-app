@@ -312,7 +312,8 @@ export const ScheduleManager = {
     },
 
     handleSwapSelection(shiftId) {
-        const currentShift = this.findShiftById(shiftId);
+        const currentShiftData = this.findShiftWithDay(shiftId);
+        const currentShift = currentShiftData?.shift;
         if (!currentShift || !currentShift.employeeId) {
             showToast("Seleccioná un turno asignado para intercambiar", "warning");
             return;
@@ -331,7 +332,8 @@ export const ScheduleManager = {
             return;
         }
 
-        const otherShift = this.findShiftById(this.swapShiftSelectionId);
+        const otherShiftData = this.findShiftWithDay(this.swapShiftSelectionId);
+        const otherShift = otherShiftData?.shift;
         if (!otherShift || !otherShift.employeeId) {
             this.swapShiftSelectionId = null;
             showToast("El turno seleccionado ya no está asignado", "warning");
@@ -339,21 +341,64 @@ export const ScheduleManager = {
             return;
         }
 
-        this.commitChange(() => {
-            const tempEmp = currentShift.employeeId;
-            currentShift.employeeId = otherShift.employeeId;
-            otherShift.employeeId = tempEmp;
-        });
-        this.swapShiftSelectionId = null;
-        showToast("Turnos intercambiados", "success");
-        this.renderTable();
+        const validationIssues = this.validateSwap(currentShiftData, otherShiftData);
+        const proceedSwap = () => {
+            this.commitChange(() => {
+                const tempEmp = currentShift.employeeId;
+                currentShift.employeeId = otherShift.employeeId;
+                otherShift.employeeId = tempEmp;
+            });
+            this.swapShiftSelectionId = null;
+            showToast("Turnos intercambiados", "success");
+            this.renderTable();
+        };
+
+        if (validationIssues.length) {
+            showConfirmDialog({
+                title: "Intercambio con advertencias",
+                message: validationIssues.join("<br>") + "<br><br>¿Aplicar el intercambio de todos modos?"
+            }).then(confirmed => {
+                if (confirmed) proceedSwap();
+                else this.renderTable();
+            });
+        } else {
+            proceedSwap();
+        }
+    },
+
+    validateSwap(currentShiftData, otherShiftData) {
+        const issues = [];
+        const state = store.getState();
+        const employeeA = state.employees.find(e => e.id === currentShiftData.shift.employeeId);
+        const employeeB = state.employees.find(e => e.id === otherShiftData.shift.employeeId);
+        const weekId = state.activeWeek;
+
+        const days = this.getScheduleDaysArray();
+        const shiftsDayA = (days[currentShiftData.dayIndex] || []).filter(s => s.id !== currentShiftData.shift.id && s.id !== otherShiftData.shift.id);
+        const shiftsDayB = (days[otherShiftData.dayIndex] || []).filter(s => s.id !== otherShiftData.shift.id && s.id !== currentShiftData.shift.id);
+
+        const tempShiftForB = { ...currentShiftData.shift };
+        const tempShiftForA = { ...otherShiftData.shift };
+
+        const checkB = this.validateShiftForEmployee(employeeB, tempShiftForB, currentShiftData.dayIndex, weekId, shiftsDayA);
+        if (!checkB.pass) issues.push(`Para ${employeeB?.name || "empleado"}: ${checkB.message}`);
+
+        const checkA = this.validateShiftForEmployee(employeeA, tempShiftForA, otherShiftData.dayIndex, weekId, shiftsDayB);
+        if (!checkA.pass) issues.push(`Para ${employeeA?.name || "empleado"}: ${checkA.message}`);
+
+        return issues;
     },
 
     findShiftById(shiftId) {
+        const result = this.findShiftWithDay(shiftId);
+        return result?.shift || null;
+    },
+
+    findShiftWithDay(shiftId) {
         const days = this.getScheduleDaysArray();
         for (let dayIndex = 0; dayIndex < days.length; dayIndex++) {
             const found = days[dayIndex]?.find(s => s.id === shiftId);
-            if (found) return found;
+            if (found) return { shift: found, dayIndex };
         }
         return null;
     },
