@@ -320,7 +320,7 @@ export const ScheduleManager = {
 
         if (!this.swapShiftSelectionId) {
             this.swapShiftSelectionId = shiftId;
-            showToast("Seleccioná otro turno asignado para completar el intercambio", "info");
+            showToast("Turno marcado. Elegí otro turno asignado para completar el intercambio", "info");
             this.renderTable();
             return;
         }
@@ -350,8 +350,7 @@ export const ScheduleManager = {
     },
 
     findShiftById(shiftId) {
-        const schedule = getActiveSchedule();
-        const days = this.getScheduleDays(schedule);
+        const days = this.getScheduleDaysArray();
         for (let dayIndex = 0; dayIndex < days.length; dayIndex++) {
             const found = days[dayIndex]?.find(s => s.id === shiftId);
             if (found) return found;
@@ -1220,8 +1219,8 @@ export const ScheduleManager = {
     },
 
     getEmployeeWeekShifts(employeeId) {
-        const schedule = getActiveSchedule();
-        const days = this.getScheduleDays(schedule);
+        const days = this.getScheduleDaysArray();
+        if (!days || typeof days.forEach !== "function") return [];
         const shifts = [];
         days.forEach((dayShifts, dayIndex) => {
             (dayShifts || []).forEach(s => {
@@ -1288,12 +1287,13 @@ export const ScheduleManager = {
         this.activeTooltipAnchor = null;
     },
 
-    getScheduleDays(schedule) {
-        if (Array.isArray(schedule)) return schedule;
-        const days = [];
-        for (let i = 0; i < 7; i++) {
-            days[i] = schedule && Array.isArray(schedule[i]) ? schedule[i] : (schedule?.[i] || []);
-        }
+    getScheduleDaysArray(scheduleOverride) {
+        const schedule = scheduleOverride ?? getActiveSchedule();
+        const days = Array.from({ length: 7 }, (_, i) => {
+            const direct = schedule?.[i];
+            if (Array.isArray(direct)) return direct;
+            return [];
+        });
         return days;
     },
 
