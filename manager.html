@@ -19,11 +19,14 @@
   <div class="bar">
     <div class="bar-inner">
                 <button id="btn-view-requests" class="dropdown-item">Solicitudes</button>
-          <div class="row main-bar-left">
-            <div id="main-menu" class="main-menu">
-              <button id="btn-view-schedule" class="btn main-menu-btn">Horarios</button>
-              <button id="btn-view-employees" class="btn secondary main-menu-btn">Empleados</button>
-              <button id="btn-schedule-list" class="btn secondary main-menu-btn">Listado</button>
+        <div class="header-center">
+          <div id="week-selector-container" class="row week-selector">
+              <button id="btn-lock-week" class="btn secondary">🔓</button>
+              <button id="btn-prev-week" class="btn secondary">◄</button>
+              <button id="week-display" class="btn secondary"></button>
+              <button id="btn-next-week" class="btn secondary">►</button>
+          </div>
+          <div id="day-title" class="day-title"></div>
               <button id="btn-view-clock-ins" class="btn secondary main-menu-btn">Fichadas</button>
               <button id="btn-view-requests" class="btn secondary main-menu-btn">Solicitudes</button>
               <button id="btn-weekly-summary" class="btn secondary main-menu-btn">Resumen semanal</button>
