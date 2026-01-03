@@ -351,9 +351,9 @@ export const ScheduleManager = {
 
     findShiftById(shiftId) {
         const schedule = getActiveSchedule();
-        if (!schedule) return null;
-        for (let dayIndex = 0; dayIndex < schedule.length; dayIndex++) {
-            const found = schedule[dayIndex]?.find(s => s.id === shiftId);
+        const days = this.getScheduleDays(schedule);
+        for (let dayIndex = 0; dayIndex < days.length; dayIndex++) {
+            const found = days[dayIndex]?.find(s => s.id === shiftId);
             if (found) return found;
         }
         return null;
@@ -1221,9 +1221,9 @@ export const ScheduleManager = {
 
     getEmployeeWeekShifts(employeeId) {
         const schedule = getActiveSchedule();
-        if (!schedule) return [];
+        const days = this.getScheduleDays(schedule);
         const shifts = [];
-        schedule.forEach((dayShifts, dayIndex) => {
+        days.forEach((dayShifts, dayIndex) => {
             (dayShifts || []).forEach(s => {
                 if (s.employeeId === employeeId) {
                     shifts.push({
@@ -1286,6 +1286,15 @@ export const ScheduleManager = {
         }
         this.activeTooltipEl = null;
         this.activeTooltipAnchor = null;
+    },
+
+    getScheduleDays(schedule) {
+        if (Array.isArray(schedule)) return schedule;
+        const days = [];
+        for (let i = 0; i < 7; i++) {
+            days[i] = schedule && Array.isArray(schedule[i]) ? schedule[i] : (schedule?.[i] || []);
+        }
+        return days;
     },
 
     updateScheduleFiltersUI() {
