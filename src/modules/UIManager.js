@@ -11,11 +11,11 @@ export const UIManager = {
         const views = [
             { id: 'schedule', btn: '#btn-view-schedule' },
             { id: 'employees', btn: '#btn-view-employees' },
-            { id: 'templates', btn: '#btn-view-templates' },
-            { id: 'francos', btn: '#btn-view-francos' },
             { id: 'schedule-list', btn: '#btn-schedule-list' },
             { id: 'clock-ins', btn: '#btn-view-clock-ins' },
             { id: 'requests', btn: '#btn-view-requests' },
+            { id: 'templates', btn: '#btn-view-templates' },
+            { id: 'francos', btn: '#btn-view-francos' },
             { id: 'planilla-turno', btn: '#btn-planilla-turno' },
             { id: 'options', btn: '#btn-view-options' }
         ];
@@ -30,6 +30,7 @@ export const UIManager = {
         el("#btn-dark-mode")?.addEventListener("click", () => this.toggleDarkMode());
 
         this.bindActionsDropdown();
+        this.bindMoreDropdown();
 
         // Init Dark Mode
         if (localStorage.getItem("darkMode") === "enabled") {
@@ -38,8 +39,16 @@ export const UIManager = {
     },
 
     bindActionsDropdown() {
-        const btn = el('#btn-actions');
-        const dropdown = el('#actions-dropdown');
+        this.setupDropdown('#btn-actions', '#actions-dropdown');
+    },
+
+    bindMoreDropdown() {
+        this.setupDropdown('#btn-more', '#more-dropdown');
+    },
+
+    setupDropdown(btnSelector, dropdownSelector) {
+        const btn = el(btnSelector);
+        const dropdown = el(dropdownSelector);
         if (!btn || !dropdown) return;
 
         const hide = () => dropdown.classList.remove('show');
@@ -77,7 +86,6 @@ export const UIManager = {
         // Reset buttons
         document.querySelectorAll('.main-menu-btn').forEach(btn => {
             btn.classList.add('secondary');
-            // btn.classList.remove('main-menu-btn'); // Wait, they all keep the class, just toggle secondary
         });
 
         // Show specific view
