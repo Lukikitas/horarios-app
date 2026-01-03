@@ -934,6 +934,79 @@ body.dark-mode .b-warning { background: rgba(251, 191, 36, 0.16); color: #fde68a
   border-color: #7f1d1d;
 }
 
+/* Responsive: Mobile vertical layout */
+@media (max-width: 768px) {
+  .bar-inner.main-bar-row {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  .main-bar-left {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .main-menu {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    gap: 8px;
+  }
+  .main-menu .btn {
+    flex: 1 1 calc(50% - 8px);
+    min-width: 140px;
+  }
+  .actions-dropdown {
+    width: 100%;
+  }
+  .actions-dropdown .btn {
+    width: 100%;
+    text-align: left;
+  }
+  .week-selector {
+    width: 100%;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin: 0;
+  }
+  .main-bar-right {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .card-h-controls {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .controls-left,
+  .controls-center,
+  .controls-right {
+    grid-column: 1;
+    width: 100%;
+  }
+  .controls-group {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+  .controls-group .control-item {
+    flex: 1 1 140px;
+  }
+  .day-title-row {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .day-metrics,
+  .weekly-stats {
+    flex-wrap: wrap;
+  }
+  .weekly-stats {
+    gap: 6px;
+  }
+  .controls-right #dayTabs {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+}
+
 .controls-group {
   display: flex;
   align-items: center;
