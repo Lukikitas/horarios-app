@@ -1,0 +1,115 @@
+import { el } from '../utils/dom.js';
+import { store } from '../store/Store.js';
+import { DataManager } from '../services/DataManager.js';
+
+export const UIManager = {
+    init() {
+        this.bindEvents();
+    },
+
+    bindEvents() {
+        const views = [
+            { id: 'schedule', btn: '#btn-view-schedule' },
+            { id: 'employees', btn: '#btn-view-employees' },
+            { id: 'templates', btn: '#btn-view-templates' },
+            { id: 'francos', btn: '#btn-view-francos' },
+            { id: 'schedule-list', btn: '#btn-schedule-list' },
+            { id: 'clock-ins', btn: '#btn-view-clock-ins' },
+            { id: 'requests', btn: '#btn-view-requests' },
+            { id: 'planilla-turno', btn: '#btn-planilla-turno' }
+        ];
+
+        views.forEach(v => {
+            const btn = el(v.btn);
+            if (btn) {
+                btn.addEventListener('click', () => this.showView(v.id));
+            }
+        });
+
+        el("#btn-dark-mode")?.addEventListener("click", () => this.toggleDarkMode());
+
+        // Init Dark Mode
+        if (localStorage.getItem("darkMode") === "enabled") {
+            this.setDarkMode(true);
+        }
+    },
+
+    showView(viewName) {
+        // Hide all views
+        const allViews = [
+            'view-schedule', 'view-employees', 'view-templates',
+            'view-schedule-list', 'view-francos', 'view-clock-ins',
+            'view-planilla-turno', 'view-requests'
+        ];
+        allViews.forEach(id => {
+            const elem = el('#' + id);
+            if(elem) elem.style.display = 'none';
+        });
+
+        // Reset buttons
+        document.querySelectorAll('.main-menu-btn').forEach(btn => {
+            btn.classList.add('secondary');
+            // btn.classList.remove('main-menu-btn'); // Wait, they all keep the class, just toggle secondary
+        });
+
+        // Show specific view
+        let viewId = '';
+        let btnId = '';
+
+        switch(viewName) {
+            case 'schedule': viewId='view-schedule'; btnId='#btn-view-schedule'; break;
+            case 'employees': viewId='view-employees'; btnId='#btn-view-employees'; break;
+            case 'templates': viewId='view-templates'; btnId='#btn-view-templates'; break;
+            case 'francos': viewId='view-francos'; btnId='#btn-view-francos'; break;
+            case 'schedule-list': viewId='view-schedule-list'; btnId='#btn-schedule-list'; break;
+            case 'clock-ins': viewId='view-clock-ins'; btnId='#btn-view-clock-ins'; break;
+            case 'requests': viewId='view-requests'; btnId='#btn-view-requests'; break;
+            case 'planilla-turno': viewId='view-planilla-turno'; btnId='#btn-planilla-turno'; break;
+        }
+
+        const viewEl = el('#' + viewId);
+        if(viewEl) viewEl.style.display = 'block';
+
+        const btnEl = el(btnId);
+        if(btnEl) btnEl.classList.remove('secondary');
+
+        // Handle special logic (like cleaning temp state)
+        if (viewName !== 'planilla-turno') {
+             store.setState({ tempPlanillaState: null });
+             const btn = el("#btn-edit-planilla");
+             if (btn) {
+                 btn.textContent = "Editar Planilla";
+                 btn.classList.remove("btn-primary");
+                 btn.classList.add("btn-secondary");
+             }
+        }
+
+        store.setState({ activeView: viewName }); // Optional: store current view
+
+        // Trigger render for the specific view?
+        // Ideally we just trigger a global render or the store listeners handle it.
+        // But for now, let's call the global render via a custom event or callback if we can't import it.
+        // Actually, we can assume components listen to store, BUT view switching doesn't change data, only visibility.
+        // Components should know to render if their container is visible.
+        // We will dispatch a custom event 'view-changed'.
+        document.dispatchEvent(new CustomEvent('view-changed', { detail: { view: viewName } }));
+    },
+
+    toggleDarkMode() {
+        const isDark = document.body.classList.contains("dark-mode");
+        this.setDarkMode(!isDark);
+    },
+
+    setDarkMode(isDark) {
+        const btn = el("#btn-dark-mode");
+        if (isDark) {
+            document.body.classList.add("dark-mode");
+            if(btn) btn.textContent = "☀️";
+            localStorage.setItem("darkMode", "enabled");
+        } else {
+            document.body.classList.remove("dark-mode");
+            if(btn) btn.textContent = "🌙";
+            localStorage.setItem("darkMode", "disabled");
+        }
+    }
+};
