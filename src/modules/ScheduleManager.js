@@ -1399,7 +1399,7 @@ export const ScheduleManager = {
         return !!schedule?.isLocked;
     },
 
-    suggestShiftsForProductivity(targetProductivity = 6.4) {
+    suggestShiftsForProductivity(targetProductivity = 6.5) {
         if (this.isWeekLocked()) {
             showToast("La semana está bloqueada. Solo podés ver los turnos.", "warning");
             return;
@@ -1476,6 +1476,7 @@ export const ScheduleManager = {
         this.ensureDay(dayIndex);
 
         const suggested = [];
+        let totalSuggestedHours = 0;
         availableRoles.forEach(role => {
             let remaining = hoursPerRole[role] || 0;
             if (remaining <= 0) return;
@@ -1488,10 +1489,19 @@ export const ScheduleManager = {
                 .map(([slot]) => Number(slot));
 
             let idx = 0;
-            while (remaining > 0) {
+            while (remaining > 0 && totalSuggestedHours < requiredHours - 0.25) {
                 const startSlot = startSlots.length ? startSlots[idx % startSlots.length] : fallbackStart;
-                const endSlot = Math.min(SLOTS.length - 1, startSlot + shiftSlotLength - 1);
-                const hours = (endSlot - startSlot + 1) / 2;
+                let endSlot = Math.min(SLOTS.length - 1, startSlot + shiftSlotLength - 1);
+                let hours = (endSlot - startSlot + 1) / 2;
+
+                const remainingGlobal = requiredHours - totalSuggestedHours;
+                if (hours > remainingGlobal && remainingGlobal > 0.5) {
+                    const allowedSlots = Math.max(1, Math.round(remainingGlobal * 2));
+                    endSlot = Math.min(SLOTS.length - 1, startSlot + allowedSlots - 1);
+                    hours = (endSlot - startSlot + 1) / 2;
+                } else if (hours > remainingGlobal && remainingGlobal <= 0.5) {
+                    break;
+                }
 
                 suggested.push({
                     id: crypto.randomUUID(),
@@ -1502,11 +1512,15 @@ export const ScheduleManager = {
                 });
 
                 remaining -= hours;
+                totalSuggestedHours += hours;
                 idx++;
             }
         });
 
-        const totalSuggestedHours = suggested.reduce((acc, s) => acc + ((s.endSlot - s.startSlot + 1) / 2), 0);
+        if (!suggested.length) {
+            showToast("No se pudieron generar turnos sugeridos.", "warning");
+            return;
+        }
         const estimatedProductivity = projectedTickets / totalSuggestedHours;
 
         showConfirmDialog({
