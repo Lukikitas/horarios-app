@@ -157,6 +157,7 @@ export const ScheduleManager = {
             store.setState({ scheduleSelectedEmployeeIds: Array.from(selectedSet) });
             this.renderScheduleList();
         });
+        el("#btn-suggest-productivity")?.addEventListener("click", () => this.suggestShiftsForProductivity());
 
         // Calendar Modal
         el("#week-display")?.addEventListener("click", () => {
@@ -1396,6 +1397,115 @@ export const ScheduleManager = {
     isWeekLocked() {
         const schedule = getActiveSchedule();
         return !!schedule?.isLocked;
+    },
+
+    suggestShiftsForProductivity(targetProductivity = 6.4) {
+        if (this.isWeekLocked()) {
+            showToast("La semana está bloqueada. Solo podés ver los turnos.", "warning");
+            return;
+        }
+
+        const state = store.getState();
+        const projectedTickets = Number((state.projectedTickets[state.activeWeek] || {})[state.activeDay] || 0);
+        if (!projectedTickets || projectedTickets <= 0) {
+            showToast("Ingresá tickets proyectados para el día.", "warning");
+            return;
+        }
+
+        const requiredHours = projectedTickets / targetProductivity;
+        if (!Number.isFinite(requiredHours) || requiredHours <= 0) {
+            showToast("No se pudo calcular las horas necesarias.", "warning");
+            return;
+        }
+
+        // Recolectar histórico de roles/slots del mismo día en semanas previas
+        const roleHours = {};
+        const startSlotCount = {};
+        const shiftLengths = [];
+        const dayIndex = state.activeDay;
+        const schedules = state.schedules || {};
+        Object.entries(schedules).forEach(([weekKey, weekData]) => {
+            if (weekKey === state.activeWeek || !weekData) return;
+            const dayShifts = weekData[dayIndex] || [];
+            dayShifts.forEach(shift => {
+                if (shift.startSlot === undefined || shift.endSlot === undefined) return;
+                const hours = (shift.endSlot - shift.startSlot + 1) / 2;
+                if (hours > 0) {
+                    roleHours[shift.role] = (roleHours[shift.role] || 0) + hours;
+                    shiftLengths.push(hours);
+                }
+                startSlotCount[shift.startSlot] = (startSlotCount[shift.startSlot] || 0) + 1;
+            });
+        });
+
+        const totalRoleHours = Object.values(roleHours).reduce((a, b) => a + b, 0);
+        const availableRoles = state.roles?.length ? state.roles.map(r => r.key) : ROLES.map(r => r.key);
+        const roleWeights = {};
+        if (totalRoleHours > 0) {
+            availableRoles.forEach(r => {
+                roleWeights[r] = (roleHours[r] || 0) / totalRoleHours;
+            });
+        } else {
+            const even = availableRoles.length ? 1 / availableRoles.length : 0;
+            availableRoles.forEach(r => roleWeights[r] = even);
+        }
+
+        const median = arr => {
+            if (!arr.length) return null;
+            const sorted = [...arr].sort((a, b) => a - b);
+            const mid = Math.floor(sorted.length / 2);
+            return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+        };
+        const defaultShiftHours = median(shiftLengths) || 6;
+        const shiftSlotLength = Math.max(1, Math.round(defaultShiftHours * 2));
+
+        const sortedStartSlots = Object.entries(startSlotCount)
+            .sort((a, b) => b[1] - a[1])
+            .map(([slot]) => Number(slot));
+        const fallbackStart = SLOTS.find(s => s.label === "09:00")?.index ?? 18;
+
+        const totalShifts = Math.max(1, Math.ceil(requiredHours / (shiftSlotLength / 2)));
+        const schedule = getActiveSchedule();
+        this.ensureDay(dayIndex);
+
+        const pickRole = (i) => {
+            const entries = Object.entries(roleWeights);
+            if (!entries.length) return availableRoles[0] || ROLES[0].key;
+            let acc = 0;
+            const mod = (i / totalShifts);
+            for (const [role, weight] of entries) {
+                acc += weight;
+                if (mod <= acc) return role;
+            }
+            return entries[entries.length - 1][0];
+        };
+
+        const suggested = [];
+        for (let i = 0; i < totalShifts; i++) {
+            const startSlot = sortedStartSlots[i % (sortedStartSlots.length || 1)] ?? fallbackStart;
+            const endSlot = Math.min(SLOTS.length - 1, startSlot + shiftSlotLength - 1);
+            suggested.push({
+                id: crypto.randomUUID(),
+                role: pickRole(i),
+                startSlot,
+                endSlot,
+                employeeId: null
+            });
+        }
+
+        const totalSuggestedHours = suggested.reduce((acc, s) => acc + ((s.endSlot - s.startSlot + 1) / 2), 0);
+        const estimatedProductivity = projectedTickets / totalSuggestedHours;
+
+        showConfirmDialog({
+            title: "Sugerencia de turnos",
+            message: `Tickets proyectados: ${projectedTickets}<br>Horas objetivo: ${requiredHours.toFixed(1)}hs<br>Horas sugeridas: ${totalSuggestedHours.toFixed(1)}hs<br>Prod. estimada: ${estimatedProductivity.toFixed(2)}<br><br>¿Agregar los turnos sugeridos al día?`
+        }).then(confirmed => {
+            if (!confirmed) return;
+            this.commitChange(() => {
+                schedule[dayIndex].push(...suggested);
+            });
+            showToast("Turnos sugeridos agregados.", "success");
+        });
     },
 
     updateScheduleFiltersUI() {
