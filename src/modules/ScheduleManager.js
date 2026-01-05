@@ -1420,8 +1420,9 @@ export const ScheduleManager = {
 
         // Recolectar histórico de roles/slots del mismo día en semanas previas
         const roleHours = {};
-        const startSlotCount = {};
-        const shiftLengths = [];
+        const roleStartCount = {};
+        const roleShiftLengths = {};
+        const globalStartCount = {};
         const dayIndex = state.activeDay;
         const schedules = state.schedules || {};
         Object.entries(schedules).forEach(([weekKey, weekData]) => {
@@ -1432,9 +1433,12 @@ export const ScheduleManager = {
                 const hours = (shift.endSlot - shift.startSlot + 1) / 2;
                 if (hours > 0) {
                     roleHours[shift.role] = (roleHours[shift.role] || 0) + hours;
-                    shiftLengths.push(hours);
+                    roleShiftLengths[shift.role] = roleShiftLengths[shift.role] || [];
+                    roleShiftLengths[shift.role].push(hours);
                 }
-                startSlotCount[shift.startSlot] = (startSlotCount[shift.startSlot] || 0) + 1;
+                roleStartCount[shift.role] = roleStartCount[shift.role] || {};
+                roleStartCount[shift.role][shift.startSlot] = (roleStartCount[shift.role][shift.startSlot] || 0) + 1;
+                globalStartCount[shift.startSlot] = (globalStartCount[shift.startSlot] || 0) + 1;
             });
         });
 
@@ -1451,47 +1455,56 @@ export const ScheduleManager = {
         }
 
         const median = arr => {
-            if (!arr.length) return null;
+            if (!arr || !arr.length) return null;
             const sorted = [...arr].sort((a, b) => a - b);
             const mid = Math.floor(sorted.length / 2);
             return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
         };
-        const defaultShiftHours = median(shiftLengths) || 6;
-        const shiftSlotLength = Math.max(1, Math.round(defaultShiftHours * 2));
 
-        const sortedStartSlots = Object.entries(startSlotCount)
-            .sort((a, b) => b[1] - a[1])
-            .map(([slot]) => Number(slot));
-        const fallbackStart = SLOTS.find(s => s.label === "09:00")?.index ?? 18;
+        const fallbackStart = (() => {
+            const sorted = Object.entries(globalStartCount).sort((a, b) => b[1] - a[1]);
+            if (sorted.length) return Number(sorted[0][0]);
+            return SLOTS.find(s => s.label === "09:00")?.index ?? 18;
+        })();
 
-        const totalShifts = Math.max(1, Math.ceil(requiredHours / (shiftSlotLength / 2)));
+        const hoursPerRole = {};
+        availableRoles.forEach(r => {
+            hoursPerRole[r] = requiredHours * (roleWeights[r] || 0);
+        });
+
         const schedule = getActiveSchedule();
         this.ensureDay(dayIndex);
 
-        const pickRole = (i) => {
-            const entries = Object.entries(roleWeights);
-            if (!entries.length) return availableRoles[0] || ROLES[0].key;
-            let acc = 0;
-            const mod = (i / totalShifts);
-            for (const [role, weight] of entries) {
-                acc += weight;
-                if (mod <= acc) return role;
-            }
-            return entries[entries.length - 1][0];
-        };
-
         const suggested = [];
-        for (let i = 0; i < totalShifts; i++) {
-            const startSlot = sortedStartSlots[i % (sortedStartSlots.length || 1)] ?? fallbackStart;
-            const endSlot = Math.min(SLOTS.length - 1, startSlot + shiftSlotLength - 1);
-            suggested.push({
-                id: crypto.randomUUID(),
-                role: pickRole(i),
-                startSlot,
-                endSlot,
-                employeeId: null
-            });
-        }
+        availableRoles.forEach(role => {
+            let remaining = hoursPerRole[role] || 0;
+            if (remaining <= 0) return;
+
+            const roleMedian = median(roleShiftLengths[role] || []) || 6;
+            const shiftSlotLength = Math.max(1, Math.round(roleMedian * 2));
+
+            const startSlots = Object.entries(roleStartCount[role] || {})
+                .sort((a, b) => b[1] - a[1])
+                .map(([slot]) => Number(slot));
+
+            let idx = 0;
+            while (remaining > 0) {
+                const startSlot = startSlots.length ? startSlots[idx % startSlots.length] : fallbackStart;
+                const endSlot = Math.min(SLOTS.length - 1, startSlot + shiftSlotLength - 1);
+                const hours = (endSlot - startSlot + 1) / 2;
+
+                suggested.push({
+                    id: crypto.randomUUID(),
+                    role,
+                    startSlot,
+                    endSlot,
+                    employeeId: null
+                });
+
+                remaining -= hours;
+                idx++;
+            }
+        });
 
         const totalSuggestedHours = suggested.reduce((acc, s) => acc + ((s.endSlot - s.startSlot + 1) / 2), 0);
         const estimatedProductivity = projectedTickets / totalSuggestedHours;
