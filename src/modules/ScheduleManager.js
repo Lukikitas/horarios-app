@@ -347,6 +347,10 @@ export const ScheduleManager = {
     },
 
     handleSwapSelection(shiftId) {
+        if (this.isWeekLocked()) {
+            showToast("La semana está bloqueada. Solo podés ver los turnos.", "warning");
+            return;
+        }
         const currentShiftData = this.findShiftWithDay(shiftId);
         const currentShift = currentShiftData?.shift;
         if (!currentShift || !currentShift.employeeId) {
@@ -865,6 +869,10 @@ export const ScheduleManager = {
     },
 
     commitChange(action) {
+        if (this.isWeekLocked()) {
+            showToast("La semana está bloqueada. Solo podés ver los turnos.", "warning");
+            return;
+        }
         const currentSchedule = getActiveSchedule();
         historyManager.push(currentSchedule);
         action();
@@ -914,6 +922,10 @@ export const ScheduleManager = {
     },
 
     addUnassignedShift() {
+        if (this.isWeekLocked()) {
+            showToast("La semana está bloqueada. Solo podés ver los turnos.", "warning");
+            return;
+        }
         const role = el("#activeRole").value;
         const startSlot = Number(el("#formStart").value);
         const endSlot = Number(el("#formEnd").value);
@@ -1379,6 +1391,11 @@ export const ScheduleManager = {
             return [];
         });
         return days;
+    },
+
+    isWeekLocked() {
+        const schedule = getActiveSchedule();
+        return !!schedule?.isLocked;
     },
 
     updateScheduleFiltersUI() {
@@ -1940,6 +1957,12 @@ export const ScheduleManager = {
         const schedule = getActiveSchedule();
         if(!schedule) return;
 
+        if (this.isWeekLocked()) {
+            content.classList.add("locked-view");
+        } else {
+            content.classList.remove("locked-view");
+        }
+
         const searchTerm = (state.scheduleSearchTerm || '').toLowerCase().trim();
         const selectedIds = new Set((state.scheduleSelectedEmployeeIds || []).map(String));
 
@@ -2123,6 +2146,10 @@ export const ScheduleManager = {
             const targetDayIndex = parseInt(e.target.closest('td').dataset.day, 10);
 
             const schedule = getActiveSchedule();
+            if (this.isWeekLocked()) {
+                showToast("La semana está bloqueada. Solo podés ver los turnos.", "warning");
+                return;
+            }
             const sourceShift = schedule[sourceDayIndex]?.find(s => s.id === sourceShiftId);
             if (!sourceShift) return;
 
