@@ -56,6 +56,7 @@ const defaultState = {
     scheduleRoleFilters: [],
     scheduleSearchTerm: '',
     scheduleSelectedEmployeeIds: [],
+    scheduleSelectedEmployeeSearch: '',
     breaks: {},
     tempPlanillaState: null,
     rappiCode: '',

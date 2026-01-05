@@ -137,8 +137,13 @@ export const ScheduleManager = {
         el("#schedule-list-multi-modal")?.addEventListener("click", (e) => {
             if (e.target === el("#schedule-list-multi-modal")) closeMultiModal();
         });
+        el("#schedule-list-multi-search")?.addEventListener("input", (e) => {
+            store.setState({ scheduleSelectedEmployeeSearch: e.target.value });
+            this.updateScheduleListFiltersUI();
+        });
         el("#schedule-list-clear-filter")?.addEventListener("click", () => {
             store.setState({ scheduleSelectedEmployeeIds: [] });
+            store.setState({ scheduleSelectedEmployeeSearch: '' });
             this.updateScheduleListFiltersUI();
             this.renderScheduleList();
         });
@@ -1407,13 +1412,25 @@ export const ScheduleManager = {
         }
 
         const container = el("#schedule-list-multi-container");
+        const searchBox = el("#schedule-list-multi-search");
+        if (searchBox && searchBox.value !== (state.scheduleSelectedEmployeeSearch || "")) {
+            searchBox.value = state.scheduleSelectedEmployeeSearch || "";
+        }
         if (!container) return;
 
         const selectedSet = new Set((state.scheduleSelectedEmployeeIds || []).map(String));
+        const searchTerm = (state.scheduleSelectedEmployeeSearch || '').toLowerCase().trim();
         clear(container);
 
         const employees = state.employees.slice().sort((a, b) => (a.displayName || a.name || '').localeCompare(b.displayName || b.name || ''));
-        employees.forEach(emp => {
+        employees
+        .filter(emp => {
+            if (!searchTerm) return true;
+            const display = (emp.displayName || '').toLowerCase();
+            const full = (emp.name || '').toLowerCase();
+            return display.includes(searchTerm) || full.includes(searchTerm);
+        })
+        .forEach(emp => {
             const checkbox = create("input", {
                 type: "checkbox",
                 className: "schedule-list-multi-checkbox",
@@ -1470,8 +1487,13 @@ export const ScheduleManager = {
 
         const scheduleTbody = el('#view-schedule #tbody');
         if (scheduleTbody) {
-            scheduleTbody.style.pointerEvents = isLocked ? 'none' : 'auto';
-            scheduleTbody.style.opacity = isLocked ? 0.7 : 1;
+            scheduleTbody.style.pointerEvents = 'auto'; // permitir tooltip
+            scheduleTbody.style.opacity = 1;
+        }
+
+        const scheduleTable = document.querySelector('#view-schedule .table');
+        if (scheduleTable) {
+            scheduleTable.style.border = isLocked ? '2px solid var(--c-danger, #e53e3e)' : '';
         }
 
         const scheduleListContent = el('#schedule-list-content');
