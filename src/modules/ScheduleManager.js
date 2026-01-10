@@ -1412,47 +1412,7 @@ export const ScheduleManager = {
             return;
         }
 
-        const requiredHours = projectedTickets / targetProductivity;
-        if (!Number.isFinite(requiredHours) || requiredHours <= 0) {
-            showToast("No se pudo calcular las horas necesarias.", "warning");
-            return;
-        }
-
-        // Recolectar histórico de roles/slots del mismo día en semanas previas
-        const roleHours = {};
-        const roleStartCount = {};
-        const roleShiftLengths = {};
-        const globalStartCount = {};
         const dayIndex = state.activeDay;
-        const schedules = state.schedules || {};
-        Object.entries(schedules).forEach(([weekKey, weekData]) => {
-            if (weekKey === state.activeWeek || !weekData) return;
-            const dayShifts = weekData[dayIndex] || [];
-            dayShifts.forEach(shift => {
-                if (shift.startSlot === undefined || shift.endSlot === undefined) return;
-                const hours = (shift.endSlot - shift.startSlot + 1) / 2;
-                if (hours > 0) {
-                    roleHours[shift.role] = (roleHours[shift.role] || 0) + hours;
-                    roleShiftLengths[shift.role] = roleShiftLengths[shift.role] || [];
-                    roleShiftLengths[shift.role].push(hours);
-                }
-                roleStartCount[shift.role] = roleStartCount[shift.role] || {};
-                roleStartCount[shift.role][shift.startSlot] = (roleStartCount[shift.role][shift.startSlot] || 0) + 1;
-                globalStartCount[shift.startSlot] = (globalStartCount[shift.startSlot] || 0) + 1;
-            });
-        });
-
-        const totalRoleHours = Object.values(roleHours).reduce((a, b) => a + b, 0);
-        const availableRoles = state.roles?.length ? state.roles.map(r => r.key) : ROLES.map(r => r.key);
-        const roleWeights = {};
-        if (totalRoleHours > 0) {
-            availableRoles.forEach(r => {
-                roleWeights[r] = (roleHours[r] || 0) / totalRoleHours;
-            });
-        } else {
-            const even = availableRoles.length ? 1 / availableRoles.length : 0;
-            availableRoles.forEach(r => roleWeights[r] = even);
-        }
 
         const median = arr => {
             if (!arr || !arr.length) return null;
@@ -1461,75 +1421,151 @@ export const ScheduleManager = {
             return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
         };
 
-        const fallbackStart = (() => {
-            const sorted = Object.entries(globalStartCount).sort((a, b) => b[1] - a[1]);
-            if (sorted.length) return Number(sorted[0][0]);
-            return SLOTS.find(s => s.label === "09:00")?.index ?? 18;
-        })();
+        const generateForTarget = (targetProd) => {
+            const requiredHours = projectedTickets / targetProd;
+            if (!Number.isFinite(requiredHours) || requiredHours <= 0) return null;
 
-        const hoursPerRole = {};
-        availableRoles.forEach(r => {
-            hoursPerRole[r] = requiredHours * (roleWeights[r] || 0);
-        });
+            const roleHours = {};
+            const roleStartCount = {};
+            const roleShiftLengths = {};
+            const globalStartCount = {};
+            const schedules = state.schedules || {};
+            Object.entries(schedules).forEach(([weekKey, weekData]) => {
+                if (weekKey === state.activeWeek || !weekData) return;
+                const dayShifts = weekData[dayIndex] || [];
+                dayShifts.forEach(shift => {
+                    if (shift.startSlot === undefined || shift.endSlot === undefined) return;
+                    const hours = (shift.endSlot - shift.startSlot + 1) / 2;
+                    if (hours > 0) {
+                        roleHours[shift.role] = (roleHours[shift.role] || 0) + hours;
+                        roleShiftLengths[shift.role] = roleShiftLengths[shift.role] || [];
+                        roleShiftLengths[shift.role].push(hours);
+                    }
+                    roleStartCount[shift.role] = roleStartCount[shift.role] || {};
+                    roleStartCount[shift.role][shift.startSlot] = (roleStartCount[shift.role][shift.startSlot] || 0) + 1;
+                    globalStartCount[shift.startSlot] = (globalStartCount[shift.startSlot] || 0) + 1;
+                });
+            });
 
-        const schedule = getActiveSchedule();
-        this.ensureDay(dayIndex);
+            const totalRoleHours = Object.values(roleHours).reduce((a, b) => a + b, 0);
+            const availableRoles = state.roles?.length ? state.roles.map(r => r.key) : ROLES.map(r => r.key);
+            const roleWeights = {};
+            if (totalRoleHours > 0) {
+                availableRoles.forEach(r => {
+                    roleWeights[r] = (roleHours[r] || 0) / totalRoleHours;
+                });
+            } else {
+                const even = availableRoles.length ? 1 / availableRoles.length : 0;
+                availableRoles.forEach(r => roleWeights[r] = even);
+            }
 
-        const suggested = [];
-        let totalSuggestedHours = 0;
-        availableRoles.forEach(role => {
-            let remaining = hoursPerRole[role] || 0;
-            if (remaining <= 0) return;
+            const fallbackStart = (() => {
+                const sorted = Object.entries(globalStartCount).sort((a, b) => b[1] - a[1]);
+                if (sorted.length) return Number(sorted[0][0]);
+                return SLOTS.find(s => s.label === "09:00")?.index ?? 18;
+            })();
 
-            const roleMedian = median(roleShiftLengths[role] || []) || 6;
-            const shiftSlotLength = Math.max(1, Math.round(roleMedian * 2));
+            const hoursPerRole = {};
+            availableRoles.forEach(r => {
+                hoursPerRole[r] = requiredHours * (roleWeights[r] || 0);
+            });
 
-            const startSlots = Object.entries(roleStartCount[role] || {})
-                .sort((a, b) => b[1] - a[1])
-                .map(([slot]) => Number(slot));
+            const schedule = getActiveSchedule();
+            this.ensureDay(dayIndex);
 
-            let idx = 0;
-            while (remaining > 0 && totalSuggestedHours < requiredHours - 0.25) {
-                const startSlot = startSlots.length ? startSlots[idx % startSlots.length] : fallbackStart;
-                let endSlot = Math.min(SLOTS.length - 1, startSlot + shiftSlotLength - 1);
-                let hours = (endSlot - startSlot + 1) / 2;
+            const suggested = [];
+            let totalSuggestedHours = 0;
+            availableRoles.forEach(role => {
+                let remaining = hoursPerRole[role] || 0;
+                if (remaining <= 0) return;
 
-                const remainingGlobal = requiredHours - totalSuggestedHours;
-                if (hours > remainingGlobal && remainingGlobal > 0.5) {
-                    const allowedSlots = Math.max(1, Math.round(remainingGlobal * 2));
-                    endSlot = Math.min(SLOTS.length - 1, startSlot + allowedSlots - 1);
-                    hours = (endSlot - startSlot + 1) / 2;
-                } else if (hours > remainingGlobal && remainingGlobal <= 0.5) {
-                    break;
+                const roleMedian = median(roleShiftLengths[role] || []) || 6;
+                const shiftSlotLength = Math.max(1, Math.round(roleMedian * 2));
+
+                const startSlots = Object.entries(roleStartCount[role] || {})
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([slot]) => Number(slot));
+
+                // Seed shift en el horario más frecuente del rol para respetar patrones típicos del día (ej. descarga 06:00 martes/sábado)
+                if (startSlots.length && totalSuggestedHours < requiredHours - 0.25 && remaining > 0) {
+                    const startSlot = startSlots[0];
+                    const endSlot = Math.min(SLOTS.length - 1, startSlot + shiftSlotLength - 1);
+                    const hours = (endSlot - startSlot + 1) / 2;
+                    suggested.push({
+                        id: crypto.randomUUID(),
+                        role,
+                        startSlot,
+                        endSlot,
+                        employeeId: null
+                    });
+                    remaining -= hours;
+                    totalSuggestedHours += hours;
                 }
 
-                suggested.push({
-                    id: crypto.randomUUID(),
-                    role,
-                    startSlot,
-                    endSlot,
-                    employeeId: null
-                });
+                let idx = 0;
+                while (remaining > 0 && totalSuggestedHours < requiredHours - 0.25) {
+                    const startSlot = startSlots.length ? startSlots[idx % startSlots.length] : fallbackStart;
+                    let endSlot = Math.min(SLOTS.length - 1, startSlot + shiftSlotLength - 1);
+                    let hours = (endSlot - startSlot + 1) / 2;
 
-                remaining -= hours;
-                totalSuggestedHours += hours;
-                idx++;
+                    const remainingGlobal = requiredHours - totalSuggestedHours;
+                    if (hours > remainingGlobal && remainingGlobal > 0.5) {
+                        const allowedSlots = Math.max(1, Math.round(remainingGlobal * 2));
+                        endSlot = Math.min(SLOTS.length - 1, startSlot + allowedSlots - 1);
+                        hours = (endSlot - startSlot + 1) / 2;
+                    } else if (hours > remainingGlobal && remainingGlobal <= 0.5) {
+                        break;
+                    }
+
+                    suggested.push({
+                        id: crypto.randomUUID(),
+                        role,
+                        startSlot,
+                        endSlot,
+                        employeeId: null
+                    });
+
+                    remaining -= hours;
+                    totalSuggestedHours += hours;
+                    idx++;
+                }
+            });
+
+            if (!suggested.length) return null;
+            const estimatedProductivity = projectedTickets / totalSuggestedHours;
+            return { suggested, totalSuggestedHours, requiredHours, estimatedProductivity, targetProd };
+        };
+
+        const targets = [6.5, 6.4];
+        let result = null;
+        let usedTarget = null;
+        for (const target of targets) {
+            const attempt = generateForTarget(target);
+            if (attempt && attempt.estimatedProductivity >= target - 0.05) {
+                result = attempt;
+                usedTarget = target;
+                break;
             }
-        });
+            if (!result || (attempt && attempt.estimatedProductivity > result.estimatedProductivity)) {
+                result = attempt;
+                usedTarget = target;
+            }
+        }
 
-        if (!suggested.length) {
+        if (!result || !result.suggested?.length) {
             showToast("No se pudieron generar turnos sugeridos.", "warning");
             return;
         }
-        const estimatedProductivity = projectedTickets / totalSuggestedHours;
 
         showConfirmDialog({
             title: "Sugerencia de turnos",
-            message: `Tickets proyectados: ${projectedTickets}<br>Horas objetivo: ${requiredHours.toFixed(1)}hs<br>Horas sugeridas: ${totalSuggestedHours.toFixed(1)}hs<br>Prod. estimada: ${estimatedProductivity.toFixed(2)}<br><br>¿Agregar los turnos sugeridos al día?`
+            message: `Tickets proyectados: ${projectedTickets}<br>Meta de productividad: ${usedTarget.toFixed(1)}<br>Horas objetivo: ${(projectedTickets / usedTarget).toFixed(1)}hs<br>Horas sugeridas: ${result.totalSuggestedHours.toFixed(1)}hs<br>Prod. estimada: ${result.estimatedProductivity.toFixed(2)}<br><br>¿Agregar los turnos sugeridos al día?`
         }).then(confirmed => {
             if (!confirmed) return;
+            const schedule = getActiveSchedule();
+            this.ensureDay(state.activeDay);
             this.commitChange(() => {
-                schedule[dayIndex].push(...suggested);
+                schedule[state.activeDay].push(...result.suggested);
             });
             showToast("Turnos sugeridos agregados.", "success");
         });
