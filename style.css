@@ -145,7 +145,8 @@
   .namecol{position:sticky;left:0;background:#fff;border-right:1px solid var(--border);z-index:5;padding:6px 10px;display:flex;gap:8px;align-items:center}
   .name{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .stars{display:flex;gap:4px;align-items:center;min-width:0;flex-wrap:wrap}
-  .slot-h{font-size:10px;color:var(--muted);text-align:center;border-left:1px solid var(--border);padding:6px 0}
+.slot-h{font-size:10px;color:var(--muted);text-align:center;border-left:1px solid var(--border);padding:6px 0}
+.slot.hovered-slot-column,.slot-h.hovered-slot-column{box-shadow:inset 0 0 0 9999px rgba(15,23,42,0.06)}
   .all-star-indicator{color: #f59e0b;opacity: 0.5;font-size: 10px;height: 10px;}
   .slot{height:40px;position:relative;cursor:crosshair;user-select:none; padding: 4px 2px;}
   .slot.assigned .label{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:#fff}

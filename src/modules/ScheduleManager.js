@@ -159,6 +159,8 @@ export const ScheduleManager = {
         });
         el("#btn-suggest-productivity")?.addEventListener("click", () => this.suggestShiftsForProductivity());
 
+        this.initSlotHoverHighlight();
+
         // Calendar Modal
         el("#week-display")?.addEventListener("click", () => {
             this.calendarDate = new Date(store.getState().activeWeek + "T12:00:00Z");
@@ -258,6 +260,38 @@ export const ScheduleManager = {
                 shiftDuration.textContent = "";
             }
         }
+    },
+
+    initSlotHoverHighlight() {
+        const table = el("#view-schedule .table");
+        if (!table || this.slotHoverBound) return;
+        this.slotHoverBound = true;
+        this.hoveredSlotIndex = null;
+        this.hoveredSlotEls = [];
+
+        const clearHover = () => {
+            if (this.hoveredSlotEls.length) {
+                this.hoveredSlotEls.forEach(el => el.classList.remove("hovered-slot-column"));
+            }
+            this.hoveredSlotEls = [];
+            this.hoveredSlotIndex = null;
+        };
+
+        table.addEventListener("mouseover", (e) => {
+            const cell = e.target.closest("[data-slot-index]");
+            if (!cell || !table.contains(cell)) return;
+            const slotIndex = cell.dataset.slotIndex;
+            if (slotIndex === this.hoveredSlotIndex) return;
+            clearHover();
+            const columnCells = table.querySelectorAll(`[data-slot-index="${slotIndex}"]`);
+            columnCells.forEach(el => el.classList.add("hovered-slot-column"));
+            this.hoveredSlotEls = Array.from(columnCells);
+            this.hoveredSlotIndex = slotIndex;
+        });
+
+        table.addEventListener("mouseleave", () => {
+            clearHover();
+        });
     },
 
     render() {
@@ -709,7 +743,7 @@ export const ScheduleManager = {
                 const isInConflict = emp && isDateInSanctionPeriod(shiftDate, emp.sanctions) && !shift.replacement;
 
                 for (let i = 0; i < SLOTS.length; i++) {
-                    const cell = create("div", { className: "slot", onClick: () => this.handleSlotClick(shift, i) });
+                    const cell = create("div", { className: "slot", dataset: { slotIndex: i }, onClick: () => this.handleSlotClick(shift, i) });
 
                     // Check availability for every slot
                     if (shift.employeeId && emp && isSlotUnavailable(emp, i, state.activeWeek, day)) {
@@ -773,6 +807,7 @@ export const ScheduleManager = {
         SLOTS.forEach((s, idx) => {
             const c = create("div", {
                 className: "slot-h",
+                dataset: { slotIndex: idx },
                 style: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "1px", padding: "2px 0" }
             });
 
