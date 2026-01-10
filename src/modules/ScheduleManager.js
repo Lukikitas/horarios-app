@@ -2,7 +2,15 @@ import { el, create, clear } from '../utils/dom.js';
 import { store, getActiveSchedule, historyManager } from '../store/Store.js';
 import { DataManager } from '../services/DataManager.js';
 import { SLOTS, ROLES, DAYS, MAX_SLOT_FOR_MINOR } from '../config.js';
-import { timeToSlotIndex } from '../utils/rules.js';
+import {
+    timeToSlotIndex,
+    checkRestTime,
+    checkShiftOverlap,
+    checkEmployeeAvailability,
+    isDateInSanctionPeriod,
+    calculateConsecutiveWorkDays,
+    isSlotUnavailable
+} from '../utils/rules.js';
 import { getMonday, toISODateString } from '../utils/date.js';
 import { EmployeeManager } from './EmployeeManager.js';
 
@@ -22,6 +30,30 @@ export const ScheduleManager = {
         el("#btn-prev-week")?.addEventListener("click", () => this.changeWeek(-7));
         el("#btn-next-week")?.addEventListener("click", () => this.changeWeek(7));
         el("#btn-lock-week")?.addEventListener("click", () => this.toggleWeekLock());
+
+        // Auto Assign
+        el("#btn-auto-assign")?.addEventListener("click", () => {
+            this.autoAssignShifts();
+            el("#actions-dropdown")?.classList.remove('show');
+        });
+
+
+        // Projected tickets persistence per day
+        el("#projectedTickets")?.addEventListener("change", (e) => {
+            const val = e.target.value;
+            const { activeWeek, activeDay, projectedTickets } = store.getState();
+            const weekData = projectedTickets[activeWeek] || {};
+            weekData[activeDay] = val;
+
+            const newProjectedTickets = {
+                ...projectedTickets,
+                [activeWeek]: weekData
+            };
+            store.setState({ projectedTickets: newProjectedTickets });
+            DataManager.saveState();
+            this.updateProjectedProductivity();
+            this.renderWeeklyStats(); // Update header stats
+        });
 
         // Painting listeners
         window.addEventListener("mouseup", () => {
@@ -149,10 +181,123 @@ export const ScheduleManager = {
         this.renderTable();
         this.renderLegend();
         this.updateLockUI();
-        this.renderTemplateList();
+        this.updateWeekDisplay();
+        this.renderWeeklyStats();
+
+        // Ensure this method exists before calling
+        if (typeof this.renderTemplateList === 'function') {
+            this.renderTemplateList();
+        } else {
+            console.error("ScheduleManager: renderTemplateList is missing!");
+        }
+
         if (store.getState().activeView === 'schedule-list') {
             this.renderScheduleList();
         }
+    },
+
+    // --- Template Logic ---
+
+    renderTemplateList() {
+        const list = el("#templateList");
+        if (!list) return;
+
+        clear(list);
+        const templates = store.getState().templates || {};
+
+        if (Object.keys(templates).length === 0) {
+            list.appendChild(create("div", { className: "muted", style: { padding: "10px", textAlign: "center" }, textContent: "No hay plantillas guardadas." }));
+            return;
+        }
+
+        Object.entries(templates).forEach(([name, template]) => {
+            const item = create("div", { className: "template-item" });
+            const info = create("div", { style: { flex: 1 } });
+            info.appendChild(create("div", { style: { fontWeight: "600" }, textContent: name }));
+            if (template.description) {
+                info.appendChild(create("div", { className: "muted", style: { fontSize: "12px" }, textContent: template.description }));
+            }
+            item.appendChild(info);
+
+            const actions = create("div", { style: { display: "flex", gap: "5px" } });
+            actions.appendChild(create("button", {
+                className: "btn small", textContent: "Aplicar",
+                onClick: () => { if(confirm(`¿Aplicar plantilla "${name}"? Esto sobrescribirá el día actual.`)) this.applyTemplate(name); }
+            }));
+            actions.appendChild(create("button", {
+                className: "btn small secondary del", innerHTML: "&times;",
+                onClick: () => { if(confirm(`¿Eliminar plantilla "${name}"?`)) this.deleteTemplate(name); }
+            }));
+
+            item.appendChild(actions);
+            list.appendChild(item);
+        });
+    },
+
+    saveCurrentDayAsTemplate() {
+        const nameInp = el("#inpTemplateName");
+        const descInp = el("#inpTemplateDesc");
+        if (!nameInp) return;
+
+        const name = nameInp.value.trim();
+        const description = descInp ? descInp.value.trim() : "";
+
+        if (!name) { alert("Ingresa un nombre para la plantilla."); return; }
+
+        const state = store.getState();
+        if (state.templates && state.templates[name]) {
+            if (!confirm(`La plantilla "${name}" ya existe. ¿Sobrescribirla?`)) return;
+        }
+
+        const schedule = getActiveSchedule();
+        const dayShifts = schedule[state.activeDay] || [];
+
+        const templateShifts = dayShifts.map(s => ({ ...s }));
+
+        const newTemplates = {
+            ...state.templates,
+            [name]: {
+                description,
+                shifts: templateShifts
+            }
+        };
+
+        store.setState({ templates: newTemplates });
+        DataManager.saveState();
+
+        nameInp.value = "";
+        if(descInp) descInp.value = "";
+        this.renderTemplateList();
+        alert("Plantilla guardada.");
+    },
+
+    applyTemplate(name) {
+        const state = store.getState();
+        const template = state.templates[name];
+        if (!template) return;
+
+        const day = state.activeDay;
+        this.ensureDay(day);
+
+        // Create new shifts with new IDs
+        const newShifts = template.shifts.map(s => ({
+            ...s,
+            id: crypto.randomUUID(),
+        }));
+
+        this.commitChange(() => {
+            getActiveSchedule()[day] = newShifts;
+        });
+    },
+
+    deleteTemplate(name) {
+        const state = store.getState();
+        const newTemplates = { ...state.templates };
+        delete newTemplates[name];
+
+        store.setState({ templates: newTemplates });
+        DataManager.saveState();
+        this.renderTemplateList();
     },
 
     renderTable() {
@@ -320,11 +465,18 @@ export const ScheduleManager = {
                 const weekMonday = new Date(state.activeWeek + "T12:00:00Z");
                 const shiftDate = new Date(weekMonday);
                 shiftDate.setUTCDate(weekMonday.getUTCDate() + day);
-                // Sanction check needs isDateInSanctionPeriod logic
-                const isInConflict = emp && this.isDateInSanctionPeriod(shiftDate, emp.sanctions) && !shift.replacement;
+
+                // Sanction check using the imported util
+                const isInConflict = emp && isDateInSanctionPeriod(shiftDate, emp.sanctions) && !shift.replacement;
 
                 for (let i = 0; i < SLOTS.length; i++) {
                     const cell = create("div", { className: "slot", onClick: () => this.handleSlotClick(shift, i) });
+
+                    // Check availability for every slot
+                    if (shift.employeeId && emp && isSlotUnavailable(emp, i, state.activeWeek, day)) {
+                        cell.classList.add("unavailable-slot");
+                    }
+
                     if (i >= shift.startSlot && i <= shift.endSlot) {
                         const roleData = ROLES.find(r => r.key === shift.role);
                         cell.classList.add("assigned");
@@ -597,6 +749,7 @@ export const ScheduleManager = {
     calculateTotalDayHours(day) {
         let totalSlots = 0;
         const schedule = getActiveSchedule();
+        if (!schedule) return 0;
         const dayShifts = schedule[day] || [];
         for (const shift of dayShifts) {
             totalSlots += (shift.endSlot - shift.startSlot + 1);
@@ -712,9 +865,6 @@ export const ScheduleManager = {
             tempShift.endSlot = endSlotIndex;
             modified = true;
         }
-
-        // Validity check (copy logic from app.js)
-        // ... (check logic) ...
 
         if (modified) {
             shift.startSlot = tempShift.startSlot;
@@ -839,6 +989,11 @@ export const ScheduleManager = {
         const { activeWeek, activeDay, projectedTickets } = store.getState();
         const weekTickets = projectedTickets[activeWeek] || {};
         const tickets = Number(weekTickets[activeDay] || 0);
+
+        // Update input value
+        const inp = el("#projectedTickets");
+        if (inp) inp.value = tickets || '';
+
         const totalHours = this.calculateTotalDayHours(activeDay);
         const pp = el("#projectedProductivity");
         if(pp) {
@@ -848,6 +1003,66 @@ export const ScheduleManager = {
                 pp.textContent = "-";
             }
         }
+    },
+
+    updateWeekDisplay() {
+        const btn = el("#week-display");
+        if (!btn) return;
+        const state = store.getState();
+        const monday = new Date(state.activeWeek + "T12:00:00Z");
+        const sunday = new Date(monday);
+        sunday.setDate(monday.getDate() + 6);
+
+        const format = (d) => `${d.getDate()}/${d.getMonth()+1}`;
+        btn.textContent = `${format(monday)} - ${format(sunday)}`;
+    },
+
+    renderWeeklyStats() {
+        const headerContainer = el(".controls-center");
+        if (!headerContainer) return;
+
+        // Check if stats container exists
+        let statsContainer = el("#weekly-stats-container");
+        if (!statsContainer) {
+            statsContainer = create("div", {
+                id: "weekly-stats-container",
+                style: {
+                    display: "flex",
+                    gap: "10px",
+                    fontSize: "12px",
+                    marginBottom: "4px",
+                    color: "var(--muted)"
+                }
+            });
+            // Insert before the day title or at the top of controls-center
+            headerContainer.insertBefore(statsContainer, headerContainer.firstChild);
+        }
+
+        // Calculate stats
+        const state = store.getState();
+        let totalHours = 0;
+        let totalTickets = 0;
+
+        const schedule = getActiveSchedule();
+        const weekTickets = state.projectedTickets[state.activeWeek] || {};
+
+        for (let i = 0; i < 7; i++) {
+            totalHours += this.calculateTotalDayHours(i);
+            totalTickets += Number(weekTickets[i] || 0);
+        }
+
+        const productivity = totalHours > 0 ? (totalTickets / totalHours).toFixed(1) : "-";
+
+        clear(statsContainer);
+
+        const leftBox = create("div", { style: { display: "flex", flexDirection: "column", alignItems: "flex-end" } });
+        leftBox.innerHTML = `<div><strong>${String(totalHours).replace('.',',')}hs</strong></div><div>${totalTickets} Tkts</div>`;
+
+        const prodBox = create("div", { style: { display: "flex", alignItems: "center", fontWeight: "bold" } });
+        prodBox.textContent = `Prod: ${productivity}`;
+
+        statsContainer.appendChild(leftBox);
+        statsContainer.appendChild(prodBox);
     },
 
     changeWeek(offset) {
@@ -864,6 +1079,122 @@ export const ScheduleManager = {
         const newWeek = toISODateString(getMonday(currentMonday));
         DataManager.loadWeek(newWeek);
     },
+
+    autoAssignShifts() {
+        const schedule = getActiveSchedule();
+        const state = store.getState();
+        let assignedCount = 0;
+        let skippedCount = 0;
+        const totalUnassigned = [];
+
+        // Collect all unassigned shifts across the week
+        for (let day = 0; day < 7; day++) {
+            const dayShifts = schedule[day] || [];
+            dayShifts.forEach(shift => {
+                if (!shift.employeeId) {
+                    totalUnassigned.push({ shift, day });
+                }
+            });
+        }
+
+        if (totalUnassigned.length === 0) {
+            alert("No hay turnos vacíos para asignar.");
+            return;
+        }
+
+        if (!confirm(`Se encontraron ${totalUnassigned.length} turnos vacíos.\n\nEl sistema asignará turnos respetando:\n1. Mínimo de 14hs semanales.\n2. Prioridad (Muy Alta > Muy Baja).\n3. Menor carga horaria actual.\n\n¿Continuar?`)) {
+            return;
+        }
+
+        const PRIORITY_MAP = {
+            'very-high': 5,
+            'high': 4,
+            'medium': 3,
+            'low': 2,
+            'very-low': 1
+        };
+
+        const canEmployeeWorkShiftSafe = (emp, shift, day) => {
+             // Logic from canEmployeeWorkShift using our imported utils
+             // 1. Sanction
+             const weekMonday = new Date(state.activeWeek + "T12:00:00Z");
+             const shiftDate = new Date(weekMonday);
+             shiftDate.setUTCDate(weekMonday.getUTCDate() + day);
+
+             if (isDateInSanctionPeriod(shiftDate, emp.sanctions)) return false;
+
+             // 2. Minor
+             if (emp.isMinor && shift.endSlot > MAX_SLOT_FOR_MINOR) return false;
+
+             // 3. Star
+             if (!(emp.stars || []).includes(shift.role)) return false;
+
+             // 4. Availability
+             const availCheck = checkEmployeeAvailability(emp, shift, state.activeWeek, day);
+             if (!availCheck.isAvailable) return false;
+
+             // 5. Overlap
+             const overlapCheck = checkShiftOverlap(emp.id, shift, day);
+             if (!overlapCheck.pass) return false;
+
+             // 6. Rest Time
+             const restCheck = checkRestTime(emp.id, shift, state.activeWeek, day);
+             if (!restCheck.pass) return false;
+
+             // 7. Consecutive Days (soft check - we avoid > 5 in auto assign)
+             const consec = calculateConsecutiveWorkDays(emp.id, state.activeWeek, day);
+             if (consec > 5) return false;
+
+             return true;
+        }
+
+        this.commitChange(() => {
+            const processShift = (shift, day, onlyUnder14) => {
+                let eligibleCandidates = state.employees.filter(emp => canEmployeeWorkShiftSafe(emp, shift, day));
+
+                if (onlyUnder14) {
+                    eligibleCandidates = eligibleCandidates.filter(emp => this.getEmployeeWeeklyHours(emp.id) < 14);
+                }
+
+                if (eligibleCandidates.length === 0) return false;
+
+                eligibleCandidates.sort((a, b) => {
+                    const pA = PRIORITY_MAP[a.priority || 'medium'];
+                    const pB = PRIORITY_MAP[b.priority || 'medium'];
+                    if (pA !== pB) return pB - pA; // Higher priority first
+                    const hoursA = this.getEmployeeWeeklyHours(a.id);
+                    const hoursB = this.getEmployeeWeeklyHours(b.id);
+                    return hoursA - hoursB; // Lower hours first
+                });
+
+                shift.employeeId = eligibleCandidates[0].id;
+                assignedCount++;
+                return true;
+            };
+
+            for (let day = 0; day < 7; day++) {
+                const dayShifts = schedule[day] || [];
+                let unassignedInDay = dayShifts.filter(s => !s.employeeId);
+
+                // Pass 1
+                unassignedInDay.forEach(shift => {
+                   if (shift.employeeId) return;
+                   processShift(shift, day, true);
+                });
+
+                // Pass 2
+                unassignedInDay = dayShifts.filter(s => !s.employeeId);
+                unassignedInDay.forEach(shift => {
+                    if (!processShift(shift, day, false)) {
+                        skippedCount++;
+                    }
+                });
+            }
+        });
+
+        alert(`Proceso completado.\n\n- Asignados: ${assignedCount}\n- Sin candidato válido: ${skippedCount}`);
+    },
+
 
     openAssignEmployeeModal(shiftId) {
         const state = store.getState();
@@ -897,35 +1228,60 @@ export const ScheduleManager = {
             employeesWithStar.forEach(emp => {
                 // Checkers (re-implement or import)
                 const isMinor = emp.isMinor;
-                const sanctionCheck = this.isDateInSanctionPeriod(shiftDate, emp.sanctions);
+                const sanctionCheck = isDateInSanctionPeriod(shiftDate, emp.sanctions);
 
                 let hardWarning = "";
                 if(sanctionCheck) hardWarning = "Licencia/Sanción activa.";
                 else if (isMinor && shift.endSlot > MAX_SLOT_FOR_MINOR) hardWarning = "Menor no puede trabajar tarde.";
 
-                // For brevity, skipping complex overlap checks in this snippet, but they should be here.
+                const overlapCheck = checkShiftOverlap(emp.id, shift, day);
+                if(!overlapCheck.pass) hardWarning = overlapCheck.message;
+
+                const restCheck = checkRestTime(emp.id, shift, state.activeWeek, day);
+                if(!restCheck.pass) hardWarning = restCheck.message;
+
+                // Warnings
+                const softWarnings = [];
+                const availCheck = checkEmployeeAvailability(emp, shift, state.activeWeek, day);
+                if(!availCheck.isAvailable) softWarnings.push(availCheck.reason);
+
+                const consec = calculateConsecutiveWorkDays(emp.id, state.activeWeek, day);
+                if(consec > 5) softWarnings.push(`Trabajará ${consec} días seguidos.`);
 
                 if (hardWarning) unavailable.push({ emp, hardWarning });
+                else if (softWarnings.length > 0) withWarnings.push({ emp, softWarnings });
                 else available.push({ emp, hardWarning: "" });
             });
 
-            const sorted = [...available, ...unavailable]; // Simple sort
-
-            sorted.forEach(({emp, hardWarning}) => {
+            // Helper to render button
+            const renderBtn = (item, isUnavail, warningText) => {
+                const emp = item.emp;
                 const btn = create("button", { className: "btn secondary", style: { width: "100%", textAlign: "left" } });
                 const weeklyHours = this.getEmployeeWeeklyHours(emp.id);
                 btn.innerHTML = `<div>${emp.name} (${String(weeklyHours).replace('.',',')}hs)</div>`;
-                if(hardWarning) {
+
+                if(warningText) {
+                    const div = create("div", { className: "warning-text", style: {fontSize:"11px", color: isUnavail ? "var(--c-danger)" : "var(--c-sandwich)"} });
+                    div.innerText = warningText;
+                    btn.appendChild(div);
+                }
+
+                if(isUnavail) {
                     btn.disabled = true;
-                    btn.innerHTML += `<div class="warning-text">${hardWarning}</div>`;
+                    btn.style.opacity = 0.6;
                 } else {
                     btn.onclick = () => {
+                         if(warningText && !confirm(warningText + "\n\n¿Asignar de todos modos?")) return;
                         this.commitChange(() => { shift.employeeId = emp.id; });
                         wrap.remove();
                     };
                 }
                 listContainer.appendChild(btn);
-            });
+            };
+
+            available.forEach(x => renderBtn(x, false, ""));
+            withWarnings.forEach(x => renderBtn(x, false, x.softWarnings.join(". ")));
+            unavailable.forEach(x => renderBtn(x, true, x.hardWarning));
         }
 
         box.appendChild(c);
@@ -1115,7 +1471,7 @@ export const ScheduleManager = {
                         const shiftDate = new Date(weekMonday);
                         shiftDate.setDate(shiftDate.getDate() + dayIndex);
 
-                        if (this.isDateInSanctionPeriod(shiftDate, emp.sanctions) && !shift.replacement) {
+                        if (isDateInSanctionPeriod(shiftDate, emp.sanctions) && !shift.replacement) {
                             shiftDiv.style.border = `2px solid var(--c-danger)`;
                             shiftDiv.title = 'Conflicto con sanción/licencia';
                         }
@@ -1129,18 +1485,6 @@ export const ScheduleManager = {
 
                         shiftDiv.addEventListener('click', (e) => {
                             e.stopPropagation();
-                            // Go to shift logic reuse?
-                            // For list view, we might want a context menu too or jump to grid.
-                            // Let's jump to grid.
-                            store.setState({ activeDay: dayIndex });
-                            // Need to switch view via UIManager, but we don't import it here directly to avoid circle?
-                            // We can use the event bus pattern or just dispatch the event.
-                            // Or simple:
-                            // el("#btn-view-schedule").click();
-                            // But cleaner:
-                            // We will expose a method or dispatch event.
-                            // For now, let's just use the click trick or rely on shared logic.
-                            // Actually, let's implement showShiftContextMenu
                             this.showShiftContextMenu(e, shift.id, dayIndex, emp.id);
                         });
 
@@ -1303,19 +1647,6 @@ export const ScheduleManager = {
                 shift.endSlot = tempShift.endSlot;
             });
         }
-    },
-
-    isDateInSanctionPeriod(date, sanctions) {
-        if (!sanctions || sanctions.length === 0) return false;
-        const dateString = toISODateString(date);
-        for (const sanction of sanctions) {
-            if (sanction.startDate && sanction.endDate) {
-                if (dateString >= sanction.startDate && dateString <= sanction.endDate) {
-                    return true;
-                }
-            }
-        }
-        return false;
     },
 
     handleAddShiftClick(role, event) {

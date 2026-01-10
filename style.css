@@ -17,9 +17,12 @@
     --c-descarga:#14b8a6;      /* teal */
     --c-active-border: #9333ea; /* purple-600 */
 
-    --c-warning: #9a3412; /* amber-800 */
-    --c-warning-bg: #fffbeb; /* amber-50 */
-    --c-warning-border: #fcd34d; /* amber-300 */
+  --c-warning: #9a3412; /* amber-800 */
+  --c-warning-bg: #fffbeb; /* amber-50 */
+  --c-warning-border: #fcd34d; /* amber-300 */
+  --c-danger: #ef4444; /* rojo para conflictos */
+  --c-danger-soft: rgba(239, 68, 68, 0.16);
+  --c-danger-strong: rgba(239, 68, 68, 0.3);
   }
   *{box-sizing:border-box}
   html, body {
@@ -164,6 +167,10 @@ body.dark-mode {
   --ink: #ffffff;
   --muted: #99aab5;
   --border: #3a3e44;
+
+  --c-danger: #f87171;
+  --c-danger-soft: rgba(248, 113, 113, 0.22);
+  --c-danger-strong: rgba(248, 113, 113, 0.36);
 
   --c-warning: #fde68a; /* amber-200 */
   --c-warning-bg: #451a03; /* amber-950 */
@@ -1216,4 +1223,17 @@ body.dark-mode #calendar-grid .day.monday:not(.other-month):hover {
 @keyframes spin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
+}
+.unavailable-slot {
+    background: repeating-linear-gradient(
+        45deg,
+        var(--c-danger-soft),
+        var(--c-danger-soft) 6px,
+        var(--c-danger-strong) 6px,
+        var(--c-danger-strong) 12px
+    ) !important;
+    background-color: var(--c-danger-soft) !important;
+    box-shadow: inset 0 0 0 2px var(--c-danger);
+    border-radius: 4px;
+    cursor: not-allowed;
 }

@@ -73,8 +73,9 @@ export const DataManager = {
                 newState.employees.forEach(emp => {
                     if (!emp.id) emp.id = crypto.randomUUID();
                     if (!emp.displayName) {
-                        const nameParts = emp.name.split(',');
-                        emp.displayName = nameParts.length > 1 ? nameParts[1].trim() : emp.name.split(' ')[0];
+                        const name = emp.name || 'Sin Nombre';
+                        const nameParts = name.split(',');
+                        emp.displayName = nameParts.length > 1 ? nameParts[1].trim() : name.split(' ')[0];
                     }
                     if (!emp.availability) emp.availability = {};
                      if (Array.isArray(emp.availability)) {

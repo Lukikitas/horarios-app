@@ -107,27 +107,144 @@ export const StatsManager = {
 
         if (sortOrder === 'hours') employeeData.sort((a,b) => b.weeklyHours - a.weeklyHours);
         else if (sortOrder === 'days') employeeData.sort((a,b) => b.workingDaysCount - a.workingDaysCount);
-        else employeeData.sort((a,b) => a.name.localeCompare(b.name));
+        else employeeData.sort((a,b) => (a.name || '').localeCompare(b.name || ''));
 
         const middleIndex = Math.ceil(employeeData.length / 2);
         const leftColumnEmployees = employeeData.slice(0, middleIndex);
         const rightColumnEmployees = employeeData.slice(middleIndex);
 
-        const generateTableFor = (list) => {
-            let html = `<table class="emp-table-new"><thead><tr><th>Empleado</th><th>Hs</th><th>Días</th></tr></thead><tbody>`;
-            list.forEach(e => {
-                html += `<tr><td>${e.name}</td><td>${String(e.weeklyHours).replace('.',',')}hs</td><td>${e.workingDaysCount}</td></tr>`;
+        // Helper to generate details row content
+        const generateDetailsRow = (empId) => {
+            const schedule = getActiveSchedule();
+            if (!schedule) return document.createElement('div');
+
+            const detailsContainer = create("div", { className: "details-container" });
+            const table = create("table", { className: "details-table" });
+
+            const thead = create("thead");
+            const headRow = create("tr");
+            ['Día', 'Horario', 'Puesto', 'Acción'].forEach(text => {
+                headRow.appendChild(create("th", { textContent: text }));
             });
-            html += `</tbody></table>`;
-            return html;
+            thead.appendChild(headRow);
+            table.appendChild(thead);
+
+            const tbody = create("tbody");
+            const daysMap = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'];
+            let hasShifts = false;
+
+            for (let i = 0; i < 7; i++) {
+                const dayShifts = (schedule[i] || []).filter(s => s.employeeId === empId);
+                dayShifts.sort((a,b) => a.startSlot - b.startSlot);
+
+                dayShifts.forEach(shift => {
+                    hasShifts = true;
+                    const start = SLOTS[shift.startSlot].label;
+                    const end = SLOTS[shift.endSlot + 1] ? SLOTS[shift.endSlot + 1].label : "02:00";
+
+                    const tr = create("tr");
+                    tr.appendChild(create("td", { textContent: daysMap[i] }));
+                    tr.appendChild(create("td", { textContent: `${start} - ${end}` }));
+                    tr.appendChild(create("td", { textContent: shift.role })); // create handles text content safely
+
+                    const actionTd = create("td", { style: { textAlign: 'center' } });
+                    const btn = create("button", {
+                        className: "btn small secondary btn-go-shift",
+                        textContent: "Ir",
+                        style: { padding: "1px 4px", fontSize: "10px" },
+                        dataset: { shiftId: shift.id, day: i }
+                    });
+                    actionTd.appendChild(btn);
+                    tr.appendChild(actionTd);
+
+                    tbody.appendChild(tr);
+                });
+            }
+
+            if (!hasShifts) {
+                const tr = create("tr");
+                const td = create("td", { colSpan: 4, className: "muted", textContent: "Sin turnos." });
+                tr.appendChild(td);
+                tbody.appendChild(tr);
+            }
+
+            table.appendChild(tbody);
+            detailsContainer.appendChild(table);
+            return detailsContainer;
         };
 
-        content.innerHTML = `
-            <div class="summary-grid">
-                <div>${generateTableFor(leftColumnEmployees)}</div>
-                <div>${generateTableFor(rightColumnEmployees)}</div>
-            </div>
-        `;
+        const generateTableFor = (list, colIndex) => {
+            const table = create("table", { className: "emp-table-new" });
+            table.innerHTML = `<thead><tr><th>Empleado</th><th>Hs</th><th>Días</th><th></th></tr></thead>`;
+            const tbody = create("tbody");
+
+            list.forEach(e => {
+                const tr = create("tr");
+                tr.innerHTML = `<td>${e.name}</td><td>${String(e.weeklyHours).replace('.',',')}hs</td><td>${e.workingDaysCount}</td>`;
+
+                const actionTd = create("td");
+                const btnDetails = create("button", {
+                    className: "btn small secondary",
+                    textContent: "Detalles",
+                    onClick: (evt) => {
+                        const existingDetails = tr.nextElementSibling;
+                        if (existingDetails && existingDetails.classList.contains('details-row')) {
+                            existingDetails.remove();
+                            evt.target.textContent = "Detalles";
+                        } else {
+                            const detailsTr = create("tr", { className: "details-row" });
+                            const detailsTd = create("td", { colSpan: 4 });
+                            detailsTd.appendChild(generateDetailsRow(e.id));
+
+                            // Bind "Ir" buttons
+                            detailsTd.querySelectorAll('.btn-go-shift').forEach(btn => {
+                                btn.addEventListener('click', () => {
+                                    const shiftId = btn.dataset.shiftId;
+                                    const day = parseInt(btn.dataset.day);
+
+                                    // Close modal
+                                    el("#weekly-summary-modal").style.display = "none";
+
+                                    // Navigate logic
+                                    store.setState({ activeDay: day });
+                                    el("#btn-view-schedule").click(); // Switch view
+
+                                    setTimeout(() => {
+                                        const shiftRow = document.querySelector(`[data-shift-id="${shiftId}"]`);
+                                        if (shiftRow) {
+                                            shiftRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                            shiftRow.classList.add('highlight-shift');
+                                            setTimeout(() => shiftRow.classList.remove('highlight-shift'), 2000);
+                                        }
+                                    }, 300); // Increased timeout slightly for view switch
+                                });
+                            });
+
+                            detailsTr.appendChild(detailsTd);
+                            tr.after(detailsTr);
+                            evt.target.textContent = "Ocultar";
+                        }
+                    }
+                });
+                actionTd.appendChild(btnDetails);
+                tr.appendChild(actionTd);
+                tbody.appendChild(tr);
+            });
+            table.appendChild(tbody);
+            return table;
+        };
+
+        content.innerHTML = `<div class="summary-grid" id="summary-grid-container"></div>`;
+        const grid = content.querySelector("#summary-grid-container");
+
+        const divLeft = create("div");
+        divLeft.appendChild(generateTableFor(leftColumnEmployees, 0));
+
+        const divRight = create("div");
+        divRight.appendChild(generateTableFor(rightColumnEmployees, 1));
+
+        grid.appendChild(divLeft);
+        grid.appendChild(divRight);
     },
 
     renderFrancos() {
