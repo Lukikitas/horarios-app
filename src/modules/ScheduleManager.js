@@ -122,6 +122,44 @@ export const ScheduleManager = {
             store.setState({ scheduleSearchTerm: e.target.value });
             this.renderScheduleList();
         });
+        const openMultiModal = () => {
+            this.updateScheduleListFiltersUI();
+            const modal = el("#schedule-list-multi-modal");
+            if (modal) modal.style.display = "flex";
+        };
+        const closeMultiModal = () => {
+            const modal = el("#schedule-list-multi-modal");
+            if (modal) modal.style.display = "none";
+        };
+        el("#schedule-list-multi-btn")?.addEventListener("click", openMultiModal);
+        el("#schedule-list-multi-close")?.addEventListener("click", closeMultiModal);
+        el("#schedule-list-multi-close-footer")?.addEventListener("click", closeMultiModal);
+        el("#schedule-list-multi-modal")?.addEventListener("click", (e) => {
+            if (e.target === el("#schedule-list-multi-modal")) closeMultiModal();
+        });
+        el("#schedule-list-multi-search")?.addEventListener("input", (e) => {
+            store.setState({ scheduleSelectedEmployeeSearch: e.target.value });
+            this.updateScheduleListFiltersUI();
+        });
+        el("#schedule-list-clear-filter")?.addEventListener("click", () => {
+            store.setState({ scheduleSelectedEmployeeIds: [] });
+            store.setState({ scheduleSelectedEmployeeSearch: '' });
+            this.updateScheduleListFiltersUI();
+            this.renderScheduleList();
+        });
+        el("#schedule-list-multi-container")?.addEventListener("change", (e) => {
+            const target = e.target;
+            if (!target || !target.classList?.contains("schedule-list-multi-checkbox")) return;
+            const empId = target.value;
+            const selectedSet = new Set((store.getState().scheduleSelectedEmployeeIds || []).map(String));
+            if (target.checked) selectedSet.add(empId);
+            else selectedSet.delete(empId);
+            store.setState({ scheduleSelectedEmployeeIds: Array.from(selectedSet) });
+            this.renderScheduleList();
+        });
+        el("#btn-suggest-productivity")?.addEventListener("click", () => this.suggestShiftsForProductivity());
+
+        this.initSlotHoverHighlight();
 
         // Calendar Modal
         el("#week-display")?.addEventListener("click", () => {
@@ -224,6 +262,38 @@ export const ScheduleManager = {
         }
     },
 
+    initSlotHoverHighlight() {
+        const table = el("#view-schedule .table");
+        if (!table || this.slotHoverBound) return;
+        this.slotHoverBound = true;
+        this.hoveredSlotIndex = null;
+        this.hoveredSlotEls = [];
+
+        const clearHover = () => {
+            if (this.hoveredSlotEls.length) {
+                this.hoveredSlotEls.forEach(el => el.classList.remove("hovered-slot-column"));
+            }
+            this.hoveredSlotEls = [];
+            this.hoveredSlotIndex = null;
+        };
+
+        table.addEventListener("mouseover", (e) => {
+            const cell = e.target.closest("[data-slot-index]");
+            if (!cell || !table.contains(cell)) return;
+            const slotIndex = cell.dataset.slotIndex;
+            if (slotIndex === this.hoveredSlotIndex) return;
+            clearHover();
+            const columnCells = table.querySelectorAll(`[data-slot-index="${slotIndex}"]`);
+            columnCells.forEach(el => el.classList.add("hovered-slot-column"));
+            this.hoveredSlotEls = Array.from(columnCells);
+            this.hoveredSlotIndex = slotIndex;
+        });
+
+        table.addEventListener("mouseleave", () => {
+            clearHover();
+        });
+    },
+
     render() {
         this.hideEmployeeWeekTooltip();
         const roles = this.getRoleList();
@@ -312,6 +382,10 @@ export const ScheduleManager = {
     },
 
     handleSwapSelection(shiftId) {
+        if (this.isWeekLocked()) {
+            showToast("La semana está bloqueada. Solo podés ver los turnos.", "warning");
+            return;
+        }
         const currentShiftData = this.findShiftWithDay(shiftId);
         const currentShift = currentShiftData?.shift;
         if (!currentShift || !currentShift.employeeId) {
@@ -373,17 +447,17 @@ export const ScheduleManager = {
         const employeeB = state.employees.find(e => e.id === otherShiftData.shift.employeeId);
         const weekId = state.activeWeek;
 
-        const days = this.getScheduleDaysArray();
-        const shiftsDayA = (days[currentShiftData.dayIndex] || []).filter(s => s.id !== currentShiftData.shift.id && s.id !== otherShiftData.shift.id);
-        const shiftsDayB = (days[otherShiftData.dayIndex] || []).filter(s => s.id !== otherShiftData.shift.id && s.id !== currentShiftData.shift.id);
+        const isSameDay = currentShiftData.dayIndex === otherShiftData.dayIndex;
+        const ignoreForEmployeeB = isSameDay ? [otherShiftData.shift.id] : [];
+        const ignoreForEmployeeA = isSameDay ? [currentShiftData.shift.id] : [];
 
         const tempShiftForB = { ...currentShiftData.shift };
         const tempShiftForA = { ...otherShiftData.shift };
 
-        const checkB = this.validateShiftForEmployee(employeeB, tempShiftForB, currentShiftData.dayIndex, weekId, shiftsDayA);
+        const checkB = this.validateShiftForEmployee(employeeB, tempShiftForB, currentShiftData.dayIndex, weekId, ignoreForEmployeeB);
         if (!checkB.pass) issues.push(`Para ${employeeB?.name || "empleado"}: ${checkB.message}`);
 
-        const checkA = this.validateShiftForEmployee(employeeA, tempShiftForA, otherShiftData.dayIndex, weekId, shiftsDayB);
+        const checkA = this.validateShiftForEmployee(employeeA, tempShiftForA, otherShiftData.dayIndex, weekId, ignoreForEmployeeA);
         if (!checkA.pass) issues.push(`Para ${employeeA?.name || "empleado"}: ${checkA.message}`);
 
         return issues;
@@ -669,7 +743,7 @@ export const ScheduleManager = {
                 const isInConflict = emp && isDateInSanctionPeriod(shiftDate, emp.sanctions) && !shift.replacement;
 
                 for (let i = 0; i < SLOTS.length; i++) {
-                    const cell = create("div", { className: "slot", onClick: () => this.handleSlotClick(shift, i) });
+                    const cell = create("div", { className: "slot", dataset: { slotIndex: i }, onClick: () => this.handleSlotClick(shift, i) });
 
                     // Check availability for every slot
                     if (shift.employeeId && emp && isSlotUnavailable(emp, i, state.activeWeek, day)) {
@@ -733,6 +807,7 @@ export const ScheduleManager = {
         SLOTS.forEach((s, idx) => {
             const c = create("div", {
                 className: "slot-h",
+                dataset: { slotIndex: idx },
                 style: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "1px", padding: "2px 0" }
             });
 
@@ -811,6 +886,10 @@ export const ScheduleManager = {
             return { pass: false, message: "El empleado es menor y no puede trabajar en este horario." };
         }
 
+        if (!shift.ignoreRestrictions && shift.role && !(employee.stars || []).includes(shift.role)) {
+            return { pass: false, message: `El empleado no tiene la estrella requerida para ${shift.role}.` };
+        }
+
         const overlapCheck = checkShiftOverlap(employee.id, shift, dayIndex, shiftsToIgnore);
         if (!overlapCheck.pass) return overlapCheck;
 
@@ -826,6 +905,10 @@ export const ScheduleManager = {
     },
 
     commitChange(action) {
+        if (this.isWeekLocked()) {
+            showToast("La semana está bloqueada. Solo podés ver los turnos.", "warning");
+            return;
+        }
         const currentSchedule = getActiveSchedule();
         historyManager.push(currentSchedule);
         action();
@@ -875,6 +958,10 @@ export const ScheduleManager = {
     },
 
     addUnassignedShift() {
+        if (this.isWeekLocked()) {
+            showToast("La semana está bloqueada. Solo podés ver los turnos.", "warning");
+            return;
+        }
         const role = el("#activeRole").value;
         const startSlot = Number(el("#formStart").value);
         const endSlot = Number(el("#formEnd").value);
@@ -1342,10 +1429,188 @@ export const ScheduleManager = {
         return days;
     },
 
+    isWeekLocked() {
+        const schedule = getActiveSchedule();
+        return !!schedule?.isLocked;
+    },
+
+    suggestShiftsForProductivity(targetProductivity = 6.5) {
+        if (this.isWeekLocked()) {
+            showToast("La semana está bloqueada. Solo podés ver los turnos.", "warning");
+            return;
+        }
+
+        const state = store.getState();
+        const projectedTickets = Number((state.projectedTickets[state.activeWeek] || {})[state.activeDay] || 0);
+        if (!projectedTickets || projectedTickets <= 0) {
+            showToast("Ingresá tickets proyectados para el día.", "warning");
+            return;
+        }
+
+        const dayIndex = state.activeDay;
+
+        const median = arr => {
+            if (!arr || !arr.length) return null;
+            const sorted = [...arr].sort((a, b) => a - b);
+            const mid = Math.floor(sorted.length / 2);
+            return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+        };
+
+        const generateForTarget = (targetProd) => {
+            const requiredHours = projectedTickets / targetProd;
+            if (!Number.isFinite(requiredHours) || requiredHours <= 0) return null;
+
+            const roleHours = {};
+            const roleStartCount = {};
+            const roleShiftLengths = {};
+            const globalStartCount = {};
+            const schedules = state.schedules || {};
+            Object.entries(schedules).forEach(([weekKey, weekData]) => {
+                if (weekKey === state.activeWeek || !weekData) return;
+                const dayShifts = weekData[dayIndex] || [];
+                dayShifts.forEach(shift => {
+                    if (shift.startSlot === undefined || shift.endSlot === undefined) return;
+                    const hours = (shift.endSlot - shift.startSlot + 1) / 2;
+                    if (hours > 0) {
+                        roleHours[shift.role] = (roleHours[shift.role] || 0) + hours;
+                        roleShiftLengths[shift.role] = roleShiftLengths[shift.role] || [];
+                        roleShiftLengths[shift.role].push(hours);
+                    }
+                    roleStartCount[shift.role] = roleStartCount[shift.role] || {};
+                    roleStartCount[shift.role][shift.startSlot] = (roleStartCount[shift.role][shift.startSlot] || 0) + 1;
+                    globalStartCount[shift.startSlot] = (globalStartCount[shift.startSlot] || 0) + 1;
+                });
+            });
+
+            const totalRoleHours = Object.values(roleHours).reduce((a, b) => a + b, 0);
+            const availableRoles = state.roles?.length ? state.roles.map(r => r.key) : ROLES.map(r => r.key);
+            const roleWeights = {};
+            if (totalRoleHours > 0) {
+                availableRoles.forEach(r => {
+                    roleWeights[r] = (roleHours[r] || 0) / totalRoleHours;
+                });
+            } else {
+                const even = availableRoles.length ? 1 / availableRoles.length : 0;
+                availableRoles.forEach(r => roleWeights[r] = even);
+            }
+
+            const fallbackStart = (() => {
+                const sorted = Object.entries(globalStartCount).sort((a, b) => b[1] - a[1]);
+                if (sorted.length) return Number(sorted[0][0]);
+                return SLOTS.find(s => s.label === "09:00")?.index ?? 18;
+            })();
+
+            const hoursPerRole = {};
+            availableRoles.forEach(r => {
+                hoursPerRole[r] = requiredHours * (roleWeights[r] || 0);
+            });
+
+            const schedule = getActiveSchedule();
+            this.ensureDay(dayIndex);
+
+            const suggested = [];
+            let totalSuggestedHours = 0;
+            availableRoles.forEach(role => {
+                let remaining = hoursPerRole[role] || 0;
+                if (remaining <= 0) return;
+
+                const roleMedian = median(roleShiftLengths[role] || []) || 6;
+                const shiftSlotLength = Math.max(1, Math.round(roleMedian * 2));
+
+                const startSlots = Object.entries(roleStartCount[role] || {})
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([slot]) => Number(slot));
+
+                // Seed shift en el horario más frecuente del rol para respetar patrones típicos del día (ej. descarga 06:00 martes/sábado)
+                if (startSlots.length && totalSuggestedHours < requiredHours - 0.25 && remaining > 0) {
+                    const startSlot = startSlots[0];
+                    const endSlot = Math.min(SLOTS.length - 1, startSlot + shiftSlotLength - 1);
+                    const hours = (endSlot - startSlot + 1) / 2;
+                    suggested.push({
+                        id: crypto.randomUUID(),
+                        role,
+                        startSlot,
+                        endSlot,
+                        employeeId: null
+                    });
+                    remaining -= hours;
+                    totalSuggestedHours += hours;
+                }
+
+                let idx = 0;
+                while (remaining > 0 && totalSuggestedHours < requiredHours - 0.25) {
+                    const startSlot = startSlots.length ? startSlots[idx % startSlots.length] : fallbackStart;
+                    let endSlot = Math.min(SLOTS.length - 1, startSlot + shiftSlotLength - 1);
+                    let hours = (endSlot - startSlot + 1) / 2;
+
+                    const remainingGlobal = requiredHours - totalSuggestedHours;
+                    if (hours > remainingGlobal && remainingGlobal > 0.5) {
+                        const allowedSlots = Math.max(1, Math.round(remainingGlobal * 2));
+                        endSlot = Math.min(SLOTS.length - 1, startSlot + allowedSlots - 1);
+                        hours = (endSlot - startSlot + 1) / 2;
+                    } else if (hours > remainingGlobal && remainingGlobal <= 0.5) {
+                        break;
+                    }
+
+                    suggested.push({
+                        id: crypto.randomUUID(),
+                        role,
+                        startSlot,
+                        endSlot,
+                        employeeId: null
+                    });
+
+                    remaining -= hours;
+                    totalSuggestedHours += hours;
+                    idx++;
+                }
+            });
+
+            if (!suggested.length) return null;
+            const estimatedProductivity = projectedTickets / totalSuggestedHours;
+            return { suggested, totalSuggestedHours, requiredHours, estimatedProductivity, targetProd };
+        };
+
+        const targets = [6.5, 6.4];
+        let result = null;
+        let usedTarget = null;
+        for (const target of targets) {
+            const attempt = generateForTarget(target);
+            if (attempt && attempt.estimatedProductivity >= target - 0.05) {
+                result = attempt;
+                usedTarget = target;
+                break;
+            }
+            if (!result || (attempt && attempt.estimatedProductivity > result.estimatedProductivity)) {
+                result = attempt;
+                usedTarget = target;
+            }
+        }
+
+        if (!result || !result.suggested?.length) {
+            showToast("No se pudieron generar turnos sugeridos.", "warning");
+            return;
+        }
+
+        showConfirmDialog({
+            title: "Sugerencia de turnos",
+            message: `Tickets proyectados: ${projectedTickets}<br>Meta de productividad: ${usedTarget.toFixed(1)}<br>Horas objetivo: ${(projectedTickets / usedTarget).toFixed(1)}hs<br>Horas sugeridas: ${result.totalSuggestedHours.toFixed(1)}hs<br>Prod. estimada: ${result.estimatedProductivity.toFixed(2)}<br><br>¿Agregar los turnos sugeridos al día?`
+        }).then(confirmed => {
+            if (!confirmed) return;
+            const schedule = getActiveSchedule();
+            this.ensureDay(state.activeDay);
+            this.commitChange(() => {
+                schedule[state.activeDay].push(...result.suggested);
+            });
+            showToast("Turnos sugeridos agregados.", "success");
+        });
+    },
+
     updateScheduleFiltersUI() {
         const state = store.getState();
         const searchInput = el("#schedule-search");
         const roleSelect = el("#schedule-role-filter");
+        const scheduleListSearch = el("#schedule-list-search");
 
         if (searchInput && searchInput.value !== (state.scheduleSearchTerm || "")) {
             searchInput.value = state.scheduleSearchTerm || "";
@@ -1357,6 +1622,61 @@ export const ScheduleManager = {
                 opt.selected = selectedValues.has(opt.value);
             });
         }
+
+        if (scheduleListSearch && scheduleListSearch.value !== (state.scheduleSearchTerm || "")) {
+            scheduleListSearch.value = state.scheduleSearchTerm || "";
+        }
+    },
+
+    updateScheduleListFiltersUI() {
+        const state = store.getState();
+
+        const searchInput = el("#schedule-list-search");
+        if (searchInput && searchInput.value !== (state.scheduleSearchTerm || "")) {
+            searchInput.value = state.scheduleSearchTerm || "";
+        }
+
+        const container = el("#schedule-list-multi-container");
+        const searchBox = el("#schedule-list-multi-search");
+        if (searchBox && searchBox.value !== (state.scheduleSelectedEmployeeSearch || "")) {
+            searchBox.value = state.scheduleSelectedEmployeeSearch || "";
+        }
+        if (!container) return;
+
+        const selectedSet = new Set((state.scheduleSelectedEmployeeIds || []).map(String));
+        const searchTerm = (state.scheduleSelectedEmployeeSearch || '').toLowerCase().trim();
+        clear(container);
+
+        const employees = state.employees.slice().sort((a, b) => (a.displayName || a.name || '').localeCompare(b.displayName || b.name || ''));
+        employees
+        .filter(emp => {
+            if (!searchTerm) return true;
+            const display = (emp.displayName || '').toLowerCase();
+            const full = (emp.name || '').toLowerCase();
+            return display.includes(searchTerm) || full.includes(searchTerm);
+        })
+        .forEach(emp => {
+            const checkbox = create("input", {
+                type: "checkbox",
+                className: "schedule-list-multi-checkbox",
+                value: String(emp.id),
+                checked: selectedSet.has(String(emp.id))
+            });
+            const label = create("label", {
+                className: "row",
+                style: { gap: "8px", alignItems: "center" }
+            });
+            label.appendChild(checkbox);
+
+            const textStack = create("div", { className: "stack", style: { gap: "2px" } });
+            textStack.appendChild(create("div", { textContent: emp.displayName || emp.name || "" }));
+            if (emp.displayName && emp.name && emp.displayName !== emp.name) {
+                textStack.appendChild(create("div", { className: "muted", style: { fontSize: "12px" }, textContent: emp.name }));
+            }
+
+            label.appendChild(textStack);
+            container.appendChild(label);
+        });
     },
 
     renderLegend() {
@@ -1392,8 +1712,13 @@ export const ScheduleManager = {
 
         const scheduleTbody = el('#view-schedule #tbody');
         if (scheduleTbody) {
-            scheduleTbody.style.pointerEvents = isLocked ? 'none' : 'auto';
-            scheduleTbody.style.opacity = isLocked ? 0.7 : 1;
+            scheduleTbody.style.pointerEvents = 'auto'; // permitir tooltip
+            scheduleTbody.style.opacity = 1;
+        }
+
+        const scheduleTable = document.querySelector('#view-schedule .table');
+        if (scheduleTable) {
+            scheduleTable.style.border = isLocked ? '2px solid var(--c-danger, #e53e3e)' : '';
         }
 
         const scheduleListContent = el('#schedule-list-content');
@@ -1834,14 +2159,25 @@ export const ScheduleManager = {
         if(!content) return;
         clear(content);
 
+        this.updateScheduleListFiltersUI();
+
         const state = store.getState();
         const schedule = getActiveSchedule();
         if(!schedule) return;
 
+        if (this.isWeekLocked()) {
+            content.classList.add("locked-view");
+        } else {
+            content.classList.remove("locked-view");
+        }
+
         const searchTerm = (state.scheduleSearchTerm || '').toLowerCase().trim();
+        const selectedIds = new Set((state.scheduleSelectedEmployeeIds || []).map(String));
+
         const employees = state.employees
             .filter(emp => this.getEmployeeWeeklyHours(emp.id) > 0)
             .filter(emp => emp.name.toLowerCase().includes(searchTerm))
+            .filter(emp => selectedIds.size === 0 || selectedIds.has(String(emp.id)))
             .sort((a, b) => a.name.localeCompare(b.name));
 
         const unassignedShiftsExist = Object.values(schedule).some(day => Array.isArray(day) && day.some(s => !s.employeeId));
@@ -2018,6 +2354,10 @@ export const ScheduleManager = {
             const targetDayIndex = parseInt(e.target.closest('td').dataset.day, 10);
 
             const schedule = getActiveSchedule();
+            if (this.isWeekLocked()) {
+                showToast("La semana está bloqueada. Solo podés ver los turnos.", "warning");
+                return;
+            }
             const sourceShift = schedule[sourceDayIndex]?.find(s => s.id === sourceShiftId);
             if (!sourceShift) return;
 
