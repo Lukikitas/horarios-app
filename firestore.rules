@@ -21,27 +21,36 @@ service cloud.firestore {
       return isSignedIn() && allowedStores().hasAny([storeId]);
     }
 
+    function isAdmin() {
+      return userRole() == 'admin';
+    }
+
     match /users/{uid} {
-      allow read: if isSignedIn() && uid == request.auth.uid;
-      allow write: if false;
+      allow read: if isSignedIn() && (uid == request.auth.uid || isAdmin());
+      allow write: if isSignedIn() && isAdmin();
+    }
+
+    match /stores/{storeId} {
+      allow read: if hasStoreAccess(storeId) || isAdmin();
+      allow write: if isSignedIn() && isAdmin();
     }
 
     match /stores/{storeId}/employees/{employeeId} {
-      allow read, write: if hasStoreAccess(storeId) && userRole() in ['manager', 'admin'];
+      allow read, write: if isAdmin() || (hasStoreAccess(storeId) && userRole() in ['manager', 'admin']);
     }
 
     match /stores/{storeId}/schedules/{docId} {
-      allow read, write: if hasStoreAccess(storeId) && userRole() in ['manager', 'admin'];
+      allow read, write: if isAdmin() || (hasStoreAccess(storeId) && userRole() in ['manager', 'admin']);
     }
 
     match /stores/{storeId}/weeks/{weekId} {
-      allow read, write: if hasStoreAccess(storeId) && userRole() in ['manager', 'admin'];
+      allow read, write: if isAdmin() || (hasStoreAccess(storeId) && userRole() in ['manager', 'admin']);
     }
 
     match /stores/{storeId}/solicitudes/{reqId} {
-      allow read: if hasStoreAccess(storeId);
-      allow create: if hasStoreAccess(storeId);
-      allow update, delete: if hasStoreAccess(storeId) && userRole() in ['manager', 'admin'];
+      allow read: if isAdmin() || hasStoreAccess(storeId);
+      allow create: if isAdmin() || hasStoreAccess(storeId);
+      allow update, delete: if isAdmin() || (hasStoreAccess(storeId) && userRole() in ['manager', 'admin']);
     }
   }
 }
