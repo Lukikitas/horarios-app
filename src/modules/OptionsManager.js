@@ -3,15 +3,23 @@ import { store } from '../store/Store.js';
 import { ROLES, setRoles, DEFAULT_ROLES } from '../config.js';
 import { DataManager } from '../services/DataManager.js';
 import { showToast, showConfirmDialog } from '../utils/feedback.js';
+import { AdminService } from '../services/AdminService.js';
 
 export const OptionsManager = {
+    adminStores: [],
+
     init() {
         const addBtn = el('#btn-add-role');
         const resetBtn = el('#btn-reset-roles');
         addBtn?.addEventListener('click', () => this.handleAddRole());
         resetBtn?.addEventListener('click', () => this.handleReset());
+        el('#admin-create-user-form')?.addEventListener('submit', (event) => this.handleCreateUser(event));
+        el('#admin-store-mode')?.addEventListener('change', () => this.syncAdminStoreMode());
         this.renderRoles();
+        this.renderAdminPanel();
         store.subscribe(() => this.renderRoles());
+        store.subscribe(() => this.renderAdminPanel());
+        this.loadStores();
     },
 
     getRoles() {
@@ -137,5 +145,125 @@ export const OptionsManager = {
 
             list.appendChild(row);
         });
+    },
+
+    async loadStores() {
+        if (store.getState().currentUser?.role !== 'admin') return;
+        try {
+            this.adminStores = await AdminService.listStores();
+            this.renderAdminStoreOptions();
+        } catch (error) {
+            console.error('No se pudieron cargar los locales.', error);
+            showToast('No se pudieron cargar los locales.', 'warning');
+        }
+    },
+
+    renderAdminPanel() {
+        const wrapper = el('#admin-user-management');
+        if (!wrapper) return;
+        const isAdmin = store.getState().currentUser?.role === 'admin';
+        wrapper.style.display = isAdmin ? 'block' : 'none';
+        if (!isAdmin) return;
+        this.renderAdminStoreOptions();
+        this.syncAdminStoreMode();
+    },
+
+    renderAdminStoreOptions() {
+        const select = el('#admin-store-select');
+        if (!select) return;
+        const currentValue = select.value;
+        clear(select);
+
+        select.appendChild(create('option', {
+            value: '',
+            textContent: this.adminStores.length ? 'Seleccioná un local' : 'No hay locales cargados',
+            disabled: true,
+            attrs: this.adminStores.length ? {} : { selected: 'selected' }
+        }));
+
+        this.adminStores.forEach(storeItem => {
+            select.appendChild(create('option', {
+                value: storeItem.id,
+                textContent: `${storeItem.displayName} (${storeItem.id})`,
+                attrs: currentValue === storeItem.id ? { selected: 'selected' } : {}
+            }));
+        });
+
+        if (currentValue && this.adminStores.some(storeItem => storeItem.id === currentValue)) {
+            select.value = currentValue;
+        }
+    },
+
+    syncAdminStoreMode() {
+        const mode = el('#admin-store-mode')?.value || 'existing';
+        const existingRow = el('#admin-existing-store-row');
+        const newRow = el('#admin-new-store-row');
+        const storeSelect = el('#admin-store-select');
+        const newStoreId = el('#admin-new-store-id');
+        const newStoreName = el('#admin-new-store-name');
+
+        if (existingRow) existingRow.style.display = mode === 'existing' ? 'grid' : 'none';
+        if (newRow) newRow.style.display = mode === 'new' ? 'grid' : 'none';
+
+        if (storeSelect) storeSelect.disabled = mode !== 'existing';
+        if (newStoreId) newStoreId.disabled = mode !== 'new';
+        if (newStoreName) newStoreName.disabled = mode !== 'new';
+    },
+
+    async handleCreateUser(event) {
+        event.preventDefault();
+        if (store.getState().currentUser?.role !== 'admin') {
+            showToast('Solo administradores pueden crear usuarios.', 'error');
+            return;
+        }
+
+        const submitBtn = el('#admin-create-user-btn');
+        const mode = el('#admin-store-mode')?.value || 'existing';
+        const displayName = el('#admin-user-name')?.value || '';
+        const email = el('#admin-user-email')?.value || '';
+        const password = el('#admin-user-password')?.value || '';
+        const role = el('#admin-user-role')?.value || 'manager';
+        const storeId = mode === 'new'
+            ? (el('#admin-new-store-id')?.value || '')
+            : (el('#admin-store-select')?.value || '');
+        const storeName = mode === 'new' ? (el('#admin-new-store-name')?.value || '') : '';
+
+        try {
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Creando...';
+            }
+
+            const result = await AdminService.createUserWithStore({
+                displayName,
+                email,
+                password,
+                role,
+                storeId,
+                createNewStore: mode === 'new',
+                storeName,
+            });
+
+            showToast(
+                result.createdStore
+                    ? `Usuario creado y local ${result.storeId} inicializado.`
+                    : `Usuario creado para el local ${result.storeId}.`,
+                'success'
+            );
+
+            el('#admin-create-user-form')?.reset();
+            el('#admin-user-role') && (el('#admin-user-role').value = 'manager');
+            el('#admin-store-mode') && (el('#admin-store-mode').value = 'existing');
+            this.syncAdminStoreMode();
+            await this.loadStores();
+        } catch (error) {
+            console.error('Error creando usuario/local.', error);
+            showToast(error.message || 'No se pudo crear el usuario.', 'error', 5000);
+        } finally {
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Crear usuario';
+            }
+        }
     }
 };

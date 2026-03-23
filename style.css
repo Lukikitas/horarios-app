@@ -232,6 +232,30 @@
   font-size: 12px;
 }
 
+.admin-user-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.admin-store-row {
+  min-width: 0;
+}
+
+.admin-store-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.admin-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  grid-column: 1 / -1;
+}
+
 body.dark-mode .pilltab.active {
   background: var(--ink);
   color: var(--card);

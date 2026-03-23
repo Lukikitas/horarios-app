@@ -348,10 +348,10 @@
       </section>
     </div>
 
-    <div id="view-options" class="wrap" style="display:none; max-width: none; padding: 0 16px;">
-      <section class="card">
-        <div class="card-h"><strong>Opciones</strong></div>
-        <div class="card-c stack">
+	    <div id="view-options" class="wrap" style="display:none; max-width: none; padding: 0 16px;">
+	      <section class="card">
+	        <div class="card-h"><strong>Opciones</strong></div>
+	        <div class="card-c stack">
           <div class="row" style="flex-wrap:wrap; gap:8px; align-items:flex-end;">
             <div class="stack" style="min-width:200px;">
               <label class="muted mini-label">Nombre del puesto</label>
@@ -367,10 +367,69 @@
             <button id="btn-add-role" class="btn">Agregar</button>
             <button id="btn-reset-roles" class="btn secondary">Restablecer</button>
           </div>
-          <div id="roles-list" class="stack"></div>
-        </div>
-      </section>
-    </div>
+	          <div id="roles-list" class="stack"></div>
+	        </div>
+	      </section>
+	      <section id="admin-user-management" class="card" style="display:none; margin-top:16px;">
+	        <div class="card-h">
+	          <strong>Administración de usuarios y locales</strong>
+	          <span class="pill pill-neutral">Solo admin</span>
+	        </div>
+	        <div class="card-c stack" style="gap:16px;">
+	          <p class="muted" style="margin:0;">
+	            Desde acá podés crear un usuario nuevo y asignarlo a un local existente o crear un local nuevo en el mismo paso.
+	          </p>
+	          <form id="admin-create-user-form" class="admin-user-grid">
+	            <div class="stack">
+	              <label class="muted mini-label" for="admin-user-name">Nombre visible</label>
+	              <input id="admin-user-name" class="input" placeholder="Ej: Laura Pérez" required />
+	            </div>
+	            <div class="stack">
+	              <label class="muted mini-label" for="admin-user-email">Email</label>
+	              <input id="admin-user-email" type="email" class="input" placeholder="usuario@empresa.com" required />
+	            </div>
+	            <div class="stack">
+	              <label class="muted mini-label" for="admin-user-password">Contraseña temporal</label>
+	              <input id="admin-user-password" type="password" class="input" placeholder="Mínimo 6 caracteres" minlength="6" required />
+	            </div>
+	            <div class="stack">
+	              <label class="muted mini-label" for="admin-user-role">Rol</label>
+	              <select id="admin-user-role" class="select">
+	                <option value="manager">Manager</option>
+	                <option value="admin">Admin</option>
+	              </select>
+	            </div>
+	            <div class="stack">
+	              <label class="muted mini-label" for="admin-store-mode">Tipo de asignación</label>
+	              <select id="admin-store-mode" class="select">
+	                <option value="existing">Asignar local existente</option>
+	                <option value="new">Crear local nuevo</option>
+	              </select>
+	            </div>
+	            <div id="admin-existing-store-row" class="stack admin-store-row">
+	              <label class="muted mini-label" for="admin-store-select">Local existente</label>
+	              <select id="admin-store-select" class="select">
+	                <option value="" selected disabled>Cargando locales...</option>
+	              </select>
+	            </div>
+	            <div id="admin-new-store-row" class="admin-store-row admin-store-grid" style="display:none;">
+	              <div class="stack">
+	                <label class="muted mini-label" for="admin-new-store-id">ID del local</label>
+	                <input id="admin-new-store-id" class="input" placeholder="Ej: store-norte" disabled />
+	              </div>
+	              <div class="stack">
+	                <label class="muted mini-label" for="admin-new-store-name">Nombre visible del local</label>
+	                <input id="admin-new-store-name" class="input" placeholder="Ej: Local Norte" disabled />
+	              </div>
+	            </div>
+	            <div class="admin-form-actions">
+	              <button id="admin-create-user-btn" class="btn" type="submit">Crear usuario</button>
+	              <span class="muted mini-label">Si creás un local nuevo, también se agrega a tus locales habilitados para administrarlo.</span>
+	            </div>
+	          </form>
+	        </div>
+	      </section>
+	    </div>
 
     <div id="view-clock-ins" class="wrap" style="display:none; max-width: none; padding: 0 16px;">
       <!-- Fichadas -->
