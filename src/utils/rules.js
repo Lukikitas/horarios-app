@@ -1,4 +1,4 @@
-import { SLOTS, MAX_SLOT_FOR_MINOR } from '../config.js';
+import { SLOTS, MAX_SLOT_FOR_MINOR, DEFAULT_SCHEDULING_RULES } from '../config.js';
 import { toISODateString, getMonday } from '../utils/date.js';
 import { store, getActiveSchedule } from '../store/Store.js';
 
@@ -168,6 +168,21 @@ export function calculateConsecutiveWorkDays(employeeId, weekId, dayIndex) {
         }
     }
     return consecutiveDays;
+}
+
+export function normalizeSchedulingRules(rules = {}) {
+    const defaultLimit = DEFAULT_SCHEDULING_RULES.maxConsecutiveDays.limit;
+    const rawLimit = Number(rules?.maxConsecutiveDays?.limit);
+    return {
+        maxConsecutiveDays: {
+            enabled: rules?.maxConsecutiveDays?.enabled !== false,
+            limit: Number.isFinite(rawLimit) && rawLimit > 0 ? Math.floor(rawLimit) : defaultLimit,
+        },
+    };
+}
+
+export function getSchedulingRules() {
+    return normalizeSchedulingRules(store.getState().schedulingRules || {});
 }
 
 export function isSlotUnavailable(employee, slotIndex, weekId, dayIndex) {

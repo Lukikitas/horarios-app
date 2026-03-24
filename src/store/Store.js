@@ -61,6 +61,8 @@ const defaultState = {
     tempPlanillaState: null,
     rappiCode: '',
     roles: [...ROLES],
+    storeName: '',
+    schedulingRules: null,
     // Data loaded flags
     isLoading: true,
 };
