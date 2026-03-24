@@ -75,7 +75,10 @@ function updateBannerLabels() {
   const userLbl = document.getElementById('session-user-label');
   const storeLbl = document.getElementById('session-store-label');
   if (userLbl) userLbl.textContent = state.currentUser?.displayName || state.currentUser?.email || 'Sin usuario';
-  if (storeLbl) storeLbl.textContent = state.activeStoreId ? `Local activo: ${state.activeStoreId}` : 'Sin local activo';
+  if (storeLbl) {
+    const activeLabel = state.storeName || state.activeStoreId;
+    storeLbl.textContent = activeLabel ? `Local activo: ${activeLabel}` : 'Sin local activo';
+  }
 }
 
 export const SessionService = {
@@ -130,7 +133,7 @@ export const SessionService = {
           };
           const handleSelect = (storeId) => {
             localStorage.setItem(STORAGE_KEY, storeId);
-            store.setState({ activeStoreId: storeId, schedules: {}, employees: [] });
+            store.setState({ activeStoreId: storeId, schedules: {}, employees: [], storeName: '', schedulingRules: null });
             hideSelectionUI();
             updateBannerLabels();
             document.dispatchEvent(new CustomEvent('store-changed', { detail: { storeId } }));

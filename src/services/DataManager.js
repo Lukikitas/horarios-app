@@ -7,10 +7,12 @@ import {
     legacyEmployeesRef,
     legacySchedulesRef,
     legacyWeeksRef,
+    storeDoc,
     storeEmployeesRef,
     storeSchedulesRef,
     storeWeeksRef
 } from './firestoreRefs.js';
+import { normalizeSchedulingRules } from '../utils/rules.js';
 
 function getMonday(d) {
     d = new Date(d);
@@ -41,10 +43,14 @@ export const DataManager = {
             const schedulesRef = storeSchedulesRef(storeId);
             const employeesRef = storeEmployeesRef(storeId);
             const weeksRef = storeWeeksRef(storeId);
+            const storeRootRef = storeDoc(storeId);
 
             // 1. Load Main Doc (Settings, Templates, etc.)
             const mainDocRef = schedulesRef.doc("main");
-            const mainDoc = await mainDocRef.get();
+            const [mainDoc, storeRootSnap] = await Promise.all([
+                mainDocRef.get(),
+                storeRootRef.get(),
+            ]);
 
             // 2. Load Employees
             const employeesSnapshot = await employeesRef.get();
@@ -126,6 +132,8 @@ export const DataManager = {
                 newState.rappiCode = data.rappiCode || '';
                 newState.templates = data.templates || {};
                 newState.projectedTickets = data.projectedTickets || {};
+                newState.storeName = (storeRootSnap.data()?.displayName || data.storeName || storeId || '').trim();
+                newState.schedulingRules = normalizeSchedulingRules(data.schedulingRules || {});
 
                 // Initialize active week
                 if (!newState.activeWeek) {
@@ -167,6 +175,8 @@ export const DataManager = {
                  newState.employees = employeesArray;
                  setRoles(DEFAULT_ROLES);
                  newState.roles = [...ROLES];
+                 newState.storeName = (storeRootSnap.data()?.displayName || storeId || '').trim();
+                 newState.schedulingRules = normalizeSchedulingRules();
             }
 
             store.setState(newState);
@@ -192,6 +202,7 @@ export const DataManager = {
         const schedulesRef = storeSchedulesRef(storeId);
         const employeesRef = storeEmployeesRef(storeId);
         const weeksRef = storeWeeksRef(storeId);
+        const storeRootRef = storeDoc(storeId);
         const activeWeek = state.activeWeek;
         const currentSchedule = state.schedules[activeWeek];
 
@@ -208,8 +219,15 @@ export const DataManager = {
                 breaks: state.breaks,
                 rappiCode: state.rappiCode,
                 roles: state.roles && state.roles.length ? state.roles : ROLES,
+                storeName: (state.storeName || storeId || '').trim(),
+                schedulingRules: normalizeSchedulingRules(state.schedulingRules || {}),
             };
-            await schedulesRef.doc("main").set(mainData, { merge: true });
+            await Promise.all([
+                schedulesRef.doc("main").set(mainData, { merge: true }),
+                storeRootRef.set({
+                    displayName: (state.storeName || storeId || '').trim() || storeId,
+                }, { merge: true }),
+            ]);
 
             const batch = db.batch();
             let opCount = 0;
