@@ -1,4 +1,4 @@
-import { SLOTS, MAX_SLOT_FOR_MINOR } from '../config.js';
+import { SLOTS, MAX_SLOT_FOR_MINOR, DEFAULT_SCHEDULING_RULES } from '../config.js';
 import { toISODateString, getMonday } from '../utils/date.js';
 import { store, getActiveSchedule } from '../store/Store.js';
 
@@ -16,8 +16,8 @@ function getScheduleForDate(d) {
     return weekSchedule[dayIndex] || [];
 }
 
-export function checkRestTime(employeeId, newShift, weekId, dayIndex) {
-    const twelveHoursInSlots = 24;
+export function checkRestTime(employeeId, newShift, weekId, dayIndex, minRestHours = 12) {
+    const requiredSlots = Math.max(0, Number(minRestHours) || 0) * 2;
 
     const todayDate = new Date(`${weekId}T12:00:00.000Z`);
     todayDate.setUTCDate(todayDate.getUTCDate() + dayIndex);
@@ -33,8 +33,8 @@ export function checkRestTime(employeeId, newShift, weekId, dayIndex) {
     if (shiftsYesterday.length > 0) {
         const lastShiftYesterday = shiftsYesterday.reduce((latest, s) => s.endSlot > latest.endSlot ? s : latest);
         const slotsBetween = (48 - (lastShiftYesterday.endSlot + 1)) + newShift.startSlot;
-        if (slotsBetween < twelveHoursInSlots) {
-            return { pass: false, message: "No se cumplen las 12hs de descanso con el turno del día anterior." };
+        if (slotsBetween < requiredSlots) {
+            return { pass: false, message: `No se cumplen las ${minRestHours}hs de descanso con el turno del día anterior.` };
         }
     }
 
@@ -43,8 +43,8 @@ export function checkRestTime(employeeId, newShift, weekId, dayIndex) {
     if (shiftsTomorrow.length > 0) {
         const firstShiftTomorrow = shiftsTomorrow.reduce((earliest, s) => s.startSlot < earliest.startSlot ? s : earliest);
         const slotsBetween = (48 - (newShift.endSlot + 1)) + firstShiftTomorrow.startSlot;
-        if (slotsBetween < twelveHoursInSlots) {
-            return { pass: false, message: "No se cumplen las 12hs de descanso con el turno del día siguiente." };
+        if (slotsBetween < requiredSlots) {
+            return { pass: false, message: `No se cumplen las ${minRestHours}hs de descanso con el turno del día siguiente.` };
         }
     }
 
@@ -168,6 +168,30 @@ export function calculateConsecutiveWorkDays(employeeId, weekId, dayIndex) {
         }
     }
     return consecutiveDays;
+}
+
+export function normalizeSchedulingRules(rules = {}) {
+    const defaultRest = DEFAULT_SCHEDULING_RULES.minRestHours;
+    const defaultLimit = DEFAULT_SCHEDULING_RULES.maxConsecutiveDays.limit;
+    const rawRest = Number(rules?.minRestHours);
+    const rawLimit = Number(rules?.maxConsecutiveDays?.limit);
+    return {
+        enforceSanctions: rules?.enforceSanctions !== false,
+        enforceMinorNightLimit: rules?.enforceMinorNightLimit !== false,
+        enforceRoleStar: rules?.enforceRoleStar !== false,
+        enforceAvailability: rules?.enforceAvailability !== false,
+        enforceOverlap: rules?.enforceOverlap !== false,
+        enforceRestTime: rules?.enforceRestTime !== false,
+        minRestHours: Number.isFinite(rawRest) && rawRest > 0 ? Math.floor(rawRest) : defaultRest,
+        maxConsecutiveDays: {
+            enabled: rules?.maxConsecutiveDays?.enabled !== false,
+            limit: Number.isFinite(rawLimit) && rawLimit > 0 ? Math.floor(rawLimit) : defaultLimit,
+        },
+    };
+}
+
+export function getSchedulingRules() {
+    return normalizeSchedulingRules(store.getState().schedulingRules || {});
 }
 
 export function isSlotUnavailable(employee, slotIndex, weekId, dayIndex) {

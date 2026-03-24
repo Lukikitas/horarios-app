@@ -38,6 +38,20 @@ export let ROLES = [
 
 export const DEFAULT_ROLES = [...ROLES];
 
+export const DEFAULT_SCHEDULING_RULES = {
+  enforceSanctions: true,
+  enforceMinorNightLimit: true,
+  enforceRoleStar: true,
+  enforceAvailability: true,
+  enforceOverlap: true,
+  enforceRestTime: true,
+  minRestHours: 12,
+  maxConsecutiveDays: {
+    enabled: true,
+    limit: 5,
+  },
+};
+
 export function setRoles(newRoles = []) {
   ROLES.splice(0, ROLES.length, ...newRoles);
 }

@@ -9,7 +9,8 @@ import {
     checkEmployeeAvailability,
     isDateInSanctionPeriod,
     calculateConsecutiveWorkDays,
-    isSlotUnavailable
+    isSlotUnavailable,
+    getSchedulingRules
 } from '../utils/rules.js';
 import { getMonday, toISODateString } from '../utils/date.js';
 import { EmployeeManager } from './EmployeeManager.js';
@@ -19,6 +20,10 @@ export const ScheduleManager = {
     swapShiftSelectionId: null,
     activeTooltipEl: null,
     activeTooltipAnchor: null,
+    getActiveStoreLabel() {
+        const state = store.getState();
+        return (state.storeName || state.activeStoreId || 'Local sin nombre').trim();
+    },
     init() {
         this.bindEvents();
     },
@@ -738,9 +743,10 @@ export const ScheduleManager = {
                 const weekMonday = new Date(state.activeWeek + "T12:00:00Z");
                 const shiftDate = new Date(weekMonday);
                 shiftDate.setUTCDate(weekMonday.getUTCDate() + day);
+                const activeRules = getSchedulingRules();
 
                 // Sanction check using the imported util
-                const isInConflict = emp && isDateInSanctionPeriod(shiftDate, emp.sanctions) && !shift.replacement;
+                const isInConflict = activeRules.enforceSanctions && emp && isDateInSanctionPeriod(shiftDate, emp.sanctions) && !shift.replacement;
 
                 for (let i = 0; i < SLOTS.length; i++) {
                     const cell = create("div", { className: "slot", dataset: { slotIndex: i }, onClick: () => this.handleSlotClick(shift, i) });
@@ -877,28 +883,35 @@ export const ScheduleManager = {
 
         const shiftDate = new Date(`${weekId}T12:00:00.000Z`);
         shiftDate.setUTCDate(shiftDate.getUTCDate() + dayIndex);
+        const rules = getSchedulingRules();
 
-        if (isDateInSanctionPeriod(shiftDate, employee.sanctions)) {
+        if (rules.enforceSanctions && isDateInSanctionPeriod(shiftDate, employee.sanctions)) {
             return { pass: false, message: "El empleado tiene una licencia activa." };
         }
 
-        if (employee.isMinor && shift.endSlot > MAX_SLOT_FOR_MINOR) {
+        if (rules.enforceMinorNightLimit && employee.isMinor && shift.endSlot > MAX_SLOT_FOR_MINOR) {
             return { pass: false, message: "El empleado es menor y no puede trabajar en este horario." };
         }
 
-        if (!shift.ignoreRestrictions && shift.role && !(employee.stars || []).includes(shift.role)) {
+        if (rules.enforceRoleStar && !shift.ignoreRestrictions && shift.role && !(employee.stars || []).includes(shift.role)) {
             return { pass: false, message: `El empleado no tiene la estrella requerida para ${shift.role}.` };
         }
 
-        const overlapCheck = checkShiftOverlap(employee.id, shift, dayIndex, shiftsToIgnore);
-        if (!overlapCheck.pass) return overlapCheck;
+        if (rules.enforceOverlap) {
+            const overlapCheck = checkShiftOverlap(employee.id, shift, dayIndex, shiftsToIgnore);
+            if (!overlapCheck.pass) return overlapCheck;
+        }
 
-        const restCheck = checkRestTime(employee.id, shift, weekId, dayIndex);
-        if (!restCheck.pass) return restCheck;
+        if (rules.enforceRestTime) {
+            const restCheck = checkRestTime(employee.id, shift, weekId, dayIndex, rules.minRestHours);
+            if (!restCheck.pass) return restCheck;
+        }
 
-        const availabilityCheck = checkEmployeeAvailability(employee, shift, weekId, dayIndex);
-        if (!availabilityCheck.isAvailable) {
-            return { pass: false, message: availabilityCheck.reason };
+        if (rules.enforceAvailability) {
+            const availabilityCheck = checkEmployeeAvailability(employee, shift, weekId, dayIndex);
+            if (!availabilityCheck.isAvailable) {
+                return { pass: false, message: availabilityCheck.reason };
+            }
         }
 
         return { pass: true, message: "" };
@@ -988,14 +1001,16 @@ export const ScheduleManager = {
 
     printSchedule() {
         const schedule = getActiveSchedule();
-        const employees = store.getState().employees
+        const state = store.getState();
+        const employees = state.employees
             .filter(emp => this.getEmployeeWeeklyHours(emp.id) > 0)
             .sort((a,b) => a.name.localeCompare(b.name));
 
-        const monday = new Date(store.getState().activeWeek + "T12:00:00Z");
+        const monday = new Date(state.activeWeek + "T12:00:00Z");
         const sunday = new Date(monday);
         sunday.setDate(monday.getDate() + 6);
         const formatDate = (d) => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+        const storeLabel = this.escapeHtml(this.getActiveStoreLabel());
 
         let tableRows = '';
         employees.forEach(emp => {
@@ -1016,7 +1031,7 @@ export const ScheduleManager = {
         });
 
         const w = window.open('', '', 'height=800,width=1200');
-        w.document.write(`<html><head><title>Horarios</title><style>body{font-family:sans-serif;font-size:10px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:5px;text-align:center}th{background:#f2f2f2}@media print{body{margin:0.5in}}</style></head><body><h2>KFC LA PLATA - Semana ${formatDate(monday)} al ${formatDate(sunday)}</h2><table><thead><tr><th>Nombre</th>${DAYS.map(d=>`<th>${d}</th>`).join('')}</tr></thead><tbody>${tableRows}</tbody></table><script>setTimeout(()=>{window.print();window.close()},500)</script></body></html>`);
+        w.document.write(`<html><head><title>Horarios</title><style>body{font-family:sans-serif;font-size:10px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:5px;text-align:center}th{background:#f2f2f2}@media print{body{margin:0.5in}}</style></head><body><h2>${storeLabel} - Semana ${formatDate(monday)} al ${formatDate(sunday)}</h2><table><thead><tr><th>Nombre</th>${DAYS.map(d=>`<th>${d}</th>`).join('')}</tr></thead><tbody>${tableRows}</tbody></table><script>setTimeout(()=>{window.print();window.close()},500)</script></body></html>`);
         w.document.close();
     },
 
@@ -1026,6 +1041,7 @@ export const ScheduleManager = {
         const employees = state.employees;
         const weekMonday = new Date(state.activeWeek + "T12:00:00Z");
         const weekTickets = state.projectedTickets[state.activeWeek] || {};
+        const storeLabel = this.escapeHtml(this.getActiveStoreLabel());
         let pagesHtml = '';
 
         const getEmployeeColor = (id) => {
@@ -1082,7 +1098,7 @@ export const ScheduleManager = {
             let timelineHeader = '';
             SLOTS.forEach(slot => timelineHeader += `<th>${slot.label.split(':')[0]}</th>`);
 
-            pagesHtml += `<div class="page" style="page-break-after:always; margin-bottom: 20px;"><div style="display:flex;align-items:baseline;gap:12px;"><h3 style="margin:4px 0">${formattedDate}</h3><span style="font-size:11px;color:#555;white-space:nowrap;">${statsLabel}</span></div><table style="width:100%;border-collapse:collapse;font-size:9px"><thead>${headcountRow}<tr><th>Empleado</th><th>Pos</th><th>Hs</th>${timelineHeader}</tr></thead><tbody>${tableRows}</tbody></table></div>`;
+            pagesHtml += `<div class="page" style="page-break-after:always; margin-bottom: 20px;"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;"><div style="display:flex;align-items:baseline;gap:12px;"><h3 style="margin:4px 0">${formattedDate}</h3><span style="font-size:11px;color:#555;white-space:nowrap;">${statsLabel}</span></div><span style="font-size:12px;font-weight:600;color:#222;white-space:nowrap;">${storeLabel}</span></div><table style="width:100%;border-collapse:collapse;font-size:9px"><thead>${headcountRow}<tr><th>Empleado</th><th>Pos</th><th>Hs</th>${timelineHeader}</tr></thead><tbody>${tableRows}</tbody></table></div>`;
         }
 
         const w = window.open('', '', 'height=800,width=1200');
@@ -1858,35 +1874,43 @@ export const ScheduleManager = {
         };
 
         const canEmployeeWorkShiftSafe = (emp, shift, day) => {
+             const rules = getSchedulingRules();
              // Logic from canEmployeeWorkShift using our imported utils
              // 1. Sanction
              const weekMonday = new Date(state.activeWeek + "T12:00:00Z");
              const shiftDate = new Date(weekMonday);
              shiftDate.setUTCDate(weekMonday.getUTCDate() + day);
 
-             if (isDateInSanctionPeriod(shiftDate, emp.sanctions)) return false;
+             if (rules.enforceSanctions && isDateInSanctionPeriod(shiftDate, emp.sanctions)) return false;
 
              // 2. Minor
-             if (emp.isMinor && shift.endSlot > MAX_SLOT_FOR_MINOR) return false;
+             if (rules.enforceMinorNightLimit && emp.isMinor && shift.endSlot > MAX_SLOT_FOR_MINOR) return false;
 
              // 3. Star
-             if (!(emp.stars || []).includes(shift.role)) return false;
+             if (rules.enforceRoleStar && !(emp.stars || []).includes(shift.role)) return false;
 
              // 4. Availability
-             const availCheck = checkEmployeeAvailability(emp, shift, state.activeWeek, day);
-             if (!availCheck.isAvailable) return false;
+             if (rules.enforceAvailability) {
+                 const availCheck = checkEmployeeAvailability(emp, shift, state.activeWeek, day);
+                 if (!availCheck.isAvailable) return false;
+             }
 
              // 5. Overlap
-             const overlapCheck = checkShiftOverlap(emp.id, shift, day);
-             if (!overlapCheck.pass) return false;
+             if (rules.enforceOverlap) {
+                 const overlapCheck = checkShiftOverlap(emp.id, shift, day);
+                 if (!overlapCheck.pass) return false;
+             }
 
              // 6. Rest Time
-             const restCheck = checkRestTime(emp.id, shift, state.activeWeek, day);
-             if (!restCheck.pass) return false;
+             if (rules.enforceRestTime) {
+                 const restCheck = checkRestTime(emp.id, shift, state.activeWeek, day, rules.minRestHours);
+                 if (!restCheck.pass) return false;
+             }
 
-             // 7. Consecutive Days (soft check - we avoid > 5 in auto assign)
+             // 7. Consecutive Days (configurable per local)
+             const consecutiveRule = rules.maxConsecutiveDays;
              const consec = calculateConsecutiveWorkDays(emp.id, state.activeWeek, day);
-             if (consec > 5) return false;
+             if (consecutiveRule.enabled && consec > consecutiveRule.limit) return false;
 
              return true;
         }
@@ -1965,11 +1989,14 @@ export const ScheduleManager = {
 
         c.appendChild(listContainer);
 
-        const employeesWithStar = state.employees.filter(e => (e.stars || []).includes(shift.role));
+        const activeRules = getSchedulingRules();
+        const employeesWithStar = state.employees.filter(e => !activeRules.enforceRoleStar || (e.stars || []).includes(shift.role));
         const candidates = ignoreRestrictions ? state.employees : employeesWithStar;
 
         if (candidates.length === 0) {
-            listContainer.textContent = ignoreRestrictions ? "No hay empleados para asignar." : "No hay empleados con la estrella requerida.";
+            listContainer.textContent = ignoreRestrictions
+                ? "No hay empleados para asignar."
+                : (activeRules.enforceRoleStar ? "No hay empleados con la estrella requerida." : "No hay empleados para asignar.");
         } else {
             // Logic for sorting and checking warnings
             const available = [];
@@ -1979,26 +2006,36 @@ export const ScheduleManager = {
             shiftDate.setDate(shiftDate.getDate() + day);
 
             const evaluateEmployee = (emp) => {
+                const rules = getSchedulingRules();
                 const isMinor = emp.isMinor;
-                const sanctionCheck = isDateInSanctionPeriod(shiftDate, emp.sanctions);
+                const sanctionCheck = rules.enforceSanctions && isDateInSanctionPeriod(shiftDate, emp.sanctions);
 
                 let hardWarning = "";
                 if(sanctionCheck) hardWarning = "Licencia/Sanción activa.";
-                else if (isMinor && shift.endSlot > MAX_SLOT_FOR_MINOR) hardWarning = "Menor no puede trabajar tarde.";
+                else if (rules.enforceMinorNightLimit && isMinor && shift.endSlot > MAX_SLOT_FOR_MINOR) hardWarning = "Menor no puede trabajar tarde.";
 
-                const overlapCheck = checkShiftOverlap(emp.id, shift, day);
-                if(!overlapCheck.pass) hardWarning = overlapCheck.message;
+                if (rules.enforceOverlap) {
+                    const overlapCheck = checkShiftOverlap(emp.id, shift, day);
+                    if(!overlapCheck.pass) hardWarning = overlapCheck.message;
+                }
 
-                const restCheck = checkRestTime(emp.id, shift, state.activeWeek, day);
-                if(!restCheck.pass) hardWarning = restCheck.message;
+                if (rules.enforceRestTime) {
+                    const restCheck = checkRestTime(emp.id, shift, state.activeWeek, day, rules.minRestHours);
+                    if(!restCheck.pass) hardWarning = restCheck.message;
+                }
 
                 // Warnings
                 const softWarnings = [];
-                const availCheck = checkEmployeeAvailability(emp, shift, state.activeWeek, day);
-                if(!availCheck.isAvailable) softWarnings.push(availCheck.reason);
+                if (rules.enforceAvailability) {
+                    const availCheck = checkEmployeeAvailability(emp, shift, state.activeWeek, day);
+                    if(!availCheck.isAvailable) softWarnings.push(availCheck.reason);
+                }
 
+                const consecutiveRule = rules.maxConsecutiveDays;
                 const consec = calculateConsecutiveWorkDays(emp.id, state.activeWeek, day);
-                if(consec > 5) softWarnings.push(`Trabajará ${consec} días seguidos.`);
+                if (consecutiveRule.enabled && consec > consecutiveRule.limit) {
+                    softWarnings.push(`Trabajará ${consec} días seguidos (límite ${consecutiveRule.limit}).`);
+                }
 
                 return { hardWarning, softWarnings };
             };
@@ -2141,8 +2178,9 @@ export const ScheduleManager = {
 
     getDayRestrictionInfo(employee, shiftDate, shiftDateString) {
         if (!employee) return { blocked: false, reason: '' };
+        const rules = getSchedulingRules();
 
-        if (isDateInSanctionPeriod(shiftDate, employee.sanctions)) {
+        if (rules.enforceSanctions && isDateInSanctionPeriod(shiftDate, employee.sanctions)) {
             return { blocked: true, reason: 'Licencia activa' };
         }
 
