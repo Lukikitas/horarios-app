@@ -1131,34 +1131,41 @@ export const ScheduleManager = {
         const formatDate = (d) => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
         const storeLabel = this.escapeHtml(this.getActiveStoreLabel());
 
-        let tableRows = '';
-        employees.forEach(emp => {
-            let row = `<tr><td>${this.escapeHtml(emp.name)}</td>`;
-            for (let dayOffset = 0; dayOffset < periodDays; dayOffset++) {
-                const dayShifts = this.getShiftsByDayOffset(dayOffset).filter(s => s.employeeId === emp.id);
-                if (dayShifts.length > 0) {
-                    const shift = dayShifts[0];
-                    const startTime = SLOTS[shift.startSlot].label;
-                    const endTime = SLOTS[shift.endSlot + 1] ? SLOTS[shift.endSlot + 1].label : "02:00";
-                    row += `<td>${startTime} - ${endTime}</td>`;
-                } else {
-                    row += `<td>Descanso</td>`;
-                }
+        const chunkSize = periodDays > 10 ? 7 : periodDays;
+        const sections = [];
+        for (let startOffset = 0; startOffset < periodDays; startOffset += chunkSize) {
+            const endOffset = Math.min(startOffset + chunkSize, periodDays);
+            const dayHeaders = [];
+            for (let dayOffset = startOffset; dayOffset < endOffset; dayOffset++) {
+                const dayDate = new Date(monday);
+                dayDate.setDate(monday.getDate() + dayOffset);
+                const dayName = dayDate.toLocaleDateString('es-AR', { weekday: 'short' }).replace('.', '');
+                dayHeaders.push(`<th>${this.escapeHtml(dayName)}<br>${dayDate.getDate()}/${dayDate.getMonth() + 1}</th>`);
             }
-            row += '</tr>';
-            tableRows += row;
-        });
 
-        const dayHeaders = [];
-        for (let dayOffset = 0; dayOffset < periodDays; dayOffset++) {
-            const dayDate = new Date(monday);
-            dayDate.setDate(monday.getDate() + dayOffset);
-            const dayName = dayDate.toLocaleDateString('es-AR', { weekday: 'short' }).replace('.', '');
-            dayHeaders.push(`<th>${this.escapeHtml(dayName)}<br>${dayDate.getDate()}/${dayDate.getMonth() + 1}</th>`);
+            let tableRows = '';
+            employees.forEach(emp => {
+                let row = `<tr><td>${this.escapeHtml(emp.name)}</td>`;
+                for (let dayOffset = startOffset; dayOffset < endOffset; dayOffset++) {
+                    const dayShifts = this.getShiftsByDayOffset(dayOffset).filter(s => s.employeeId === emp.id);
+                    if (dayShifts.length > 0) {
+                        const shift = dayShifts[0];
+                        const startTime = SLOTS[shift.startSlot].label;
+                        const endTime = SLOTS[shift.endSlot + 1] ? SLOTS[shift.endSlot + 1].label : "02:00";
+                        row += `<td>${startTime}<br>${endTime}</td>`;
+                    } else {
+                        row += `<td>OFF</td>`;
+                    }
+                }
+                row += '</tr>';
+                tableRows += row;
+            });
+
+            sections.push(`<section class="print-section"><h3>Días ${startOffset + 1} al ${endOffset}</h3><table><thead><tr><th>Nombre</th>${dayHeaders.join('')}</tr></thead><tbody>${tableRows}</tbody></table></section>`);
         }
 
         const w = window.open('', '', 'height=800,width=1200');
-        w.document.write(`<html><head><title>Horarios</title><style>body{font-family:sans-serif;font-size:10px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:5px;text-align:center}th{background:#f2f2f2}@media print{body{margin:0.5in}}</style></head><body><h2>${storeLabel} - Período ${formatDate(monday)} al ${formatDate(periodEnd)}</h2><table><thead><tr><th>Nombre</th>${dayHeaders.join('')}</tr></thead><tbody>${tableRows}</tbody></table><script>setTimeout(()=>{window.print();window.close()},500)</script></body></html>`);
+        w.document.write(`<html><head><title>Horarios</title><style>body{font-family:sans-serif;font-size:9px}h3{margin:8px 0}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #ccc;padding:4px;text-align:center;word-wrap:break-word}th{background:#f2f2f2}.print-section{margin-bottom:14px}@media print{@page{size:landscape;margin:8mm}.print-section{page-break-after:always}.print-section:last-child{page-break-after:auto}}</style></head><body><h2>${storeLabel} - Período ${formatDate(monday)} al ${formatDate(periodEnd)}</h2>${sections.join('')}<script>setTimeout(()=>{window.print();window.close()},500)</script></body></html>`);
         w.document.close();
     },
 

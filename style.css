@@ -1349,39 +1349,60 @@ body.dark-mode #calendar-grid .day.monday:not(.other-month):hover {
 
 .monthly-grid-table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 2px;
   font-size: 11px;
+  background: var(--line);
 }
 
 .monthly-grid-table th,
 .monthly-grid-table td {
-  border: 1px solid var(--line);
+  border: 1px solid #94a3b8;
   text-align: center;
-  padding: 4px;
+  padding: 2px;
 }
 
 .monthly-grid-table th {
   background: var(--chip);
   position: sticky;
   top: 0;
-  z-index: 10;
+  z-index: 25;
 }
 
 .monthly-employee-cell {
+  width: 220px;
   min-width: 220px;
+  max-width: 220px;
   text-align: left;
   font-weight: 600;
   background: var(--panel);
   position: sticky;
   left: 0;
-  z-index: 11;
+  z-index: 20;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.monthly-grid-table thead .monthly-employee-cell {
+  z-index: 30;
 }
 
 .monthly-shift-cell {
-  min-width: 74px;
+  width: 72px;
+  min-width: 72px;
+  max-width: 72px;
+  height: 62px;
   cursor: pointer;
   background: #e5e7eb;
   color: #111827;
+  box-sizing: border-box;
+  vertical-align: middle;
+  overflow: hidden;
+}
+
+.monthly-shift-cell > div {
+  line-height: 1.05;
 }
 
 .monthly-shift-cell.off {
@@ -1404,7 +1425,7 @@ body.dark-mode .monthly-shift-cell.selected {
 }
 
 .monthly-grid-table tbody tr + tr td {
-  border-top: 3px solid #cbd5e1;
+  border-top: 2px solid #64748b;
 }
 
 body.dark-mode .monthly-grid-table tbody tr + tr td {
@@ -1424,6 +1445,7 @@ body.dark-mode .monthly-grid-table tbody tr + tr td {
 #monthly-planner-grid {
   max-height: calc(100vh - 280px);
   overflow: auto;
+  padding-bottom: 70px;
 }
 
 .monthly-context-menu {
