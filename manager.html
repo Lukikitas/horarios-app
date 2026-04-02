@@ -336,6 +336,13 @@
                   <select id="monthly-editor-start" class="select input-compact"></select>
                 </div>
                 <div class="stack">
+                  <label class="muted mini-label" for="monthly-editor-method">Método de carga</label>
+                  <select id="monthly-editor-method" class="select input-compact">
+                    <option value="duration">Entrada + duración</option>
+                    <option value="end">Entrada + salida</option>
+                  </select>
+                </div>
+                <div id="monthly-editor-duration-wrap" class="stack">
                   <label class="muted mini-label" for="monthly-editor-duration">Duración del turno</label>
                   <select id="monthly-editor-duration" class="select input-compact">
                     <option value="">--</option>
@@ -347,6 +354,10 @@
                     <option value="9">9 hs</option>
                     <option value="10">10 hs</option>
                   </select>
+                </div>
+                <div id="monthly-editor-end-wrap" class="stack" style="display:none;">
+                  <label class="muted mini-label" for="monthly-editor-end">Salida</label>
+                  <select id="monthly-editor-end" class="select input-compact"></select>
                 </div>
                 <button id="monthly-editor-save" class="btn">Guardar celda</button>
                 <button id="monthly-editor-clear" class="btn secondary">Marcar OFF</button>

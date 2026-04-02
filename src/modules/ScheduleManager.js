@@ -192,6 +192,10 @@ export const ScheduleManager = {
         });
         el("#monthly-editor-save")?.addEventListener("click", () => this.saveMonthlyEditorCell());
         el("#monthly-editor-clear")?.addEventListener("click", () => this.clearMonthlyEditorCell());
+        el("#monthly-editor-method")?.addEventListener("change", (e) => {
+            this.monthlyTimeMethod = e.target.value === 'end' ? 'end' : 'duration';
+            this.syncMonthlyEditorMethodUI();
+        });
         document.addEventListener("keydown", (e) => this.handleMonthlyKeyboardShortcuts(e));
         document.addEventListener("click", (e) => {
             const menu = document.querySelector('.monthly-context-menu');
@@ -282,6 +286,14 @@ export const ScheduleManager = {
         const weekSchedule = store.getState().schedules[weekId] || {};
         const dayShifts = weekSchedule[dayIndex] || [];
         return dayShifts.find((shift) => shift.employeeId === employeeId) || null;
+    },
+
+    syncMonthlyEditorMethodUI() {
+        const method = this.monthlyTimeMethod === 'end' ? 'end' : 'duration';
+        const durationWrap = el("#monthly-editor-duration-wrap");
+        const endWrap = el("#monthly-editor-end-wrap");
+        if (durationWrap) durationWrap.style.display = method === 'duration' ? 'flex' : 'none';
+        if (endWrap) endWrap.style.display = method === 'end' ? 'flex' : 'none';
     },
 
     calendarDate: new Date(),
@@ -1261,14 +1273,24 @@ export const ScheduleManager = {
         const roleSelect = el("#monthly-editor-role");
         const startSelect = el("#monthly-editor-start");
         const durationSelect = el("#monthly-editor-duration");
-        if (!roleSelect || !startSelect || !durationSelect) return;
+        const endSelect = el("#monthly-editor-end");
+        const methodSelect = el("#monthly-editor-method");
+        if (!roleSelect || !startSelect || !durationSelect || !endSelect || !methodSelect) return;
 
         this.optionize(roleSelect, [{ key: '' }, ...this.getRoleList()], (role) => ({ value: role.key, label: role.key || 'OFF' }));
         this.optionize(startSelect, [{ label: '', index: '' }, ...SLOTS], (slot) => ({ value: slot.index, label: slot.label || '--' }));
+        this.optionize(endSelect, [{ index: '' }, ...SLOTS], (slot) => {
+            if (slot.index === '') return { value: '', label: '--' };
+            const endLabel = SLOTS[Number(slot.index) + 1]?.label || SLOTS[Number(slot.index)]?.label || '';
+            return { value: slot.index, label: endLabel };
+        });
         const shift = this.getEmployeeShiftForDate(employee.id, date);
         roleSelect.value = shift?.role || '';
         startSelect.value = shift ? String(shift.startSlot) : '';
         durationSelect.value = shift ? String((shift.endSlot - shift.startSlot + 1) / 2) : '';
+        endSelect.value = shift ? String(shift.endSlot) : '';
+        methodSelect.value = this.monthlyTimeMethod === 'end' ? 'end' : 'duration';
+        this.syncMonthlyEditorMethodUI();
 
         this.renderMonthlyPlanner();
     },
@@ -1366,20 +1388,32 @@ export const ScheduleManager = {
         if (!context) return;
         const role = el("#monthly-editor-role")?.value || '';
         const startSlot = Number(el("#monthly-editor-start")?.value);
+        const method = el("#monthly-editor-method")?.value === 'end' ? 'end' : 'duration';
+        this.monthlyTimeMethod = method;
         const durationHours = Number(el("#monthly-editor-duration")?.value);
         const durationSlots = Math.round(durationHours * 2);
-        const endSlot = startSlot + durationSlots - 1;
+        const endSlotByDuration = startSlot + durationSlots - 1;
+        const endSlotManual = Number(el("#monthly-editor-end")?.value);
+        const endSlot = method === 'end' ? endSlotManual : endSlotByDuration;
 
         if (!role) {
             showToast("Seleccioná un puesto o usá 'Marcar OFF'.", "warning");
             return;
         }
-        if (!Number.isFinite(startSlot) || !Number.isFinite(durationHours) || durationHours <= 0) {
-            showToast("Definí una hora de inicio y duración válidas.", "warning");
+        if (!Number.isFinite(startSlot)) {
+            showToast("Definí una hora de inicio válida.", "warning");
+            return;
+        }
+        if (method === 'duration' && (!Number.isFinite(durationHours) || durationHours <= 0)) {
+            showToast("Definí una duración válida.", "warning");
+            return;
+        }
+        if (method === 'end' && (!Number.isFinite(endSlotManual) || endSlotManual < startSlot)) {
+            showToast("Definí una hora de salida válida.", "warning");
             return;
         }
         if (!Number.isFinite(endSlot) || endSlot >= SLOTS.length) {
-            showToast("La duración seleccionada supera el horario permitido.", "warning");
+            showToast("El turno calculado supera el horario permitido.", "warning");
             return;
         }
 
