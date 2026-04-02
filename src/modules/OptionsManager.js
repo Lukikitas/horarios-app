@@ -185,6 +185,7 @@ export const OptionsManager = {
         const restHoursInput = el('#rule-min-rest-hours');
         const consecutiveEnabledInput = el('#rule-max-consecutive-enabled');
         const consecutiveLimitInput = el('#rule-max-consecutive-limit');
+        const periodInput = el('#store-scheduling-period');
         if (!storeNameInput || !consecutiveEnabledInput || !consecutiveLimitInput || !restHoursInput) return;
 
         const state = store.getState();
@@ -209,6 +210,10 @@ export const OptionsManager = {
         consecutiveEnabledInput.checked = !!rules.maxConsecutiveDays.enabled;
         consecutiveLimitInput.disabled = !consecutiveEnabledInput.checked;
         restHoursInput.disabled = !(restInput?.checked);
+        if (periodInput) {
+            const periodWeeks = [1, 2, 4].includes(Number(state.schedulingPeriodWeeks)) ? Number(state.schedulingPeriodWeeks) : 1;
+            periodInput.value = String(periodWeeks);
+        }
     },
 
     async handleStoreSettingsSubmit(event) {
@@ -230,6 +235,7 @@ export const OptionsManager = {
         const minRestHours = Number(el('#rule-min-rest-hours')?.value || 0);
         const consecutiveEnabled = !!el('#rule-max-consecutive-enabled')?.checked;
         const consecutiveLimit = Number(el('#rule-max-consecutive-limit')?.value || 0);
+        const schedulingPeriodWeeks = Number(el('#store-scheduling-period')?.value || 1);
 
         const schedulingRules = normalizeSchedulingRules({
             enforceSanctions,
@@ -253,6 +259,10 @@ export const OptionsManager = {
             showToast('Ingresá una cantidad válida de horas mínimas de descanso.', 'warning');
             return;
         }
+        if (![1, 2, 4].includes(schedulingPeriodWeeks)) {
+            showToast('Seleccioná una metodología válida (semanal, quincenal o mensual).', 'warning');
+            return;
+        }
 
         try {
             if (submitBtn) {
@@ -263,6 +273,7 @@ export const OptionsManager = {
             store.setState({
                 storeName: storeName || state.activeStoreId,
                 schedulingRules,
+                schedulingPeriodWeeks,
             });
 
             await DataManager.saveState();

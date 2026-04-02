@@ -134,6 +134,7 @@ export const DataManager = {
                 newState.projectedTickets = data.projectedTickets || {};
                 newState.storeName = (storeRootSnap.data()?.displayName || data.storeName || storeId || '').trim();
                 newState.schedulingRules = normalizeSchedulingRules(data.schedulingRules || {});
+                newState.schedulingPeriodWeeks = [1, 2, 4].includes(Number(data.schedulingPeriodWeeks)) ? Number(data.schedulingPeriodWeeks) : 1;
 
                 // Initialize active week
                 if (!newState.activeWeek) {
@@ -177,6 +178,7 @@ export const DataManager = {
                  newState.roles = [...ROLES];
                  newState.storeName = (storeRootSnap.data()?.displayName || storeId || '').trim();
                  newState.schedulingRules = normalizeSchedulingRules();
+                 newState.schedulingPeriodWeeks = 1;
             }
 
             store.setState(newState);
@@ -221,6 +223,7 @@ export const DataManager = {
                 roles: state.roles && state.roles.length ? state.roles : ROLES,
                 storeName: (state.storeName || storeId || '').trim(),
                 schedulingRules: normalizeSchedulingRules(state.schedulingRules || {}),
+                schedulingPeriodWeeks: [1, 2, 4].includes(Number(state.schedulingPeriodWeeks)) ? Number(state.schedulingPeriodWeeks) : 1,
             };
             await Promise.all([
                 schedulesRef.doc("main").set(mainData, { merge: true }),

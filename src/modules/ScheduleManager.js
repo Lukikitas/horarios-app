@@ -36,8 +36,8 @@ export const ScheduleManager = {
         el("#btnUndo")?.addEventListener("click", () => this.undoLastAction());
 
         el("#weekSelector")?.addEventListener("change", (e) => this.changeWeek(e.target.value));
-        el("#btn-prev-week")?.addEventListener("click", () => this.changeWeek(-7));
-        el("#btn-next-week")?.addEventListener("click", () => this.changeWeek(7));
+        el("#btn-prev-week")?.addEventListener("click", () => this.changeWeek(-this.getSchedulingPeriodDays()));
+        el("#btn-next-week")?.addEventListener("click", () => this.changeWeek(this.getSchedulingPeriodDays()));
         el("#btn-lock-week")?.addEventListener("click", () => this.toggleWeekLock());
 
         // Filters dropdown toggle
@@ -193,6 +193,46 @@ export const ScheduleManager = {
         return roles && roles.length ? roles : ROLES;
     },
 
+    getSchedulingPeriodWeeks() {
+        const value = Number(store.getState().schedulingPeriodWeeks);
+        return [1, 2, 4].includes(value) ? value : 1;
+    },
+
+    getSchedulingPeriodDays() {
+        return this.getSchedulingPeriodWeeks() * 7;
+    },
+
+    getWeekIdByDayOffset(dayOffset) {
+        const baseDate = new Date(`${store.getState().activeWeek}T12:00:00.000Z`);
+        baseDate.setUTCDate(baseDate.getUTCDate() + dayOffset);
+        return toISODateString(getMonday(baseDate));
+    },
+
+    getDayIndexByOffset(dayOffset) {
+        const normalized = ((dayOffset % 7) + 7) % 7;
+        return normalized;
+    },
+
+    getShiftsByDayOffset(dayOffset) {
+        const state = store.getState();
+        const weekId = this.getWeekIdByDayOffset(dayOffset);
+        const dayIndex = this.getDayIndexByOffset(dayOffset);
+        const weekSchedule = state.schedules[weekId] || {};
+        return Array.isArray(weekSchedule[dayIndex]) ? weekSchedule[dayIndex] : [];
+    },
+
+    async preloadPeriodWeeks() {
+        const weeks = this.getSchedulingPeriodWeeks();
+        const promises = [];
+        for (let i = 1; i < weeks; i++) {
+            const weekId = this.getWeekIdByDayOffset(i * 7);
+            if (!store.getState().schedules[weekId]) {
+                promises.push(DataManager.getWeekData(weekId));
+            }
+        }
+        if (promises.length) await Promise.all(promises);
+    },
+
     calendarDate: new Date(),
 
     renderCalendar() {
@@ -301,6 +341,7 @@ export const ScheduleManager = {
 
     render() {
         this.hideEmployeeWeekTooltip();
+        this.preloadPeriodWeeks().catch((error) => console.warn('No se pudieron precargar semanas del período.', error));
         const roles = this.getRoleList();
         const activeRoleSelect = el("#activeRole");
         const filterSelect = el("#schedule-role-filter");
@@ -1000,23 +1041,28 @@ export const ScheduleManager = {
     },
 
     printSchedule() {
-        const schedule = getActiveSchedule();
         const state = store.getState();
+        const periodDays = this.getSchedulingPeriodDays();
         const employees = state.employees
-            .filter(emp => this.getEmployeeWeeklyHours(emp.id) > 0)
+            .filter(emp => {
+                for (let dayOffset = 0; dayOffset < periodDays; dayOffset++) {
+                    if (this.getShiftsByDayOffset(dayOffset).some(s => s.employeeId === emp.id)) return true;
+                }
+                return false;
+            })
             .sort((a,b) => a.name.localeCompare(b.name));
 
         const monday = new Date(state.activeWeek + "T12:00:00Z");
-        const sunday = new Date(monday);
-        sunday.setDate(monday.getDate() + 6);
+        const periodEnd = new Date(monday);
+        periodEnd.setDate(monday.getDate() + periodDays - 1);
         const formatDate = (d) => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
         const storeLabel = this.escapeHtml(this.getActiveStoreLabel());
 
         let tableRows = '';
         employees.forEach(emp => {
             let row = `<tr><td>${this.escapeHtml(emp.name)}</td>`;
-            for (let i = 0; i < 7; i++) {
-                const dayShifts = (schedule[i] || []).filter(s => s.employeeId === emp.id);
+            for (let dayOffset = 0; dayOffset < periodDays; dayOffset++) {
+                const dayShifts = this.getShiftsByDayOffset(dayOffset).filter(s => s.employeeId === emp.id);
                 if (dayShifts.length > 0) {
                     const shift = dayShifts[0];
                     const startTime = SLOTS[shift.startSlot].label;
@@ -1030,8 +1076,16 @@ export const ScheduleManager = {
             tableRows += row;
         });
 
+        const dayHeaders = [];
+        for (let dayOffset = 0; dayOffset < periodDays; dayOffset++) {
+            const dayDate = new Date(monday);
+            dayDate.setDate(monday.getDate() + dayOffset);
+            const dayName = dayDate.toLocaleDateString('es-AR', { weekday: 'short' }).replace('.', '');
+            dayHeaders.push(`<th>${this.escapeHtml(dayName)}<br>${dayDate.getDate()}/${dayDate.getMonth() + 1}</th>`);
+        }
+
         const w = window.open('', '', 'height=800,width=1200');
-        w.document.write(`<html><head><title>Horarios</title><style>body{font-family:sans-serif;font-size:10px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:5px;text-align:center}th{background:#f2f2f2}@media print{body{margin:0.5in}}</style></head><body><h2>${storeLabel} - Semana ${formatDate(monday)} al ${formatDate(sunday)}</h2><table><thead><tr><th>Nombre</th>${DAYS.map(d=>`<th>${d}</th>`).join('')}</tr></thead><tbody>${tableRows}</tbody></table><script>setTimeout(()=>{window.print();window.close()},500)</script></body></html>`);
+        w.document.write(`<html><head><title>Horarios</title><style>body{font-family:sans-serif;font-size:10px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:5px;text-align:center}th{background:#f2f2f2}@media print{body{margin:0.5in}}</style></head><body><h2>${storeLabel} - Período ${formatDate(monday)} al ${formatDate(periodEnd)}</h2><table><thead><tr><th>Nombre</th>${dayHeaders.join('')}</tr></thead><tbody>${tableRows}</tbody></table><script>setTimeout(()=>{window.print();window.close()},500)</script></body></html>`);
         w.document.close();
     },
 
@@ -1777,11 +1831,11 @@ export const ScheduleManager = {
         if (!btn) return;
         const state = store.getState();
         const monday = new Date(state.activeWeek + "T12:00:00Z");
-        const sunday = new Date(monday);
-        sunday.setDate(monday.getDate() + 6);
+        const periodEnd = new Date(monday);
+        periodEnd.setDate(monday.getDate() + this.getSchedulingPeriodDays() - 1);
 
         const format = (d) => `${d.getDate()}/${d.getMonth()+1}`;
-        btn.textContent = `${format(monday)} - ${format(sunday)}`;
+        btn.textContent = `${format(monday)} - ${format(periodEnd)}`;
 
         this.ensureSavingIndicator();
         this.setSavingStatus(false);
@@ -1796,11 +1850,17 @@ export const ScheduleManager = {
         let totalHours = 0;
         let totalTickets = 0;
 
-        const weekTickets = state.projectedTickets[state.activeWeek] || {};
-
-        for (let i = 0; i < 7; i++) {
-            totalHours += this.calculateTotalDayHours(i);
-            totalTickets += Number(weekTickets[i] || 0);
+        const periodDays = this.getSchedulingPeriodDays();
+        for (let dayOffset = 0; dayOffset < periodDays; dayOffset++) {
+            const weekId = this.getWeekIdByDayOffset(dayOffset);
+            const dayIndex = this.getDayIndexByOffset(dayOffset);
+            const weekData = state.schedules[weekId] || {};
+            const dayShifts = weekData[dayIndex] || [];
+            dayShifts.forEach(shift => {
+                totalHours += (shift.endSlot - shift.startSlot + 1) / 2;
+            });
+            const weekTickets = state.projectedTickets[weekId] || {};
+            totalTickets += Number(weekTickets[dayIndex] || 0);
         }
 
         const productivity = totalHours > 0 ? (totalTickets / totalHours).toFixed(1) : "-";
