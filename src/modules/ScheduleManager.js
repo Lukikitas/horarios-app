@@ -186,7 +186,7 @@ export const ScheduleManager = {
 
         // Templates
         el("#btnSaveTemplate")?.addEventListener("click", () => this.saveCurrentDayAsTemplate());
-        el("#monthly-planner-month")?.addEventListener("change", (e) => {
+        el("#monthly-top-month")?.addEventListener("change", (e) => {
             this.monthlySelectedMonth = e.target.value;
             this.renderMonthlyPlanner();
         });
@@ -453,6 +453,14 @@ export const ScheduleManager = {
         const dayTitle = el("#day-title");
         const projectedTickets = el("#projectedTickets");
         const suggestBtn = el("#btn-suggest-productivity");
+        const controlsLeft = document.querySelector("#view-schedule .controls-left");
+        const controlsCenter = document.querySelector("#view-schedule .controls-center");
+        const controlsRight = document.querySelector("#view-schedule .controls-right");
+        const monthTopInput = el("#monthly-top-month");
+        const btnLock = el("#btn-lock-week");
+        const btnPrev = el("#btn-prev-week");
+        const btnNext = el("#btn-next-week");
+        const weekDisplay = el("#week-display");
 
         if (monthlySection) monthlySection.style.display = isMonthlyMode ? "flex" : "none";
         if (scroller) scroller.style.display = isMonthlyMode ? "none" : "block";
@@ -460,6 +468,14 @@ export const ScheduleManager = {
         if (dayTitle) dayTitle.style.display = isMonthlyMode ? "none" : "block";
         if (projectedTickets) projectedTickets.disabled = isMonthlyMode;
         if (suggestBtn) suggestBtn.style.display = isMonthlyMode ? "none" : "inline-flex";
+        if (controlsLeft) controlsLeft.style.display = isMonthlyMode ? "none" : "flex";
+        if (controlsCenter) controlsCenter.style.display = isMonthlyMode ? "none" : "flex";
+        if (controlsRight) controlsRight.style.display = isMonthlyMode ? "none" : "flex";
+        if (monthTopInput) monthTopInput.style.display = isMonthlyMode ? "inline-flex" : "none";
+        if (btnLock) btnLock.style.display = isMonthlyMode ? "none" : "inline-flex";
+        if (btnPrev) btnPrev.style.display = isMonthlyMode ? "none" : "inline-flex";
+        if (btnNext) btnNext.style.display = isMonthlyMode ? "none" : "inline-flex";
+        if (weekDisplay) weekDisplay.style.display = isMonthlyMode ? "none" : "inline-flex";
     },
 
     // --- Template Logic ---
@@ -1183,7 +1199,7 @@ export const ScheduleManager = {
 
     async renderMonthlyPlanner() {
         if (this.getSchedulingPeriodWeeks() !== 4) return;
-        const monthInput = el("#monthly-planner-month");
+        const monthInput = el("#monthly-top-month");
         const gridContainer = el("#monthly-planner-grid");
         const editor = el("#monthly-planner-editor");
         const targetBadge = el("#monthly-editor-target");
