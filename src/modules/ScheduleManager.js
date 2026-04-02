@@ -1225,7 +1225,7 @@ export const ScheduleManager = {
                 if (shift) {
                     const startLabel = SLOTS[shift.startSlot]?.label || '';
                     const endLabel = SLOTS[shift.endSlot + 1]?.label || '';
-                    cell.innerHTML = `<div>${startLabel}</div><div>${endLabel}</div><div style="font-size:10px;">${this.escapeHtml(shift.role || '')}</div>`;
+                    cell.innerHTML = `<div style="font-size:12px;font-weight:800;">${startLabel} - ${endLabel}</div><div style="font-size:9px;opacity:.9;">${this.escapeHtml(shift.role || '')}</div>`;
                 } else {
                     cell.textContent = 'OFF';
                 }
@@ -1260,21 +1260,15 @@ export const ScheduleManager = {
 
         const roleSelect = el("#monthly-editor-role");
         const startSelect = el("#monthly-editor-start");
-        const endSelect = el("#monthly-editor-end");
-        if (!roleSelect || !startSelect || !endSelect) return;
+        const durationSelect = el("#monthly-editor-duration");
+        if (!roleSelect || !startSelect || !durationSelect) return;
 
         this.optionize(roleSelect, [{ key: '' }, ...this.getRoleList()], (role) => ({ value: role.key, label: role.key || 'OFF' }));
         this.optionize(startSelect, [{ label: '', index: '' }, ...SLOTS], (slot) => ({ value: slot.index, label: slot.label || '--' }));
-        this.optionize(endSelect, [{ index: '' }, ...SLOTS], (slot) => {
-            if (slot.index === '') return { value: '', label: '--' };
-            const endLabel = SLOTS[Number(slot.index) + 1]?.label || SLOTS[Number(slot.index)]?.label || '';
-            return { value: slot.index, label: endLabel };
-        });
-
         const shift = this.getEmployeeShiftForDate(employee.id, date);
         roleSelect.value = shift?.role || '';
         startSelect.value = shift ? String(shift.startSlot) : '';
-        endSelect.value = shift ? String(shift.endSlot) : '';
+        durationSelect.value = shift ? String((shift.endSlot - shift.startSlot + 1) / 2) : '';
 
         this.renderMonthlyPlanner();
     },
@@ -1372,14 +1366,20 @@ export const ScheduleManager = {
         if (!context) return;
         const role = el("#monthly-editor-role")?.value || '';
         const startSlot = Number(el("#monthly-editor-start")?.value);
-        const endSlot = Number(el("#monthly-editor-end")?.value);
+        const durationHours = Number(el("#monthly-editor-duration")?.value);
+        const durationSlots = Math.round(durationHours * 2);
+        const endSlot = startSlot + durationSlots - 1;
 
         if (!role) {
             showToast("Seleccioná un puesto o usá 'Marcar OFF'.", "warning");
             return;
         }
-        if (!Number.isFinite(startSlot) || !Number.isFinite(endSlot) || endSlot < startSlot) {
-            showToast("Definí una entrada y salida válidas.", "warning");
+        if (!Number.isFinite(startSlot) || !Number.isFinite(durationHours) || durationHours <= 0) {
+            showToast("Definí una hora de inicio y duración válidas.", "warning");
+            return;
+        }
+        if (!Number.isFinite(endSlot) || endSlot >= SLOTS.length) {
+            showToast("La duración seleccionada supera el horario permitido.", "warning");
             return;
         }
 
