@@ -1367,14 +1367,24 @@ export const ScheduleManager = {
 
     async pasteToSelectedMonthlyCell() {
         if (!this.monthlyEditorContext || this.monthlyClipboard === undefined) return;
-        await this.applyMonthlyCellData(this.monthlyEditorContext, this.monthlyClipboard);
-        showToast("Turno pegado.", "success");
+        const saved = await this.applyMonthlyCellData(this.monthlyEditorContext, this.monthlyClipboard);
+        if (saved) showToast("Turno pegado.", "success");
     },
 
     async applyMonthlyCellData(context, shiftData) {
         const date = new Date(`${context.dateISO}T12:00:00.000Z`);
         const { weekId, dayIndex } = this.getWeekAndDayFromDate(date);
         await DataManager.getWeekData(weekId);
+        if (shiftData) {
+            const warnings = this.getMonthlyShiftWarnings(context, shiftData, weekId, dayIndex);
+            if (warnings.length) {
+                const confirmed = await showConfirmDialog({
+                    title: "Advertencias de validación",
+                    message: `Se detectaron estas advertencias:<br><br>${warnings.map((w) => `• ${w}`).join('<br>')}<br><br>¿Guardar igualmente el turno?`
+                });
+                if (!confirmed) return false;
+            }
+        }
         const currentState = store.getState();
         const schedules = { ...currentState.schedules };
         const weekSchedule = { ...(schedules[weekId] || {}) };
@@ -1397,6 +1407,45 @@ export const ScheduleManager = {
         store.setState({ schedules });
         await DataManager.saveWeek(weekId);
         this.renderMonthlyPlanner();
+        return true;
+    },
+
+    getMonthlyShiftWarnings(context, shiftData, weekId, dayIndex) {
+        const warnings = [];
+        const state = store.getState();
+        const employee = state.employees.find((emp) => emp.id === context.employeeId);
+        if (!employee) return ["Empleado no encontrado."];
+        const rules = getSchedulingRules();
+        const shift = {
+            employeeId: context.employeeId,
+            role: shiftData.role,
+            startSlot: shiftData.startSlot,
+            endSlot: shiftData.endSlot,
+            ignoreRestrictions: false
+        };
+
+        if (rules.enforceAvailability) {
+            const availabilityCheck = checkEmployeeAvailability(employee, shift, weekId, dayIndex);
+            if (!availabilityCheck.isAvailable) warnings.push(availabilityCheck.reason);
+        }
+
+        if (rules.enforceRestTime) {
+            const restCheck = checkRestTime(employee.id, shift, weekId, dayIndex, rules.minRestHours);
+            if (!restCheck.pass) warnings.push(restCheck.message);
+        }
+
+        if (rules.maxConsecutiveDays?.enabled) {
+            const weekSchedule = state.schedules[weekId] || {};
+            const originalDay = [...(weekSchedule[dayIndex] || [])];
+            weekSchedule[dayIndex] = originalDay.filter((s) => s.employeeId !== context.employeeId).concat([{ ...shift }]);
+            const consecutiveDays = calculateConsecutiveWorkDays(employee.id, weekId, dayIndex);
+            weekSchedule[dayIndex] = originalDay;
+            if (consecutiveDays > (rules.maxConsecutiveDays.limit || 5)) {
+                warnings.push(`${employee.name} quedaría con ${consecutiveDays} días seguidos (límite ${rules.maxConsecutiveDays.limit}).`);
+            }
+        }
+
+        return warnings;
     },
 
     async saveMonthlyEditorCell() {
@@ -1433,19 +1482,19 @@ export const ScheduleManager = {
             return;
         }
 
-        await this.applyMonthlyCellData(context, {
+        const saved = await this.applyMonthlyCellData(context, {
             role,
             startSlot,
             endSlot,
         });
-        showToast("Turno mensual guardado.", "success");
+        if (saved) showToast("Turno mensual guardado.", "success");
     },
 
     async clearMonthlyEditorCell() {
         const context = this.monthlyEditorContext;
         if (!context) return;
-        await this.applyMonthlyCellData(context, null);
-        showToast("Celda marcada como OFF.", "success");
+        const saved = await this.applyMonthlyCellData(context, null);
+        if (saved) showToast("Celda marcada como OFF.", "success");
     },
 
     printDailyPlanning() {
