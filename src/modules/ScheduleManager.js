@@ -192,6 +192,11 @@ export const ScheduleManager = {
         });
         el("#monthly-editor-save")?.addEventListener("click", () => this.saveMonthlyEditorCell());
         el("#monthly-editor-clear")?.addEventListener("click", () => this.clearMonthlyEditorCell());
+        document.addEventListener("keydown", (e) => this.handleMonthlyKeyboardShortcuts(e));
+        document.addEventListener("click", (e) => {
+            const menu = document.querySelector('.monthly-context-menu');
+            if (menu && !menu.contains(e.target)) menu.remove();
+        });
     },
 
     getRoleList() {
@@ -1203,6 +1208,7 @@ export const ScheduleManager = {
                 const cell = create("td", {
                     className: `monthly-shift-cell ${shift ? 'active' : 'off'}${selectedKey === cellKey ? ' selected' : ''}`,
                     title: isLocked ? 'La semana de esta fecha está bloqueada' : 'Click para editar',
+                    dataset: { employeeId: employee.id, dateIso: dateISO }
                 });
                 if (roleInfo) {
                     cell.style.background = roleInfo.color;
@@ -1219,6 +1225,7 @@ export const ScheduleManager = {
 
                 if (!isLocked) {
                     cell.addEventListener('click', () => this.selectMonthlyCell(employee, date));
+                    cell.addEventListener('contextmenu', (event) => this.openMonthlyContextMenu(event, employee, date));
                 }
 
                 row.appendChild(cell);
@@ -1265,6 +1272,94 @@ export const ScheduleManager = {
         this.renderMonthlyPlanner();
     },
 
+    openMonthlyContextMenu(event, employee, date) {
+        event.preventDefault();
+        this.selectMonthlyCell(employee, date);
+
+        const existing = document.querySelector('.monthly-context-menu');
+        if (existing) existing.remove();
+
+        const menu = create("div", { className: "monthly-context-menu" });
+        menu.appendChild(create("button", {
+            textContent: "Copiar turno",
+            onClick: () => {
+                this.copySelectedMonthlyCell();
+                menu.remove();
+            }
+        }));
+        menu.appendChild(create("button", {
+            textContent: "Pegar turno",
+            onClick: () => {
+                this.pasteToSelectedMonthlyCell();
+                menu.remove();
+            }
+        }));
+        document.body.appendChild(menu);
+        menu.style.left = `${event.clientX}px`;
+        menu.style.top = `${event.clientY}px`;
+    },
+
+    handleMonthlyKeyboardShortcuts(event) {
+        if (this.getSchedulingPeriodWeeks() !== 4 || !this.monthlyEditorContext) return;
+        const activeTag = document.activeElement?.tagName;
+        if (activeTag === 'INPUT' || activeTag === 'TEXTAREA') return;
+        const isCopy = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c';
+        const isPaste = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'v';
+        if (isCopy) {
+            event.preventDefault();
+            this.copySelectedMonthlyCell();
+        }
+        if (isPaste) {
+            event.preventDefault();
+            this.pasteToSelectedMonthlyCell();
+        }
+    },
+
+    copySelectedMonthlyCell() {
+        const context = this.monthlyEditorContext;
+        if (!context) return;
+        const date = new Date(`${context.dateISO}T12:00:00.000Z`);
+        const shift = this.getEmployeeShiftForDate(context.employeeId, date);
+        this.monthlyClipboard = shift
+            ? { role: shift.role, startSlot: shift.startSlot, endSlot: shift.endSlot }
+            : null;
+        showToast(shift ? "Turno copiado." : "Se copió una celda OFF.", "info");
+    },
+
+    async pasteToSelectedMonthlyCell() {
+        if (!this.monthlyEditorContext || this.monthlyClipboard === undefined) return;
+        await this.applyMonthlyCellData(this.monthlyEditorContext, this.monthlyClipboard);
+        showToast("Turno pegado.", "success");
+    },
+
+    async applyMonthlyCellData(context, shiftData) {
+        const date = new Date(`${context.dateISO}T12:00:00.000Z`);
+        const { weekId, dayIndex } = this.getWeekAndDayFromDate(date);
+        await DataManager.getWeekData(weekId);
+        const currentState = store.getState();
+        const schedules = { ...currentState.schedules };
+        const weekSchedule = { ...(schedules[weekId] || {}) };
+        const dayShifts = [...(weekSchedule[dayIndex] || [])];
+        const remainingShifts = dayShifts.filter((shift) => shift.employeeId !== context.employeeId);
+
+        if (shiftData) {
+            remainingShifts.push({
+                id: crypto.randomUUID(),
+                employeeId: context.employeeId,
+                role: shiftData.role,
+                startSlot: shiftData.startSlot,
+                endSlot: shiftData.endSlot,
+                ignoreRestrictions: false,
+            });
+        }
+
+        weekSchedule[dayIndex] = remainingShifts;
+        schedules[weekId] = weekSchedule;
+        store.setState({ schedules });
+        await DataManager.saveWeek(weekId);
+        this.renderMonthlyPlanner();
+    },
+
     async saveMonthlyEditorCell() {
         const context = this.monthlyEditorContext;
         if (!context) return;
@@ -1281,47 +1376,19 @@ export const ScheduleManager = {
             return;
         }
 
-        const date = new Date(`${context.dateISO}T12:00:00.000Z`);
-        const { weekId, dayIndex } = this.getWeekAndDayFromDate(date);
-        await DataManager.getWeekData(weekId);
-        const currentState = store.getState();
-        const schedules = { ...currentState.schedules };
-        const weekSchedule = { ...(schedules[weekId] || {}) };
-        const dayShifts = [...(weekSchedule[dayIndex] || [])];
-
-        const remainingShifts = dayShifts.filter((shift) => shift.employeeId !== context.employeeId);
-        remainingShifts.push({
-            id: crypto.randomUUID(),
-            employeeId: context.employeeId,
+        await this.applyMonthlyCellData(context, {
             role,
             startSlot,
             endSlot,
-            ignoreRestrictions: false,
         });
-        weekSchedule[dayIndex] = remainingShifts;
-        schedules[weekId] = weekSchedule;
-        store.setState({ schedules });
-        await DataManager.saveWeek(weekId);
         showToast("Turno mensual guardado.", "success");
-        this.renderMonthlyPlanner();
     },
 
     async clearMonthlyEditorCell() {
         const context = this.monthlyEditorContext;
         if (!context) return;
-        const date = new Date(`${context.dateISO}T12:00:00.000Z`);
-        const { weekId, dayIndex } = this.getWeekAndDayFromDate(date);
-        await DataManager.getWeekData(weekId);
-        const currentState = store.getState();
-        const schedules = { ...currentState.schedules };
-        const weekSchedule = { ...(schedules[weekId] || {}) };
-        const dayShifts = [...(weekSchedule[dayIndex] || [])];
-        weekSchedule[dayIndex] = dayShifts.filter((shift) => shift.employeeId !== context.employeeId);
-        schedules[weekId] = weekSchedule;
-        store.setState({ schedules });
-        await DataManager.saveWeek(weekId);
+        await this.applyMonthlyCellData(context, null);
         showToast("Celda marcada como OFF.", "success");
-        this.renderMonthlyPlanner();
     },
 
     printDailyPlanning() {

@@ -190,8 +190,10 @@
 .slot.unassigned { opacity: 0.6; }
 
 .legend-footer {
-  position: sticky;
+  position: fixed;
   bottom: 0;
+  left: 0;
+  right: 0;
   background: #ffffffcc;
   backdrop-filter: saturate(1.1) blur(6px);
   border-top: 1px solid var(--border);
@@ -1360,6 +1362,9 @@ body.dark-mode #calendar-grid .day.monday:not(.other-month):hover {
 
 .monthly-grid-table th {
   background: var(--chip);
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
 .monthly-employee-cell {
@@ -1367,6 +1372,9 @@ body.dark-mode #calendar-grid .day.monday:not(.other-month):hover {
   text-align: left;
   font-weight: 600;
   background: var(--panel);
+  position: sticky;
+  left: 0;
+  z-index: 11;
 }
 
 .monthly-shift-cell {
@@ -1385,8 +1393,63 @@ body.dark-mode #calendar-grid .day.monday:not(.other-month):hover {
 }
 
 .monthly-shift-cell.selected {
-  outline: 2px solid var(--c-primary);
+  outline: 2px solid #22d3ee;
   outline-offset: -2px;
+  box-shadow: inset 0 0 0 2px #111827;
+}
+
+body.dark-mode .monthly-shift-cell.selected {
+  outline: 2px solid #facc15;
+  box-shadow: inset 0 0 0 2px #f8fafc;
+}
+
+.monthly-grid-table tbody tr + tr td {
+  border-top: 3px solid #cbd5e1;
+}
+
+body.dark-mode .monthly-grid-table tbody tr + tr td {
+  border-top-color: #334155;
+}
+
+#monthly-planner-editor {
+  position: sticky;
+  top: 56px;
+  z-index: 20;
+  background: var(--card);
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+#monthly-planner-grid {
+  max-height: calc(100vh - 280px);
+  overflow: auto;
+}
+
+.monthly-context-menu {
+  position: fixed;
+  z-index: 3000;
+  min-width: 140px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.2);
+  padding: 6px;
+}
+
+.monthly-context-menu button {
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.monthly-context-menu button:hover {
+  background: var(--chip);
 }
 
 .danger-text td {
