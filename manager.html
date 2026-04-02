@@ -316,6 +316,34 @@
                     <div id="tbody"></div>
                 </div>
             </div>
+
+            <div id="monthly-planner-section" class="card-c stack" style="display:none;">
+              <div class="row" style="justify-content:space-between; align-items:flex-end; gap:12px; flex-wrap:wrap;">
+                <div class="stack" style="min-width:220px;">
+                  <label class="muted mini-label" for="monthly-planner-month">Mes a planificar</label>
+                  <input id="monthly-planner-month" type="month" class="input input-compact" />
+                </div>
+                <span class="muted mini-label">Hacé click en una celda para cargar horario (entrada/salida) y puesto.</span>
+              </div>
+              <div id="monthly-planner-editor" class="row" style="display:none; gap:8px; align-items:flex-end; flex-wrap:wrap;">
+                <span id="monthly-editor-target" class="pill pill-neutral"></span>
+                <div class="stack">
+                  <label class="muted mini-label" for="monthly-editor-role">Puesto</label>
+                  <select id="monthly-editor-role" class="select input-compact"></select>
+                </div>
+                <div class="stack">
+                  <label class="muted mini-label" for="monthly-editor-start">Entrada</label>
+                  <select id="monthly-editor-start" class="select input-compact"></select>
+                </div>
+                <div class="stack">
+                  <label class="muted mini-label" for="monthly-editor-end">Salida</label>
+                  <select id="monthly-editor-end" class="select input-compact"></select>
+                </div>
+                <button id="monthly-editor-save" class="btn">Guardar celda</button>
+                <button id="monthly-editor-clear" class="btn secondary">Marcar OFF</button>
+              </div>
+              <div id="monthly-planner-grid"></div>
+            </div>
         </section>
     </div>
 

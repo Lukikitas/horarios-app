@@ -186,6 +186,12 @@ export const ScheduleManager = {
 
         // Templates
         el("#btnSaveTemplate")?.addEventListener("click", () => this.saveCurrentDayAsTemplate());
+        el("#monthly-planner-month")?.addEventListener("change", (e) => {
+            this.monthlySelectedMonth = e.target.value;
+            this.renderMonthlyPlanner();
+        });
+        el("#monthly-editor-save")?.addEventListener("click", () => this.saveMonthlyEditorCell());
+        el("#monthly-editor-clear")?.addEventListener("click", () => this.clearMonthlyEditorCell());
     },
 
     getRoleList() {
@@ -231,6 +237,46 @@ export const ScheduleManager = {
             }
         }
         if (promises.length) await Promise.all(promises);
+    },
+
+    getMonthlySelectedMonth() {
+        if (this.monthlySelectedMonth) return this.monthlySelectedMonth;
+        const today = new Date();
+        const month = String(today.getMonth() + 1).padStart(2, '0');
+        this.monthlySelectedMonth = `${today.getFullYear()}-${month}`;
+        return this.monthlySelectedMonth;
+    },
+
+    getDatesForNaturalMonth(monthValue) {
+        const [year, month] = (monthValue || '').split('-').map(Number);
+        if (!year || !month) return [];
+        const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+        return Array.from({ length: lastDay }, (_, idx) => new Date(Date.UTC(year, month - 1, idx + 1, 12, 0, 0)));
+    },
+
+    async preloadMonthWeeks(monthValue) {
+        const dates = this.getDatesForNaturalMonth(monthValue);
+        const uniqueWeeks = new Set(dates.map((date) => toISODateString(getMonday(date))));
+        const promises = [];
+        uniqueWeeks.forEach((weekId) => {
+            if (!store.getState().schedules[weekId]) {
+                promises.push(DataManager.getWeekData(weekId));
+            }
+        });
+        if (promises.length) await Promise.all(promises);
+    },
+
+    getWeekAndDayFromDate(date) {
+        const weekId = toISODateString(getMonday(date));
+        const dayIndex = (date.getUTCDay() + 6) % 7;
+        return { weekId, dayIndex };
+    },
+
+    getEmployeeShiftForDate(employeeId, date) {
+        const { weekId, dayIndex } = this.getWeekAndDayFromDate(date);
+        const weekSchedule = store.getState().schedules[weekId] || {};
+        const dayShifts = weekSchedule[dayIndex] || [];
+        return dayShifts.find((shift) => shift.employeeId === employeeId) || null;
     },
 
     calendarDate: new Date(),
@@ -342,6 +388,7 @@ export const ScheduleManager = {
     render() {
         this.hideEmployeeWeekTooltip();
         this.preloadPeriodWeeks().catch((error) => console.warn('No se pudieron precargar semanas del período.', error));
+        this.toggleMonthlyPlannerMode();
         const roles = this.getRoleList();
         const activeRoleSelect = el("#activeRole");
         const filterSelect = el("#schedule-role-filter");
@@ -375,6 +422,27 @@ export const ScheduleManager = {
         if (store.getState().activeView === 'schedule-list') {
             this.renderScheduleList();
         }
+
+        if (this.getSchedulingPeriodWeeks() === 4) {
+            this.renderMonthlyPlanner();
+        }
+    },
+
+    toggleMonthlyPlannerMode() {
+        const isMonthlyMode = this.getSchedulingPeriodWeeks() === 4;
+        const monthlySection = el("#monthly-planner-section");
+        const scroller = document.querySelector("#view-schedule .scroller");
+        const dayTabs = el("#dayTabs");
+        const dayTitle = el("#day-title");
+        const projectedTickets = el("#projectedTickets");
+        const suggestBtn = el("#btn-suggest-productivity");
+
+        if (monthlySection) monthlySection.style.display = isMonthlyMode ? "flex" : "none";
+        if (scroller) scroller.style.display = isMonthlyMode ? "none" : "block";
+        if (dayTabs) dayTabs.style.display = isMonthlyMode ? "none" : "flex";
+        if (dayTitle) dayTitle.style.display = isMonthlyMode ? "none" : "block";
+        if (projectedTickets) projectedTickets.disabled = isMonthlyMode;
+        if (suggestBtn) suggestBtn.style.display = isMonthlyMode ? "none" : "inline-flex";
     },
 
     // --- Template Logic ---
@@ -1087,6 +1155,173 @@ export const ScheduleManager = {
         const w = window.open('', '', 'height=800,width=1200');
         w.document.write(`<html><head><title>Horarios</title><style>body{font-family:sans-serif;font-size:10px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:5px;text-align:center}th{background:#f2f2f2}@media print{body{margin:0.5in}}</style></head><body><h2>${storeLabel} - Período ${formatDate(monday)} al ${formatDate(periodEnd)}</h2><table><thead><tr><th>Nombre</th>${dayHeaders.join('')}</tr></thead><tbody>${tableRows}</tbody></table><script>setTimeout(()=>{window.print();window.close()},500)</script></body></html>`);
         w.document.close();
+    },
+
+    async renderMonthlyPlanner() {
+        if (this.getSchedulingPeriodWeeks() !== 4) return;
+        const monthInput = el("#monthly-planner-month");
+        const gridContainer = el("#monthly-planner-grid");
+        const editor = el("#monthly-planner-editor");
+        const targetBadge = el("#monthly-editor-target");
+        if (!monthInput || !gridContainer || !editor || !targetBadge) return;
+
+        const monthValue = this.getMonthlySelectedMonth();
+        if (monthInput.value !== monthValue) monthInput.value = monthValue;
+
+        await this.preloadMonthWeeks(monthValue);
+
+        const dates = this.getDatesForNaturalMonth(monthValue);
+        const state = store.getState();
+        const employees = [...state.employees].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        const selectedKey = this.monthlyEditorContext ? `${this.monthlyEditorContext.employeeId}|${this.monthlyEditorContext.dateISO}` : null;
+
+        clear(gridContainer);
+        const table = create("table", { className: "monthly-grid-table" });
+        const thead = create("thead");
+        const headerRow = create("tr");
+        headerRow.appendChild(create("th", { className: "monthly-employee-cell", textContent: "APELLIDO Y NOMBRE" }));
+        dates.forEach((date) => {
+            const dayName = date.toLocaleDateString('es-AR', { weekday: 'short', timeZone: 'UTC' }).replace('.', '').toUpperCase();
+            headerRow.appendChild(create("th", { innerHTML: `${dayName}<br>${String(date.getUTCDate()).padStart(2, '0')}` }));
+        });
+        thead.appendChild(headerRow);
+        table.appendChild(thead);
+
+        const tbody = create("tbody");
+        employees.forEach((employee) => {
+            const row = create("tr");
+            row.appendChild(create("td", { className: "monthly-employee-cell", textContent: employee.name || employee.displayName || 'Sin nombre' }));
+
+            dates.forEach((date) => {
+                const dateISO = toISODateString(date);
+                const shift = this.getEmployeeShiftForDate(employee.id, date);
+                const roleInfo = shift ? this.getRoleList().find((role) => role.key === shift.role) : null;
+                const { weekId } = this.getWeekAndDayFromDate(date);
+                const isLocked = !!(store.getState().schedules[weekId]?.isLocked);
+                const cellKey = `${employee.id}|${dateISO}`;
+
+                const cell = create("td", {
+                    className: `monthly-shift-cell ${shift ? 'active' : 'off'}${selectedKey === cellKey ? ' selected' : ''}`,
+                    title: isLocked ? 'La semana de esta fecha está bloqueada' : 'Click para editar',
+                });
+                if (roleInfo) {
+                    cell.style.background = roleInfo.color;
+                    cell.style.color = roleInfo.darkText ? '#111' : '#fff';
+                }
+
+                if (shift) {
+                    const startLabel = SLOTS[shift.startSlot]?.label || '';
+                    const endLabel = SLOTS[shift.endSlot + 1]?.label || '';
+                    cell.innerHTML = `<div>${startLabel}</div><div>${endLabel}</div><div style="font-size:10px;">${this.escapeHtml(shift.role || '')}</div>`;
+                } else {
+                    cell.textContent = 'OFF';
+                }
+
+                if (!isLocked) {
+                    cell.addEventListener('click', () => this.selectMonthlyCell(employee, date));
+                }
+
+                row.appendChild(cell);
+            });
+
+            tbody.appendChild(row);
+        });
+
+        table.appendChild(tbody);
+        gridContainer.appendChild(table);
+
+        if (this.monthlyEditorContext) {
+            const selectedEmployee = state.employees.find((emp) => emp.id === this.monthlyEditorContext.employeeId);
+            const selectedDate = new Date(`${this.monthlyEditorContext.dateISO}T12:00:00.000Z`);
+            targetBadge.textContent = `${selectedEmployee?.name || 'Empleado'} · ${selectedDate.toLocaleDateString('es-AR', { timeZone: 'UTC' })}`;
+            editor.style.display = "flex";
+        } else {
+            editor.style.display = "none";
+        }
+    },
+
+    selectMonthlyCell(employee, date) {
+        const dateISO = toISODateString(date);
+        this.monthlyEditorContext = { employeeId: employee.id, dateISO };
+
+        const roleSelect = el("#monthly-editor-role");
+        const startSelect = el("#monthly-editor-start");
+        const endSelect = el("#monthly-editor-end");
+        if (!roleSelect || !startSelect || !endSelect) return;
+
+        this.optionize(roleSelect, [{ key: '' }, ...this.getRoleList()], (role) => ({ value: role.key, label: role.key || 'OFF' }));
+        this.optionize(startSelect, [{ label: '', index: '' }, ...SLOTS], (slot) => ({ value: slot.index, label: slot.label || '--' }));
+        this.optionize(endSelect, [{ index: '' }, ...SLOTS], (slot) => {
+            if (slot.index === '') return { value: '', label: '--' };
+            const endLabel = SLOTS[Number(slot.index) + 1]?.label || SLOTS[Number(slot.index)]?.label || '';
+            return { value: slot.index, label: endLabel };
+        });
+
+        const shift = this.getEmployeeShiftForDate(employee.id, date);
+        roleSelect.value = shift?.role || '';
+        startSelect.value = shift ? String(shift.startSlot) : '';
+        endSelect.value = shift ? String(shift.endSlot) : '';
+
+        this.renderMonthlyPlanner();
+    },
+
+    async saveMonthlyEditorCell() {
+        const context = this.monthlyEditorContext;
+        if (!context) return;
+        const role = el("#monthly-editor-role")?.value || '';
+        const startSlot = Number(el("#monthly-editor-start")?.value);
+        const endSlot = Number(el("#monthly-editor-end")?.value);
+
+        if (!role) {
+            showToast("Seleccioná un puesto o usá 'Marcar OFF'.", "warning");
+            return;
+        }
+        if (!Number.isFinite(startSlot) || !Number.isFinite(endSlot) || endSlot < startSlot) {
+            showToast("Definí una entrada y salida válidas.", "warning");
+            return;
+        }
+
+        const date = new Date(`${context.dateISO}T12:00:00.000Z`);
+        const { weekId, dayIndex } = this.getWeekAndDayFromDate(date);
+        await DataManager.getWeekData(weekId);
+        const currentState = store.getState();
+        const schedules = { ...currentState.schedules };
+        const weekSchedule = { ...(schedules[weekId] || {}) };
+        const dayShifts = [...(weekSchedule[dayIndex] || [])];
+
+        const remainingShifts = dayShifts.filter((shift) => shift.employeeId !== context.employeeId);
+        remainingShifts.push({
+            id: crypto.randomUUID(),
+            employeeId: context.employeeId,
+            role,
+            startSlot,
+            endSlot,
+            ignoreRestrictions: false,
+        });
+        weekSchedule[dayIndex] = remainingShifts;
+        schedules[weekId] = weekSchedule;
+        store.setState({ schedules });
+        await DataManager.saveWeek(weekId);
+        showToast("Turno mensual guardado.", "success");
+        this.renderMonthlyPlanner();
+    },
+
+    async clearMonthlyEditorCell() {
+        const context = this.monthlyEditorContext;
+        if (!context) return;
+        const date = new Date(`${context.dateISO}T12:00:00.000Z`);
+        const { weekId, dayIndex } = this.getWeekAndDayFromDate(date);
+        await DataManager.getWeekData(weekId);
+        const currentState = store.getState();
+        const schedules = { ...currentState.schedules };
+        const weekSchedule = { ...(schedules[weekId] || {}) };
+        const dayShifts = [...(weekSchedule[dayIndex] || [])];
+        weekSchedule[dayIndex] = dayShifts.filter((shift) => shift.employeeId !== context.employeeId);
+        schedules[weekId] = weekSchedule;
+        store.setState({ schedules });
+        await DataManager.saveWeek(weekId);
+        showToast("Celda marcada como OFF.", "success");
+        this.renderMonthlyPlanner();
     },
 
     printDailyPlanning() {

@@ -251,6 +251,19 @@ export const DataManager = {
         }
     },
 
+    async saveWeek(weekId) {
+        const state = store.getState();
+        const storeId = state.activeStoreId;
+        if (!storeId || !weekId) return;
+        const weeksRef = storeWeeksRef(storeId);
+        try {
+            await weeksRef.doc(weekId).set(state.schedules[weekId] || {});
+        } catch (error) {
+            console.error("Error guardando semana:", error);
+            showToast("Error guardando semana: " + error.message, "error");
+        }
+    },
+
     async loadWeek(weekId) {
         const db = getDb();
         const state = store.getState();

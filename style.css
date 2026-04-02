@@ -1345,6 +1345,50 @@ body.dark-mode #calendar-grid .day.monday:not(.other-month):hover {
   opacity: 0.3;
 }
 
+.monthly-grid-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.monthly-grid-table th,
+.monthly-grid-table td {
+  border: 1px solid var(--line);
+  text-align: center;
+  padding: 4px;
+}
+
+.monthly-grid-table th {
+  background: var(--chip);
+}
+
+.monthly-employee-cell {
+  min-width: 220px;
+  text-align: left;
+  font-weight: 600;
+  background: var(--panel);
+}
+
+.monthly-shift-cell {
+  min-width: 74px;
+  cursor: pointer;
+  background: #e5e7eb;
+  color: #111827;
+}
+
+.monthly-shift-cell.off {
+  background: #d1d5db;
+}
+
+.monthly-shift-cell.active {
+  font-weight: 700;
+}
+
+.monthly-shift-cell.selected {
+  outline: 2px solid var(--c-primary);
+  outline-offset: -2px;
+}
+
 .danger-text td {
   color: #b91c1c !important;
   font-style: italic;
