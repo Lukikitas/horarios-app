@@ -1272,13 +1272,13 @@ export const ScheduleManager = {
         table.appendChild(tbody);
         gridContainer.appendChild(table);
 
+        editor.style.display = "flex";
         if (this.monthlyEditorContext) {
             const selectedEmployee = state.employees.find((emp) => emp.id === this.monthlyEditorContext.employeeId);
             const selectedDate = new Date(`${this.monthlyEditorContext.dateISO}T12:00:00.000Z`);
             targetBadge.textContent = `${selectedEmployee?.name || 'Empleado'} · ${selectedDate.toLocaleDateString('es-AR', { timeZone: 'UTC' })}`;
-            editor.style.display = "flex";
         } else {
-            editor.style.display = "none";
+            targetBadge.textContent = "Seleccioná una celda para asignar turno";
         }
     },
 
@@ -1376,6 +1376,11 @@ export const ScheduleManager = {
         const { weekId, dayIndex } = this.getWeekAndDayFromDate(date);
         await DataManager.getWeekData(weekId);
         if (shiftData) {
+            const blockingMessage = this.getMonthlyBlockingValidation(context, shiftData);
+            if (blockingMessage) {
+                showToast(blockingMessage, "error");
+                return false;
+            }
             const warnings = this.getMonthlyShiftWarnings(context, shiftData, weekId, dayIndex);
             if (warnings.length) {
                 const confirmed = await showConfirmDialog({
@@ -1408,6 +1413,17 @@ export const ScheduleManager = {
         await DataManager.saveWeek(weekId);
         this.renderMonthlyPlanner();
         return true;
+    },
+
+    getMonthlyBlockingValidation(context, shiftData) {
+        const state = store.getState();
+        const employee = state.employees.find((emp) => emp.id === context.employeeId);
+        if (!employee) return "Empleado no encontrado.";
+        const rules = getSchedulingRules();
+        if (rules.enforceRoleStar && shiftData.role && !(employee.stars || []).includes(shiftData.role)) {
+            return `El empleado no tiene la estrella requerida para ${shiftData.role}.`;
+        }
+        return "";
     },
 
     getMonthlyShiftWarnings(context, shiftData, weekId, dayIndex) {
@@ -1450,7 +1466,10 @@ export const ScheduleManager = {
 
     async saveMonthlyEditorCell() {
         const context = this.monthlyEditorContext;
-        if (!context) return;
+        if (!context) {
+            showToast("Primero seleccioná una celda en la grilla.", "warning");
+            return;
+        }
         const role = el("#monthly-editor-role")?.value || '';
         const startSlot = Number(el("#monthly-editor-start")?.value);
         const method = el("#monthly-editor-method")?.value === 'end' ? 'end' : 'duration';

@@ -1444,7 +1444,7 @@ body.dark-mode .monthly-grid-table tbody tr + tr td {
 
 #monthly-planner-editor {
   position: sticky;
-  top: 56px;
+  top: 0;
   z-index: 20;
   background: var(--card);
   padding: 8px;
