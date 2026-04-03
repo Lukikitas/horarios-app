@@ -63,6 +63,7 @@ const defaultState = {
     roles: [...ROLES],
     storeName: '',
     schedulingRules: null,
+    schedulingPeriodWeeks: 1,
     // Data loaded flags
     isLoading: true,
 };

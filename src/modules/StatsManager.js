@@ -75,6 +75,11 @@ export const StatsManager = {
         const state = store.getState();
         const content = el("#weekly-summary-content");
         if (!content) return;
+        const isMonthlyMode = Number(state.schedulingPeriodWeeks) === 4;
+        const summaryBtn = el("#btn-weekly-summary");
+        const summaryHeading = el("#summary-modal-heading");
+        if (summaryBtn) summaryBtn.textContent = isMonthlyMode ? 'Resumen mensual' : 'Resumen semanal';
+        if (summaryHeading) summaryHeading.textContent = isMonthlyMode ? 'Resumen Mensual' : 'Resumen Semanal';
 
         const employees = state.employees.slice();
         if(employees.length === 0) {
@@ -82,20 +87,50 @@ export const StatsManager = {
             return;
         }
 
-        const getHours = (empId) => ScheduleManager.getEmployeeWeeklyHours(empId);
+        const monthValue = el("#monthly-top-month")?.value || '';
+        const monthDates = (() => {
+            if (!isMonthlyMode || !monthValue) return [];
+            const [year, month] = monthValue.split('-').map(Number);
+            if (!year || !month) return [];
+            const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+            return Array.from({ length: lastDay }, (_, idx) => new Date(Date.UTC(year, month - 1, idx + 1, 12, 0, 0)));
+        })();
+
+        const getDayShifts = (date) => {
+            const weekId = toISODateString(getMonday(date));
+            const dayIndex = (date.getUTCDay() + 6) % 7;
+            const week = state.schedules[weekId] || {};
+            return week[dayIndex] || [];
+        };
+
+        const getHours = (empId) => {
+            if (!isMonthlyMode) return ScheduleManager.getEmployeeWeeklyHours(empId);
+            return monthDates.reduce((acc, date) => {
+                const shifts = getDayShifts(date).filter(s => s.employeeId === empId);
+                return acc + shifts.reduce((sum, s) => sum + ((s.endSlot - s.startSlot + 1) / 2), 0);
+            }, 0);
+        };
 
         // Helper for working days count - assumes getActiveSchedule returns full week object
         const getWorkingDays = (empId) => {
-            const schedule = getActiveSchedule();
-            if (!schedule) return 0;
-            let days = new Set();
-            for (let i = 0; i < 7; i++) {
-                const dayShifts = schedule[i] || [];
-                if (dayShifts.some(s => s.employeeId === empId)) {
-                    days.add(i);
+            if (!isMonthlyMode) {
+                const schedule = getActiveSchedule();
+                if (!schedule) return 0;
+                let days = new Set();
+                for (let i = 0; i < 7; i++) {
+                    const dayShifts = schedule[i] || [];
+                    if (dayShifts.some(s => s.employeeId === empId)) {
+                        days.add(i);
+                    }
                 }
+                return days.size;
             }
-            return days.size;
+            const worked = new Set();
+            monthDates.forEach((date) => {
+                const dateKey = toISODateString(date);
+                if (getDayShifts(date).some(s => s.employeeId === empId)) worked.add(dateKey);
+            });
+            return worked.size;
         };
 
         const sortOrder = state.weeklySummarySort || 'alpha';
@@ -116,8 +151,10 @@ export const StatsManager = {
 
         // Helper to generate details row content
         const generateDetailsRow = (empId) => {
-            const schedule = getActiveSchedule();
-            if (!schedule) return document.createElement('div');
+            if (!isMonthlyMode) {
+                const schedule = getActiveSchedule();
+                if (!schedule) return document.createElement('div');
+            }
 
             const detailsContainer = create("div", { className: "details-container" });
             const table = create("table", { className: "details-table" });
@@ -134,9 +171,21 @@ export const StatsManager = {
             const daysMap = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'];
             let hasShifts = false;
 
-            for (let i = 0; i < 7; i++) {
-                const dayShifts = (schedule[i] || []).filter(s => s.employeeId === empId);
-                dayShifts.sort((a,b) => a.startSlot - b.startSlot);
+            const iterate = isMonthlyMode
+                ? monthDates.map((date) => ({
+                    label: `${String(date.getUTCDate()).padStart(2, '0')}/${String(date.getUTCMonth() + 1).padStart(2, '0')}`,
+                    key: toISODateString(date),
+                    shifts: getDayShifts(date).filter(s => s.employeeId === empId),
+                    dayIndex: (date.getUTCDay() + 6) % 7
+                }))
+                : Array.from({ length: 7 }, (_, i) => ({
+                    label: daysMap[i],
+                    shifts: ((getActiveSchedule() || {})[i] || []).filter(s => s.employeeId === empId),
+                    dayIndex: i
+                }));
+
+            iterate.forEach((entry) => {
+                const dayShifts = entry.shifts.slice().sort((a,b) => a.startSlot - b.startSlot);
 
                 dayShifts.forEach(shift => {
                     hasShifts = true;
@@ -144,7 +193,7 @@ export const StatsManager = {
                     const end = SLOTS[shift.endSlot + 1] ? SLOTS[shift.endSlot + 1].label : "02:00";
 
                     const tr = create("tr");
-                    tr.appendChild(create("td", { textContent: daysMap[i] }));
+                    tr.appendChild(create("td", { textContent: entry.label }));
                     tr.appendChild(create("td", { textContent: `${start} - ${end}` }));
                     tr.appendChild(create("td", { textContent: shift.role })); // create handles text content safely
 
@@ -153,14 +202,14 @@ export const StatsManager = {
                         className: "btn small secondary btn-go-shift",
                         textContent: "Ir",
                         style: { padding: "1px 4px", fontSize: "10px" },
-                        dataset: { shiftId: shift.id, day: i }
+                        dataset: { shiftId: shift.id, day: entry.dayIndex, date: entry.key || '' }
                     });
                     actionTd.appendChild(btn);
                     tr.appendChild(actionTd);
 
                     tbody.appendChild(tr);
                 });
-            }
+            });
 
             if (!hasShifts) {
                 const tr = create("tr");
@@ -207,6 +256,11 @@ export const StatsManager = {
                                     el("#weekly-summary-modal").style.display = "none";
 
                                     // Navigate logic
+                                    if (isMonthlyMode && btn.dataset.date) {
+                                        const monthInput = el("#monthly-top-month");
+                                        if (monthInput) monthInput.value = btn.dataset.date.slice(0, 7);
+                                        ScheduleManager.monthlySelectedMonth = btn.dataset.date.slice(0, 7);
+                                    }
                                     store.setState({ activeDay: day });
                                     el("#btn-view-schedule").click(); // Switch view
 

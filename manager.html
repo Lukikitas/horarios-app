@@ -56,6 +56,7 @@
         <button id="btn-prev-week" class="btn secondary">◄</button>
         <button id="week-display" class="btn secondary"></button>
         <button id="btn-next-week" class="btn secondary">►</button>
+        <input id="monthly-top-month" type="month" class="input input-compact" style="display:none; min-width:170px;" />
       </div>
 
       <div class="row main-bar-right">
@@ -316,6 +317,47 @@
                     <div id="tbody"></div>
                 </div>
             </div>
+
+            <div id="monthly-planner-section" class="card-c stack" style="display:none;">
+              <div id="monthly-planner-editor" class="row" style="display:none; gap:8px; align-items:flex-end; flex-wrap:wrap;">
+                <span id="monthly-editor-target" class="pill pill-neutral"></span>
+                <div class="stack">
+                  <label class="muted mini-label" for="monthly-editor-role">Puesto</label>
+                  <select id="monthly-editor-role" class="select input-compact"></select>
+                </div>
+                <div class="stack">
+                  <label class="muted mini-label" for="monthly-editor-start">Entrada</label>
+                  <select id="monthly-editor-start" class="select input-compact"></select>
+                </div>
+                <div class="stack">
+                  <label class="muted mini-label" for="monthly-editor-method">Método de carga</label>
+                  <select id="monthly-editor-method" class="select input-compact">
+                    <option value="duration">Entrada + duración</option>
+                    <option value="end">Entrada + salida</option>
+                  </select>
+                </div>
+                <div id="monthly-editor-duration-wrap" class="stack">
+                  <label class="muted mini-label" for="monthly-editor-duration">Duración del turno</label>
+                  <select id="monthly-editor-duration" class="select input-compact">
+                    <option value="">--</option>
+                    <option value="4">4 hs</option>
+                    <option value="5">5 hs</option>
+                    <option value="6">6 hs</option>
+                    <option value="7">7 hs</option>
+                    <option value="8">8 hs</option>
+                    <option value="9">9 hs</option>
+                    <option value="10">10 hs</option>
+                  </select>
+                </div>
+                <div id="monthly-editor-end-wrap" class="stack" style="display:none;">
+                  <label class="muted mini-label" for="monthly-editor-end">Salida</label>
+                  <select id="monthly-editor-end" class="select input-compact"></select>
+                </div>
+                <button id="monthly-editor-save" class="btn">Guardar celda</button>
+                <button id="monthly-editor-clear" class="btn secondary">Marcar OFF</button>
+              </div>
+              <div id="monthly-planner-grid"></div>
+            </div>
         </section>
     </div>
 
@@ -362,6 +404,14 @@
 	            <div class="stack">
 	              <label class="muted mini-label" for="store-display-name">Nombre del local para impresión</label>
 	              <input id="store-display-name" class="input" placeholder="Ej: Local Norte" />
+	            </div>
+	            <div class="stack">
+	              <label class="muted mini-label" for="store-scheduling-period">Metodología para armar/pasar horarios</label>
+	              <select id="store-scheduling-period" class="select">
+	                <option value="1">Semanal (7 días)</option>
+	                <option value="2">Quincenal (14 días)</option>
+	                <option value="4">Mensual (28 días)</option>
+	              </select>
 	            </div>
 	            <label class="pill pill-toggle" style="align-self:end;">
 	              <input id="rule-enforce-sanctions" type="checkbox" checked>
@@ -684,7 +734,7 @@
         <div class="card">
             <div class="card-h">
                 <div class="stack" style="gap: 0;">
-                    <strong>Resumen Semanal</strong>
+                    <strong id="summary-modal-heading">Resumen Semanal</strong>
                     <h4 id="weekly-summary-title" class="muted" style="margin:0;font-weight:normal;font-size:13px;"></h4>
                 </div>
                 <div class="row" style="margin-left: 16px; align-items: center; gap: 8px;">
