@@ -461,6 +461,7 @@ export const ScheduleManager = {
         const btnPrev = el("#btn-prev-week");
         const btnNext = el("#btn-next-week");
         const weekDisplay = el("#week-display");
+        const summaryBtn = el("#btn-weekly-summary");
 
         if (monthlySection) monthlySection.style.display = isMonthlyMode ? "flex" : "none";
         if (scroller) scroller.style.display = isMonthlyMode ? "none" : "block";
@@ -476,6 +477,7 @@ export const ScheduleManager = {
         if (btnPrev) btnPrev.style.display = isMonthlyMode ? "none" : "inline-flex";
         if (btnNext) btnNext.style.display = isMonthlyMode ? "none" : "inline-flex";
         if (weekDisplay) weekDisplay.style.display = isMonthlyMode ? "none" : "inline-flex";
+        if (summaryBtn) summaryBtn.textContent = isMonthlyMode ? "Resumen mensual" : "Resumen semanal";
     },
 
     // --- Template Logic ---
