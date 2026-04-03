@@ -33,6 +33,8 @@ export const ImportExportManager = {
 
         el("#btn-export-week")?.addEventListener("click", () => this.exportWeek());
         el("#file-import-week")?.addEventListener("change", (e) => this.importWeek(e));
+        el("#btn-export-month")?.addEventListener("click", () => this.exportMonth());
+        el("#file-import-month")?.addEventListener("change", (e) => this.importMonth(e));
     },
 
     async importShiftsFromText() {
@@ -209,6 +211,84 @@ export const ImportExportManager = {
                 showToast("Semana importada.", "success");
                 el("#advanced-import-export-modal").style.display = "none";
             } catch (err) { showToast("Error al importar: " + err.message, "error"); }
+            e.target.value = '';
+        };
+        reader.readAsText(file);
+    },
+
+    async exportMonth() {
+        const includeAssignments = el("#chk-include-assignments")?.checked !== false;
+        const month = ScheduleManager.getMonthlySelectedMonth();
+        const dates = ScheduleManager.getDatesForNaturalMonth(month);
+        if (!dates.length) {
+            showToast("No se encontró un mes válido para exportar.", "warning");
+            return;
+        }
+
+        await ScheduleManager.preloadMonthWeeks(month);
+        const payload = {
+            type: "monthly-schedule-v1",
+            month,
+            days: {}
+        };
+
+        dates.forEach((date) => {
+            const dateISO = toISODateString(date);
+            const { weekId, dayIndex } = ScheduleManager.getWeekAndDayFromDate(date);
+            const dayShifts = (store.getState().schedules[weekId]?.[dayIndex] || []).map((shift) => ({
+                ...shift,
+                employeeId: includeAssignments ? shift.employeeId : null
+            }));
+            payload.days[dateISO] = dayShifts;
+        });
+
+        this.downloadJSON(payload, `mes-${month}.json`);
+    },
+
+    importMonth(e) {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = async (ev) => {
+            try {
+                const imported = JSON.parse(ev.target.result);
+                if (!imported || typeof imported !== 'object' || typeof imported.days !== 'object') {
+                    throw new Error("Formato inválido");
+                }
+
+                const month = imported.month || ScheduleManager.getMonthlySelectedMonth();
+                const dates = ScheduleManager.getDatesForNaturalMonth(month);
+                if (!dates.length) throw new Error("Mes inválido en el archivo");
+
+                const confirmed = await showConfirmDialog({
+                    title: "Importar mes completo",
+                    message: `Se reemplazarán los turnos del mes ${month}. ¿Querés continuar?`
+                });
+                if (!confirmed) return;
+
+                const touchedWeeks = new Set();
+                const nextSchedules = { ...store.getState().schedules };
+                await ScheduleManager.preloadMonthWeeks(month);
+
+                dates.forEach((date) => {
+                    const dateISO = toISODateString(date);
+                    const sourceDay = Array.isArray(imported.days[dateISO]) ? imported.days[dateISO] : [];
+                    const { weekId, dayIndex } = ScheduleManager.getWeekAndDayFromDate(date);
+                    touchedWeeks.add(weekId);
+                    const weekSchedule = { ...(nextSchedules[weekId] || {}) };
+                    weekSchedule[dayIndex] = sourceDay.map((shift) => ({ ...shift, id: crypto.randomUUID() }));
+                    nextSchedules[weekId] = weekSchedule;
+                });
+
+                store.setState({ schedules: nextSchedules });
+                await Promise.all(Array.from(touchedWeeks).map((weekId) => DataManager.saveWeek(weekId)));
+                ScheduleManager.monthlySelectedMonth = month;
+                ScheduleManager.render();
+                showToast("Mes importado correctamente.", "success");
+                el("#advanced-import-export-modal").style.display = "none";
+            } catch (err) {
+                showToast("Error al importar: " + err.message, "error");
+            }
             e.target.value = '';
         };
         reader.readAsText(file);

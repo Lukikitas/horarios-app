@@ -1347,6 +1347,28 @@ body.dark-mode #calendar-grid .day.monday:not(.other-month):hover {
   opacity: 0.3;
 }
 
+.schedule-list-monthly-table {
+  font-size: 11px;
+}
+
+.schedule-list-monthly-table th,
+.schedule-list-monthly-table td {
+  min-width: 68px;
+  padding: 3px;
+}
+
+.schedule-list-monthly-table .employee-name-cell {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: var(--card);
+}
+
+.schedule-list-monthly-table .monthly-off-cell {
+  color: var(--muted);
+  font-style: italic;
+}
+
 .monthly-grid-table {
   width: 100%;
   border-collapse: collapse;
@@ -1482,6 +1504,11 @@ body.dark-mode .monthly-grid-table tbody tr + tr td {
 
 .monthly-context-menu button:hover {
   background: var(--chip);
+}
+
+.monthly-context-menu button.delete:hover {
+  background-color: #fee2e2;
+  color: #b91c1c;
 }
 
 .danger-text td {
