@@ -1226,7 +1226,7 @@ export const ScheduleManager = {
                 if (!shift) return '<td>OFF</td>';
                 const startTime = SLOTS[shift.startSlot]?.label || '';
                 const endTime = SLOTS[shift.endSlot + 1]?.label || '02:00';
-                return `<td><strong>${startTime}-${endTime}</strong><br><span>${this.escapeHtml(shift.role || '')}</span></td>`;
+                return `<td><strong>${startTime}-${endTime}</strong></td>`;
             }).join('');
             return `<tr><td class="name-cell">${this.escapeHtml(emp.name || 'Sin nombre')}</td>${cells}</tr>`;
         }).join('');
@@ -1253,6 +1253,8 @@ export const ScheduleManager = {
         const state = store.getState();
         const employees = [...state.employees].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
         const selectedKey = this.monthlyEditorContext ? `${this.monthlyEditorContext.employeeId}|${this.monthlyEditorContext.dateISO}` : null;
+        const prevScrollTop = gridContainer.scrollTop;
+        const prevScrollLeft = gridContainer.scrollLeft;
 
         clear(gridContainer);
         const table = create("table", { className: "monthly-grid-table" });
@@ -1327,6 +1329,8 @@ export const ScheduleManager = {
 
         table.appendChild(tbody);
         gridContainer.appendChild(table);
+        gridContainer.scrollTop = prevScrollTop;
+        gridContainer.scrollLeft = prevScrollLeft;
 
         editor.style.display = "flex";
         if (this.monthlyEditorContext) {
@@ -1435,7 +1439,8 @@ export const ScheduleManager = {
             event.preventDefault();
             this.pasteToSelectedMonthlyCell();
         }
-        if ((event.key === 'Delete' || event.key === 'Backspace') && this.monthlyEditorContext) {
+        const isDeleteKey = event.key === 'Delete' || event.key === 'Del' || event.key === 'Supr' || event.keyCode === 46 || event.key === 'Backspace';
+        if (isDeleteKey && this.monthlyEditorContext) {
             event.preventDefault();
             this.clearMonthlyEditorCell();
         }

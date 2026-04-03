@@ -22,7 +22,10 @@ export const ImportExportManager = {
         el("#btn-import-text-cancel")?.addEventListener("click", () => el("#import-text-modal").style.display = "none");
         el("#btn-import-text-process")?.addEventListener("click", () => this.importShiftsFromText());
 
-        el("#btn-advanced-import-export")?.addEventListener("click", () => el("#advanced-import-export-modal").style.display = "flex");
+        el("#btn-advanced-import-export")?.addEventListener("click", () => {
+            this.updateAdvancedImportExportUI();
+            el("#advanced-import-export-modal").style.display = "flex";
+        });
         el("#advanced-import-export-modal-close")?.addEventListener("click", () => el("#advanced-import-export-modal").style.display = "none");
 
         el("#btn-export-employees")?.addEventListener("click", () => this.exportEmployees());
@@ -292,6 +295,14 @@ export const ImportExportManager = {
             e.target.value = '';
         };
         reader.readAsText(file);
+    },
+
+    updateAdvancedImportExportUI() {
+        const isMonthlyMode = ScheduleManager.getSchedulingPeriodWeeks() === 4;
+        const weekSection = el("#advanced-week-section");
+        const monthSection = el("#advanced-month-section");
+        if (weekSection) weekSection.style.display = isMonthlyMode ? "none" : "block";
+        if (monthSection) monthSection.style.display = isMonthlyMode ? "block" : "none";
     },
 
     downloadJSON(data, filename) {
