@@ -126,10 +126,20 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     try {
-      await auth.sendPasswordResetEmail(email, {
-        url: `${window.location.origin}/reset-password.html`,
-        handleCodeInApp: false,
-      });
+      try {
+        await auth.sendPasswordResetEmail(email, {
+          url: `${window.location.origin}/reset-password.html`,
+          handleCodeInApp: false,
+        });
+      } catch (error) {
+        if (error?.code === 'auth/unauthorized-continue-uri') {
+          // Fallback: send reset email without custom continue URL (Firebase hosted reset page).
+          await auth.sendPasswordResetEmail(email);
+          showPopup('Tu dominio no está habilitado en Firebase. Se enviará el enlace estándar de recuperación.', 'warning');
+        } else {
+          throw error;
+        }
+      }
       showPopup('Si el email está registrado, enviamos un enlace de recuperación.', 'success');
       if (forgotModal) forgotModal.style.display = 'none';
     } catch (error) {
