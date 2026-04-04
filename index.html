@@ -14,15 +14,23 @@
         <input type="email" id="email" class="input" placeholder="Email">
         <input type="password" id="password" class="input" placeholder="Contraseña">
         <button id="login" class="btn" style="width: 100%;">Ingresar</button>
-        <div class="hr"></div>
-        <button id="show-dni-login" class="btn secondary" style="width: 100%;">Soy empleado</button>
+        <button id="btn-forgot-password" class="btn secondary" style="width: 100%; margin-top: 8px;">Recuperar contraseña</button>
       </div>
-      <div id="dni-login-view" style="display: none;">
-        <p class="muted" style="text-align: center;">Ingresa tu DNI para recibir un enlace de registro.</p>
-        <input type="text" id="dni" class="input" placeholder="DNI">
-        <button id="send-link" class="btn" style="width: 100%;">Enviar enlace</button>
-        <div class="hr"></div>
-        <button id="show-manager-login" class="btn secondary" style="width: 100%;">Soy gerente</button>
+    </div>
+  </div>
+
+  <div id="forgot-password-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-content" style="max-width: 420px;">
+      <div class="card">
+        <div class="card-h">
+          <strong>Recuperar contraseña</strong>
+          <button id="forgot-password-close" class="btn secondary del" style="margin-left:auto;">&times;</button>
+        </div>
+        <div class="card-c stack" style="padding:16px;">
+          <p class="muted" style="margin:0;">Ingresá tu email de manager para enviarte el enlace de cambio de contraseña.</p>
+          <input type="email" id="forgot-password-email" class="input" placeholder="Email">
+          <button id="forgot-password-send" class="btn">Enviar email de recuperación</button>
+        </div>
       </div>
     </div>
   </div>
