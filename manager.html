@@ -4,6 +4,9 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Planificador de Horarios</title>
+<link rel="icon" href="assets/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
 <script src="https://www.gstatic.com/firebasejs/12.2.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.2.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore-compat.js"></script>
@@ -890,7 +893,7 @@
         <div class="hr"></div>
 
         <!-- Week Section -->
-        <div class="import-export-section">
+        <div id="advanced-week-section" class="import-export-section">
           <strong class="section-title">Semana Actual</strong>
           <p class="section-description">Exporta o importa la semana completa. Puedes elegir si incluyes los empleados asignados a los turnos.</p>
           <div class="row" style="justify-content: space-between; align-items: center;">
@@ -904,6 +907,21 @@
             <label class="btn secondary" style="cursor:pointer;">
               Importar Semana
               <input id="file-import-week" type="file" accept="application/json" style="display:none">
+            </label>
+          </div>
+        </div>
+
+        <div class="hr"></div>
+
+        <!-- Month Section -->
+        <div id="advanced-month-section" class="import-export-section">
+          <strong class="section-title">Mes (modo mensual)</strong>
+          <p class="section-description">Exporta o importa el mes natural completo de la grilla mensual, ideal para backups o reutilizar meses anteriores.</p>
+          <div class="row" style="justify-content: space-between; align-items: center;">
+            <button id="btn-export-month" class="btn">Exportar Mes</button>
+            <label class="btn secondary" style="cursor:pointer;">
+              Importar Mes
+              <input id="file-import-month" type="file" accept="application/json" style="display:none">
             </label>
           </div>
         </div>

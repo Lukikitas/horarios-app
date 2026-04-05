@@ -4,107 +4,151 @@ firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
 
+function showPopup(message, type = 'info') {
+  const existing = document.getElementById('login-popup');
+  if (existing) existing.remove();
+
+  const colorByType = {
+    success: '#166534',
+    error: '#991b1b',
+    warning: '#92400e',
+    info: '#1d4ed8',
+  };
+
+  const popup = document.createElement('div');
+  popup.id = 'login-popup';
+  popup.style.position = 'fixed';
+  popup.style.top = '16px';
+  popup.style.left = '50%';
+  popup.style.transform = 'translateX(-50%)';
+  popup.style.zIndex = '4000';
+  popup.style.maxWidth = '92vw';
+  popup.style.padding = '12px 16px';
+  popup.style.borderRadius = '10px';
+  popup.style.background = '#fff';
+  popup.style.color = colorByType[type] || colorByType.info;
+  popup.style.border = `1px solid ${colorByType[type] || colorByType.info}`;
+  popup.style.boxShadow = '0 10px 30px rgba(0,0,0,.15)';
+  popup.style.fontWeight = '600';
+  popup.textContent = message;
+  document.body.appendChild(popup);
+  setTimeout(() => popup.remove(), 3800);
+}
+
+function getLoginErrorMessage(errorCode) {
+  const map = {
+    'auth/invalid-email': 'El email ingresado no es válido.',
+    'auth/user-disabled': 'Tu cuenta está deshabilitada. Contactá al administrador.',
+    'auth/user-not-found': 'Email o contraseña incorrectos.',
+    'auth/wrong-password': 'Email o contraseña incorrectos.',
+    'auth/invalid-credential': 'Email o contraseña incorrectos.',
+    'auth/too-many-requests': 'Demasiados intentos. Esperá unos minutos e intentá nuevamente.',
+  };
+  return map[errorCode] || 'No se pudo iniciar sesión. Verificá tus datos.';
+}
+
 document.addEventListener('DOMContentLoaded', () => {
-  const loginView = document.getElementById('login-view');
-  const dniLoginView = document.getElementById('dni-login-view');
-  const showDniLogin = document.getElementById('show-dni-login');
-  const showManagerLogin = document.getElementById('show-manager-login');
+  const loginButton = document.getElementById('login');
+  const emailInput = document.getElementById('email');
+  const passwordInput = document.getElementById('password');
 
-  showDniLogin.addEventListener('click', () => {
-    loginView.style.display = 'none';
-    dniLoginView.style.display = 'block';
-  });
+  const forgotModal = document.getElementById('forgot-password-modal');
+  const forgotBtn = document.getElementById('btn-forgot-password');
+  const forgotClose = document.getElementById('forgot-password-close');
+  const forgotSend = document.getElementById('forgot-password-send');
+  const forgotEmail = document.getElementById('forgot-password-email');
 
-  showManagerLogin.addEventListener('click', () => {
-    dniLoginView.style.display = 'none';
-    loginView.style.display = 'block';
-  });
-
-  // Redirect based on role as soon as auth state is known
   auth.onAuthStateChanged(async (user) => {
-    if (user) {
-      try {
-        const userDoc = await db.collection('users').doc(user.uid).get();
-        if (!userDoc.exists) {
-          alert('Usuario sin permisos');
-          await auth.signOut();
-          return;
-        }
-        const profile = userDoc.data();
-        const role = profile.role || (await user.getIdTokenResult())?.claims?.role;
-
-        if (role === 'manager' || role === 'admin') {
-          window.location.href = 'manager.html';
-        } else if (role === 'employee') {
-          window.location.href = 'portal/index.html';
-        } else {
-          console.error("Usuario sin rol válido");
-          await auth.signOut();
-        }
-      } catch (error) {
-        console.error("Error getting user token:", error);
-        auth.signOut();
+    if (!user) return;
+    try {
+      const userDoc = await db.collection('users').doc(user.uid).get();
+      if (!userDoc.exists) {
+        showPopup('Usuario sin permisos para acceder al sistema.', 'error');
+        await auth.signOut();
+        return;
       }
+
+      const profile = userDoc.data() || {};
+      const role = profile.role || (await user.getIdTokenResult())?.claims?.role;
+      if (role === 'manager' || role === 'admin') {
+        window.location.href = 'manager.html';
+        return;
+      }
+
+      showPopup('Esta aplicación está habilitada únicamente para managers.', 'warning');
+      await auth.signOut();
+    } catch (error) {
+      console.error('Error al validar sesión:', error);
+      showPopup('Error al validar tu sesión. Intentá nuevamente.', 'error');
+      await auth.signOut();
     }
   });
 
-  const loginButton = document.getElementById('login');
-  loginButton.addEventListener('click', async () => {
-    const email = document.getElementById('email').value;
-    const password = document.getElementById('password').value;
+  loginButton?.addEventListener('click', async () => {
+    const email = emailInput?.value.trim() || '';
+    const password = passwordInput?.value || '';
 
     if (!email || !password) {
-      alert('Por favor, ingresa el email y la contraseña.');
+      showPopup('Por favor ingresá email y contraseña.', 'warning');
       return;
     }
 
     try {
       await auth.signInWithEmailAndPassword(email, password);
-      // The onAuthStateChanged listener will handle the redirect
     } catch (error) {
-      console.error("Login failed:", error);
-      alert(`Error al iniciar sesión: ${error.message}`);
+      console.error('Login failed:', error);
+      showPopup(getLoginErrorMessage(error.code), 'error');
     }
   });
 
-  const sendLinkButton = document.getElementById('send-link');
-  sendLinkButton.addEventListener('click', async () => {
-    const dni = document.getElementById('dni').value.trim();
-    if (!dni) {
-      alert('Por favor, ingresa tu DNI.');
+  passwordInput?.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') loginButton?.click();
+  });
+
+  forgotBtn?.addEventListener('click', () => {
+    if (forgotEmail && emailInput?.value) forgotEmail.value = emailInput.value.trim();
+    if (forgotModal) forgotModal.style.display = 'flex';
+  });
+
+  forgotClose?.addEventListener('click', () => {
+    if (forgotModal) forgotModal.style.display = 'none';
+  });
+
+  forgotModal?.addEventListener('click', (event) => {
+    if (event.target === forgotModal) forgotModal.style.display = 'none';
+  });
+
+  forgotSend?.addEventListener('click', async () => {
+    const email = forgotEmail?.value.trim() || '';
+    if (!email) {
+      showPopup('Ingresá un email para recuperar tu contraseña.', 'warning');
       return;
     }
 
     try {
-      const doc = await db.collection("schedules").doc("main").get();
-      if (!doc.exists) {
-          alert("Error: No se encontró la configuración principal.");
-          return;
+      try {
+        await auth.sendPasswordResetEmail(email, {
+          url: `${window.location.origin}/reset-password.html`,
+          handleCodeInApp: false,
+        });
+      } catch (error) {
+        if (error?.code === 'auth/unauthorized-continue-uri') {
+          // Fallback: send reset email without custom continue URL (Firebase hosted reset page).
+          await auth.sendPasswordResetEmail(email);
+          showPopup('Tu dominio no está habilitado en Firebase. Se enviará el enlace estándar de recuperación.', 'warning');
+        } else {
+          throw error;
+        }
       }
-      const allEmployees = doc.data().employees || [];
-      const employee = allEmployees.find(emp => emp.dni === dni);
-
-      if (!employee) {
-        alert("No se encontró ningún empleado con ese DNI.");
-        return;
-      }
-      if (!employee.mail) {
-        alert("Este empleado no tiene un email registrado. Contacta al administrador.");
-        return;
-      }
-
-      const actionCodeSettings = {
-        url: 'https://horarios-data.web.app/portal/index.html', // URL to redirect to after login
-        handleCodeInApp: true,
-      };
-
-      await auth.sendSignInLinkToEmail(employee.mail, actionCodeSettings);
-      window.localStorage.setItem('emailForSignIn', employee.mail);
-      alert('Se ha enviado un enlace a tu correo electrónico para que inicies sesión.');
-
+      showPopup('Si el email está registrado, enviamos un enlace de recuperación.', 'success');
+      if (forgotModal) forgotModal.style.display = 'none';
     } catch (error) {
-      console.error("Error sending sign in email:", error);
-      alert(`Error: ${error.message}`);
+      console.error('Error al enviar reset password:', error);
+      const resetErrors = {
+        'auth/invalid-email': 'El email ingresado no es válido.',
+        'auth/too-many-requests': 'Demasiados intentos. Esperá unos minutos e intentá nuevamente.',
+      };
+      showPopup(resetErrors[error.code] || 'No se pudo enviar el email de recuperación.', 'error');
     }
   });
 });
