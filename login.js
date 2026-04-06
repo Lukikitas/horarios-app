@@ -101,9 +101,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  passwordInput?.addEventListener('keydown', (event) => {
+  const onEnterLogin = (event) => {
     if (event.key === 'Enter') loginButton?.click();
-  });
+  };
+  emailInput?.addEventListener('keydown', onEnterLogin);
+  passwordInput?.addEventListener('keydown', onEnterLogin);
 
   forgotBtn?.addEventListener('click', () => {
     if (forgotEmail && emailInput?.value) forgotEmail.value = emailInput.value.trim();
@@ -152,3 +154,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 });
+  if (loginLogo) {
+    loginLogo.addEventListener('error', () => {
+      if (loginLogo.getAttribute('src')?.toLowerCase().endsWith('.png') && loginLogo.getAttribute('src') !== 'assets/logo.png') {
+        loginLogo.src = 'assets/logo.png';
+      }
+    });
+  }
