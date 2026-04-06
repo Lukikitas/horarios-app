@@ -48,7 +48,7 @@ body{
 }
 
 .login-logo {
-  width: min(260px, 70vw);
+  width: min(520px, 85vw);
   height: auto;
   object-fit: contain;
 }
@@ -68,6 +68,12 @@ body{
 .main-bar-row{width:100%;align-items:center;}
 .main-menu{display:flex;flex-wrap:nowrap;gap:6px;flex:1;align-items:center;min-width:0;}
 .main-bar-left{display:flex; align-items:center; min-width:0; overflow:visible; gap:10px;}
+.header-logo{
+  width:28px;
+  height:28px;
+  object-fit:contain;
+  flex:0 0 auto;
+}
 .main-bar-right{display:flex; align-items:center; gap:10px; justify-content:flex-end; min-width:0; overflow:visible;}
 .actions-dropdown{margin-left:0;}
 .more-dropdown{margin-left:8px;}
