@@ -1028,6 +1028,36 @@ export const ScheduleManager = {
         }
     },
 
+    getActiveSanctionForDate(employee, date) {
+        if (!employee || !Array.isArray(employee.sanctions) || employee.sanctions.length === 0) return null;
+        const dateString = toISODateString(date).slice(0, 10);
+        return employee.sanctions.find((sanction) => (
+            sanction?.startDate
+            && sanction?.endDate
+            && dateString >= sanction.startDate
+            && dateString <= sanction.endDate
+        )) || null;
+    },
+
+    buildSanctionWarningMessage(employee, sanction) {
+        const description = sanction?.description || 'Sin descripción';
+        const period = sanction?.startDate && sanction?.endDate
+            ? ` (${sanction.startDate} al ${sanction.endDate})`
+            : '';
+        return `${employee?.name || 'El empleado'} tiene una licencia/sanción activa: ${description}${period}.`;
+    },
+
+    showValidationFailure(message) {
+        if ((message || '').toLowerCase().includes('licencia/sanción activa')) {
+            showAlertDialog({
+                title: "No se puede asignar el turno",
+                message
+            });
+            return;
+        }
+        showToast(message, "error");
+    },
+
     validateShiftForEmployee(employee, shift, dayIndex, weekId, shiftsToIgnore = []) {
         if (!employee) return { pass: false, message: "Empleado no encontrado." };
         if (!shift && shift !== 0) return { pass: false, message: "Turno no válido." };
@@ -1039,7 +1069,8 @@ export const ScheduleManager = {
         const rules = getSchedulingRules();
 
         if (rules.enforceSanctions && isDateInSanctionPeriod(shiftDate, employee.sanctions)) {
-            return { pass: false, message: "El empleado tiene una licencia activa." };
+            const activeSanction = this.getActiveSanctionForDate(employee, shiftDate);
+            return { pass: false, message: this.buildSanctionWarningMessage(employee, activeSanction) };
         }
 
         if (rules.enforceMinorNightLimit && employee.isMinor && shift.endSlot > MAX_SLOT_FOR_MINOR) {
@@ -1625,7 +1656,10 @@ export const ScheduleManager = {
         if (shiftData) {
             const blockingMessage = this.getMonthlyBlockingValidation(context, shiftData);
             if (blockingMessage) {
-                showToast(blockingMessage, "error");
+                showAlertDialog({
+                    title: "No se puede guardar el turno",
+                    message: blockingMessage
+                });
                 return false;
             }
             const warnings = this.getMonthlyShiftWarnings(context, shiftData, weekId, dayIndex);
@@ -1667,6 +1701,11 @@ export const ScheduleManager = {
         const employee = state.employees.find((emp) => emp.id === context.employeeId);
         if (!employee) return "Empleado no encontrado.";
         const rules = getSchedulingRules();
+        const date = new Date(`${context.dateISO}T12:00:00.000Z`);
+        if (rules.enforceSanctions && isDateInSanctionPeriod(date, employee.sanctions)) {
+            const activeSanction = this.getActiveSanctionForDate(employee, date);
+            return this.buildSanctionWarningMessage(employee, activeSanction);
+        }
         if (rules.enforceRoleStar && shiftData.role && !(employee.stars || []).includes(shiftData.role)) {
             return `El empleado no tiene la estrella requerida para ${shiftData.role}.`;
         }
@@ -2742,10 +2781,11 @@ export const ScheduleManager = {
             const evaluateEmployee = (emp) => {
                 const rules = getSchedulingRules();
                 const isMinor = emp.isMinor;
-                const sanctionCheck = rules.enforceSanctions && isDateInSanctionPeriod(shiftDate, emp.sanctions);
+                const activeSanction = rules.enforceSanctions ? this.getActiveSanctionForDate(emp, shiftDate) : null;
+                const sanctionCheck = !!activeSanction;
 
                 let hardWarning = "";
-                if(sanctionCheck) hardWarning = "Licencia/Sanción activa.";
+                if(sanctionCheck) hardWarning = this.buildSanctionWarningMessage(emp, activeSanction);
                 else if (rules.enforceMinorNightLimit && isMinor && shift.endSlot > MAX_SLOT_FOR_MINOR) hardWarning = "Menor no puede trabajar tarde.";
 
                 if (rules.enforceOverlap) {
@@ -2813,8 +2853,13 @@ export const ScheduleManager = {
                 }
 
                 if(isUnavail) {
-                    btn.disabled = true;
                     btn.style.opacity = 0.6;
+                    btn.onclick = () => {
+                        showAlertDialog({
+                            title: "No se puede asignar el turno",
+                            message: warningText || "Este empleado no puede tomar el turno seleccionado."
+                        });
+                    };
                 } else {
                     btn.onclick = async () => {
                         if(warningText) {
@@ -3309,13 +3354,13 @@ export const ScheduleManager = {
 
                 const validationForTarget = this.validateShiftForEmployee(targetEmployee, sourceShift, targetDayIndex, weekId, [targetShift.id]);
                 if (!validationForTarget.pass) {
-                    showToast(validationForTarget.message, "error");
+                    this.showValidationFailure(validationForTarget.message);
                     return;
                 }
 
                 const validationForSource = this.validateShiftForEmployee(sourceEmployee, targetShift, sourceDayIndex, weekId, [sourceShift.id]);
                 if (!validationForSource.pass) {
-                    showToast(validationForSource.message, "error");
+                    this.showValidationFailure(validationForSource.message);
                     return;
                 }
 
@@ -3331,7 +3376,7 @@ export const ScheduleManager = {
 
             const validation = this.validateShiftForEmployee(targetEmployee, sourceShift, targetDayIndex, weekId, [sourceShift.id]);
             if (!validation.pass) {
-                showToast(validation.message, "error");
+                this.showValidationFailure(validation.message);
                 return;
             }
 
