@@ -259,11 +259,11 @@ export const EmployeeManager = {
         const tbody = create("tbody");
 
         filtered.forEach(e => {
-            const row = create("tr");
+            const row = create("tr", { dataset: { employeeId: e.id } });
             const isEditing = state.editingEmployeeId === e.id;
 
             // Name Cell
-            const nameCell = create("td");
+            const nameCell = create("td", { className: "employee-name-cell" });
             if (isEditing) {
                 const container = create("div", { className: "stack", style: { gap: '4px' } });
                 container.appendChild(create("input", { id: `edit-input-${e.id}`, className: "input", value: e.name, placeholder: "Nombre completo" }));
@@ -303,7 +303,7 @@ export const EmployeeManager = {
                 const exceptions = (e.exceptions || []).length;
                 if (exceptions > 0) meta.appendChild(create("span", { className: "pill pill-neutral", textContent: `${exceptions} excepción${exceptions === 1 ? '' : 'es'}` }));
                 const starCount = (e.stars || []).length;
-                meta.appendChild(create("span", { className: "pill pill-neutral", textContent: starCount > 0 ? `${starCount} rol${starCount === 1 ? '' : 'es'}` : "Sin roles" }));
+                meta.appendChild(create("span", { className: "pill pill-neutral employee-stars-meta", textContent: starCount > 0 ? `${starCount} rol${starCount === 1 ? '' : 'es'}` : "Sin roles" }));
                 nameCell.appendChild(meta);
             }
             row.appendChild(nameCell);
@@ -320,7 +320,7 @@ export const EmployeeManager = {
             row.appendChild(contactCell);
 
             // Stars Cell
-            const starsCell = create("td");
+            const starsCell = create("td", { className: "employee-stars-cell" });
             if (e.stars && e.stars.length > 0) {
                 const badges = create("div", { className: "chips" });
                 e.stars.forEach(s => {
@@ -333,7 +333,7 @@ export const EmployeeManager = {
                 });
                 starsCell.appendChild(badges);
             } else {
-                starsCell.className = "muted";
+                starsCell.classList.add("muted");
                 starsCell.textContent = "Sin estrellas";
             }
             row.appendChild(starsCell);
@@ -464,6 +464,7 @@ export const EmployeeManager = {
                     else stars.push(r.key);
                     emp.stars = stars;
                     DataManager.saveState();
+                    this.refreshEmployeeStarsInList(empId);
                     // Re-render only the stars panel to avoid flicker in the whole list.
                     this.renderStarsPanel(container, empId);
                 }
@@ -478,6 +479,39 @@ export const EmployeeManager = {
         });
         panel.appendChild(grid);
         container.appendChild(panel);
+    },
+
+    refreshEmployeeStarsInList(empId) {
+        const row = document.querySelector(`tr[data-employee-id="${empId}"]`);
+        const emp = store.getState().employees.find((employee) => employee.id === empId);
+        if (!row || !emp) return;
+
+        const starsCell = row.querySelector(".employee-stars-cell");
+        if (starsCell) {
+            clear(starsCell);
+            starsCell.classList.remove("muted");
+            if (emp.stars && emp.stars.length > 0) {
+                const badges = create("div", { className: "chips" });
+                emp.stars.forEach((star) => {
+                    const roleInfo = ROLES.find((role) => role.key.toLowerCase() === star.toLowerCase());
+                    badges.appendChild(create("span", {
+                        className: "badge",
+                        textContent: star,
+                        style: roleInfo ? { background: roleInfo.color, color: roleInfo.darkText ? '#111' : '#fff' } : {}
+                    }));
+                });
+                starsCell.appendChild(badges);
+            } else {
+                starsCell.classList.add("muted");
+                starsCell.textContent = "Sin estrellas";
+            }
+        }
+
+        const starsMeta = row.querySelector(".employee-stars-meta");
+        if (starsMeta) {
+            const starsCount = (emp.stars || []).length;
+            starsMeta.textContent = starsCount > 0 ? `${starsCount} rol${starsCount === 1 ? '' : 'es'}` : "Sin roles";
+        }
     },
 
     renderAvailabilityPanel(container, empId) {
