@@ -449,35 +449,35 @@ export const EmployeeManager = {
         const panel = create("div", { className: "employee-detail-panel" });
         const grid = create("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: "10px" } });
 
-        const outerContainer = container;
-        import('../config.js').then(({ ROLES }) => {
-            ROLES.forEach(r => {
-                const isOn = (emp.stars || []).includes(r.key);
-                const btn = create("button", {
-                    className: "btn secondary",
-                    style: { justifyContent: "space-between", display: "flex", width: "100%" },
-                    innerHTML: `<span>${r.key}</span><span>${isOn ? "★" : ""}</span>`,
-                    onClick: () => {
-                        const stars = emp.stars || [];
-                        const i = stars.indexOf(r.key);
-                        if(i >= 0) stars.splice(i, 1); else stars.push(r.key);
-                        emp.stars = stars;
-                        DataManager.saveState();
-                        // Re-render only the stars panel to avoid flicker in the whole list.
-                        this.renderStarsPanel(outerContainer, empId);
-                    }
-                });
-
-                if(isOn) {
-                    btn.style.background = r.color;
-                    btn.style.color = r.darkText ? "#111" : "#fff";
-                    btn.style.borderColor = "transparent";
+        // Render synchronous: avoid dynamic import gap that causes visible flicker.
+        const roles = (store.getState().roles && store.getState().roles.length) ? store.getState().roles : ROLES;
+        roles.forEach(r => {
+            const isOn = (emp.stars || []).includes(r.key);
+            const btn = create("button", {
+                className: "btn secondary",
+                style: { justifyContent: "space-between", display: "flex", width: "100%" },
+                innerHTML: `<span>${r.key}</span><span>${isOn ? "★" : ""}</span>`,
+                onClick: () => {
+                    const stars = emp.stars || [];
+                    const i = stars.indexOf(r.key);
+                    if (i >= 0) stars.splice(i, 1);
+                    else stars.push(r.key);
+                    emp.stars = stars;
+                    DataManager.saveState();
+                    // Re-render only the stars panel to avoid flicker in the whole list.
+                    this.renderStarsPanel(container, empId);
                 }
-                grid.appendChild(btn);
             });
-            panel.appendChild(grid);
-            container.appendChild(panel);
+
+            if (isOn) {
+                btn.style.background = r.color;
+                btn.style.color = r.darkText ? "#111" : "#fff";
+                btn.style.borderColor = "transparent";
+            }
+            grid.appendChild(btn);
         });
+        panel.appendChild(grid);
+        container.appendChild(panel);
     },
 
     renderAvailabilityPanel(container, empId) {
@@ -502,34 +502,36 @@ export const EmployeeManager = {
         }
 
         const DAYS = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"];
-        import('../config.js').then(({ SLOTS }) => {
-            if (!SLOTS) {
-                stack.appendChild(create("div", { textContent: "Error cargando slots." }));
-                return;
+        // Render synchronous: avoid dynamic import gap that causes visible flicker.
+        if (!SLOTS || !SLOTS.length) {
+            stack.appendChild(create("div", { textContent: "Error cargando slots." }));
+            panel.appendChild(content);
+            container.appendChild(panel);
+            return;
+        }
+
+        const getSlotLabel = (timeValue, slotIndex, isEnd = false) => {
+            if (typeof timeValue === 'number') {
+                const idx = isEnd ? timeValue + 1 : timeValue;
+                return SLOTS[idx]?.label || '';
             }
 
-            const getSlotLabel = (timeValue, slotIndex, isEnd = false) => {
-                if (typeof timeValue === 'number') {
-                    const idx = isEnd ? timeValue + 1 : timeValue;
-                    return SLOTS[idx]?.label || '';
-                }
+            if (typeof slotIndex === 'number') {
+                const idx = isEnd ? slotIndex + 1 : slotIndex;
+                if (SLOTS[idx]?.label) return SLOTS[idx].label;
+            }
 
-                if (typeof slotIndex === 'number') {
-                    const idx = isEnd ? slotIndex + 1 : slotIndex;
-                    if (SLOTS[idx]?.label) return SLOTS[idx].label;
-                }
+            if (typeof timeValue === 'string') {
+                const normalized = timeValue.trim().substring(0, 5);
+                const padded = normalized.length === 4 ? '0' + normalized : normalized;
+                const match = SLOTS.find(s => s.label === padded);
+                if (match) return match.label;
+            }
 
-                if (typeof timeValue === 'string') {
-                    const normalized = timeValue.trim().substring(0, 5);
-                    const padded = normalized.length === 4 ? '0' + normalized : normalized;
-                    const match = SLOTS.find(s => s.label === padded);
-                    if (match) return match.label;
-                }
+            return '';
+        };
 
-                return '';
-            };
-
-            DAYS.forEach((day, dayIndex) => {
+        DAYS.forEach((day, dayIndex) => {
                 const dayAvailability = emp.availability[dayIndex] || [];
                 const dayRow = create("div", {
                     className: "row",
@@ -586,32 +588,31 @@ export const EmployeeManager = {
 
                 dayRow.appendChild(slotsStack);
                 stack.appendChild(dayRow);
-            });
-
-            content.appendChild(stack);
-            content.appendChild(create("div", { className: "hr" }));
-
-            const footer = create("div", { style: { textAlign: "right" } });
-            footer.appendChild(create("button", { className: "btn", textContent: "Guardar y Cerrar", onClick: async () => {
-                const newConflicts = this.findAvailabilityConflicts(emp);
-                if (newConflicts.length > 0) {
-                    const proceed = await showConfirmDialog({
-                        title: "Conflictos con turnos asignados",
-                        message: `${newConflicts.join("<br>")}<br><br>¿Guardar de todos modos?`,
-                        confirmText: "Guardar igualmente",
-                        cancelText: "Cancelar"
-                    });
-                    if (!proceed) return;
-                }
-                DataManager.saveState();
-                store.setState({ activeDetailEmployeeId: null });
-                this.renderList();
-            }}));
-            content.appendChild(footer);
-
-            panel.appendChild(content);
-            container.appendChild(panel);
         });
+
+        content.appendChild(stack);
+        content.appendChild(create("div", { className: "hr" }));
+
+        const footer = create("div", { style: { textAlign: "right" } });
+        footer.appendChild(create("button", { className: "btn", textContent: "Guardar y Cerrar", onClick: async () => {
+            const newConflicts = this.findAvailabilityConflicts(emp);
+            if (newConflicts.length > 0) {
+                const proceed = await showConfirmDialog({
+                    title: "Conflictos con turnos asignados",
+                    message: `${newConflicts.join("<br>")}<br><br>¿Guardar de todos modos?`,
+                    confirmText: "Guardar igualmente",
+                    cancelText: "Cancelar"
+                });
+                if (!proceed) return;
+            }
+            DataManager.saveState();
+            store.setState({ activeDetailEmployeeId: null });
+            this.renderList();
+        }}));
+        content.appendChild(footer);
+
+        panel.appendChild(content);
+        container.appendChild(panel);
     },
 
     renderExceptionsPanel(container, empId) {
