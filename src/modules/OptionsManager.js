@@ -22,9 +22,12 @@ export const OptionsManager = {
         this.renderRoles();
         this.renderStoreSettings();
         this.renderAdminPanel();
-        store.subscribe(() => this.renderRoles());
-        store.subscribe(() => this.renderStoreSettings());
-        store.subscribe(() => this.renderAdminPanel());
+        // Single subscription to avoid triple re-render on every state update.
+        store.subscribe(() => {
+            this.renderRoles();
+            this.renderStoreSettings();
+            this.renderAdminPanel();
+        });
         this.loadStores();
     },
 

@@ -15,16 +15,22 @@ import {
 import { getMonday, toISODateString } from '../utils/date.js';
 import { EmployeeManager } from './EmployeeManager.js';
 import { showToast, showConfirmDialog, showAlertDialog } from '../utils/feedback.js';
+import { debounce, rafThrottle } from '../utils/perf.js';
 
 export const ScheduleManager = {
     swapShiftSelectionId: null,
     activeTooltipEl: null,
     activeTooltipAnchor: null,
+    debouncedRenderTable: null,
+    debouncedRenderScheduleList: null,
     getActiveStoreLabel() {
         const state = store.getState();
         return (state.storeName || state.activeStoreId || 'Local sin nombre').trim();
     },
     init() {
+        // Debounced renders to avoid heavy DOM rebuild on each keystroke.
+        this.debouncedRenderTable = debounce(() => this.renderTable(), 90);
+        this.debouncedRenderScheduleList = debounce(() => this.renderScheduleList(), 110);
         this.bindEvents();
     },
 
@@ -69,12 +75,13 @@ export const ScheduleManager = {
         // Inline filters in schedule grid
         el("#schedule-search")?.addEventListener("input", (e) => {
             store.setState({ scheduleSearchTerm: e.target.value });
-            this.renderTable();
+            this.debouncedRenderTable();
         });
         el("#schedule-role-filter")?.addEventListener("change", (e) => {
             const selected = Array.from(e.target.selectedOptions || []).map(o => o.value).filter(Boolean);
             store.setState({ scheduleRoleFilters: selected });
-            this.renderTable();
+            // Role filter change is less frequent; apply immediately.
+            this.debouncedRenderTable.flush?.();
         });
 
         // Auto Assign
@@ -125,7 +132,7 @@ export const ScheduleManager = {
         // Schedule List Listeners
         el("#schedule-list-search")?.addEventListener("input", (e) => {
             store.setState({ scheduleSearchTerm: e.target.value });
-            this.renderScheduleList();
+            this.debouncedRenderScheduleList();
         });
         const openMultiModal = () => {
             this.updateScheduleListFiltersUI();
@@ -160,7 +167,7 @@ export const ScheduleManager = {
             if (target.checked) selectedSet.add(empId);
             else selectedSet.delete(empId);
             store.setState({ scheduleSelectedEmployeeIds: Array.from(selectedSet) });
-            this.renderScheduleList();
+            this.debouncedRenderScheduleList.flush?.();
         });
         el("#btn-suggest-productivity")?.addEventListener("click", () => this.suggestShiftsForProductivity());
 
@@ -385,7 +392,7 @@ export const ScheduleManager = {
             this.hoveredSlotIndex = null;
         };
 
-        table.addEventListener("mouseover", (e) => {
+        const onOver = (e) => {
             const cell = e.target.closest("[data-slot-index]");
             if (!cell || !table.contains(cell)) return;
             const slotIndex = cell.dataset.slotIndex;
@@ -395,7 +402,9 @@ export const ScheduleManager = {
             columnCells.forEach(el => el.classList.add("hovered-slot-column"));
             this.hoveredSlotEls = Array.from(columnCells);
             this.hoveredSlotIndex = slotIndex;
-        });
+        };
+
+        table.addEventListener("mouseover", rafThrottle(onOver));
 
         table.addEventListener("mouseleave", () => {
             clearHover();

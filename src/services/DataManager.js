@@ -30,6 +30,70 @@ function toISODateString(date) {
 }
 
 export const DataManager = {
+    // --- Save coalescing (low-risk perf win) ---
+    // Many UI actions call saveState() repeatedly in bursts.
+    // We coalesce them into a single write after a short debounce.
+    _saveTimer: null,
+    _savePendingPromise: null,
+    _savePendingResolve: null,
+    _savePendingReject: null,
+    _saveDebounceMs: 600,
+    _writeCacheByStore: {},
+
+    _safeStringify(value) {
+        try {
+            return JSON.stringify(value ?? null);
+        } catch (_) {
+            return String(Date.now());
+        }
+    },
+
+    _getStoreWriteCache(storeId) {
+        if (!this._writeCacheByStore[storeId]) {
+            this._writeCacheByStore[storeId] = {
+                mainSignature: '',
+                storeNameSignature: '',
+                weeks: {},
+                employees: {}
+            };
+        }
+        return this._writeCacheByStore[storeId];
+    },
+
+    _primeWriteCacheFromState(storeId, state) {
+        if (!storeId || !state) return;
+        const cache = this._getStoreWriteCache(storeId);
+
+        const mainData = {
+            templates: state.templates,
+            projectedTickets: state.projectedTickets,
+            activeDay: state.activeDay,
+            activeWeek: state.activeWeek,
+            breaks: state.breaks,
+            rappiCode: state.rappiCode,
+            roles: state.roles && state.roles.length ? state.roles : ROLES,
+            storeName: (state.storeName || storeId || '').trim(),
+            schedulingRules: normalizeSchedulingRules(state.schedulingRules || {}),
+            schedulingPeriodWeeks: [1, 2, 4].includes(Number(state.schedulingPeriodWeeks)) ? Number(state.schedulingPeriodWeeks) : 1,
+        };
+
+        cache.mainSignature = this._safeStringify(mainData);
+        cache.storeNameSignature = this._safeStringify({
+            displayName: (state.storeName || storeId || '').trim() || storeId,
+        });
+
+        const activeWeek = state.activeWeek;
+        if (activeWeek) {
+            cache.weeks[activeWeek] = this._safeStringify(state.schedules?.[activeWeek] || {});
+        }
+
+        cache.employees = {};
+        (state.employees || []).forEach(emp => {
+            if (!emp?.id) return;
+            cache.employees[emp.id] = this._safeStringify(emp);
+        });
+    },
+
     async loadState(storeId) {
         console.log("DataManager: Loading state...");
         store.setState({ isLoading: true });
@@ -182,6 +246,7 @@ export const DataManager = {
             }
 
             store.setState(newState);
+            this._primeWriteCacheFromState(storeId, newState);
             console.log("DataManager: State loaded.");
 
         } catch (error) {
@@ -193,7 +258,7 @@ export const DataManager = {
         }
     },
 
-    async saveState() {
+    async _saveStateNow() {
         const db = getDb();
         const state = store.getState();
         const storeId = state.activeStoreId;
@@ -207,10 +272,15 @@ export const DataManager = {
         const storeRootRef = storeDoc(storeId);
         const activeWeek = state.activeWeek;
         const currentSchedule = state.schedules[activeWeek];
+        const cache = this._getStoreWriteCache(storeId);
 
         try {
             if (activeWeek && currentSchedule) {
-                await weeksRef.doc(activeWeek).set(currentSchedule);
+                const weekSignature = this._safeStringify(currentSchedule);
+                if (cache.weeks[activeWeek] !== weekSignature) {
+                    await weeksRef.doc(activeWeek).set(currentSchedule);
+                    cache.weeks[activeWeek] = weekSignature;
+                }
             }
 
             const mainData = {
@@ -225,22 +295,44 @@ export const DataManager = {
                 schedulingRules: normalizeSchedulingRules(state.schedulingRules || {}),
                 schedulingPeriodWeeks: [1, 2, 4].includes(Number(state.schedulingPeriodWeeks)) ? Number(state.schedulingPeriodWeeks) : 1,
             };
-            await Promise.all([
-                schedulesRef.doc("main").set(mainData, { merge: true }),
-                storeRootRef.set({
-                    displayName: (state.storeName || storeId || '').trim() || storeId,
-                }, { merge: true }),
-            ]);
+            const nextMainSignature = this._safeStringify(mainData);
+            const nextStoreNamePayload = {
+                displayName: (state.storeName || storeId || '').trim() || storeId,
+            };
+            const nextStoreNameSignature = this._safeStringify(nextStoreNamePayload);
+
+            const mainOps = [];
+            if (cache.mainSignature !== nextMainSignature) {
+                mainOps.push(schedulesRef.doc("main").set(mainData, { merge: true }));
+                cache.mainSignature = nextMainSignature;
+            }
+            if (cache.storeNameSignature !== nextStoreNameSignature) {
+                mainOps.push(storeRootRef.set(nextStoreNamePayload, { merge: true }));
+                cache.storeNameSignature = nextStoreNameSignature;
+            }
+            if (mainOps.length > 0) {
+                await Promise.all(mainOps);
+            }
 
             const batch = db.batch();
             let opCount = 0;
+            const seenEmployeeIds = new Set();
             state.employees.forEach(emp => {
+                if (!emp?.id) return;
+                seenEmployeeIds.add(emp.id);
+                const empSignature = this._safeStringify(emp);
+                if (cache.employees[emp.id] === empSignature) return;
                 const empRef = employeesRef.doc(emp.id);
                 batch.set(empRef, emp, { merge: true });
+                cache.employees[emp.id] = empSignature;
                 opCount++;
                 if (opCount >= 400) {
                      // In a real generic util we would handle multiple batches.
                 }
+            });
+            // Clean cache entries for employees no longer in state.
+            Object.keys(cache.employees).forEach(empId => {
+                if (!seenEmployeeIds.has(empId)) delete cache.employees[empId];
             });
             if (opCount > 0) await batch.commit();
 
@@ -251,13 +343,88 @@ export const DataManager = {
         }
     },
 
+    /**
+     * Persists current state to Firestore.
+     * By default it's debounced to avoid write storms; pass `{ immediate: true }` to flush now.
+     */
+    async saveState(options = {}) {
+        const immediate = options?.immediate === true;
+
+        if (immediate) {
+            if (this._saveTimer) {
+                clearTimeout(this._saveTimer);
+                this._saveTimer = null;
+            }
+            // If there's a pending debounced promise, reuse it and resolve/reject accordingly.
+            if (!this._savePendingPromise) {
+                this._savePendingPromise = new Promise((resolve, reject) => {
+                    this._savePendingResolve = resolve;
+                    this._savePendingReject = reject;
+                });
+            }
+
+            try {
+                await this._saveStateNow();
+                this._savePendingResolve?.(true);
+            } catch (err) {
+                this._savePendingReject?.(err);
+                throw err;
+            } finally {
+                this._savePendingPromise = null;
+                this._savePendingResolve = null;
+                this._savePendingReject = null;
+            }
+            return true;
+        }
+
+        if (this._savePendingPromise) return this._savePendingPromise;
+
+        this._savePendingPromise = new Promise((resolve, reject) => {
+            this._savePendingResolve = resolve;
+            this._savePendingReject = reject;
+        });
+
+        if (this._saveTimer) clearTimeout(this._saveTimer);
+        this._saveTimer = setTimeout(async () => {
+            this._saveTimer = null;
+            try {
+                await this._saveStateNow();
+                this._savePendingResolve?.(true);
+            } catch (err) {
+                this._savePendingReject?.(err);
+            } finally {
+                this._savePendingPromise = null;
+                this._savePendingResolve = null;
+                this._savePendingReject = null;
+            }
+        }, this._saveDebounceMs);
+
+        return this._savePendingPromise;
+    },
+
+    /**
+     * Best-effort flush. Useful when you want to save sooner than the debounce window.
+     */
+    async flushSaveState() {
+        if (this._saveTimer) {
+            clearTimeout(this._saveTimer);
+            this._saveTimer = null;
+        }
+        return this.saveState({ immediate: true });
+    },
+
     async saveWeek(weekId) {
         const state = store.getState();
         const storeId = state.activeStoreId;
         if (!storeId || !weekId) return;
         const weeksRef = storeWeeksRef(storeId);
+        const cache = this._getStoreWriteCache(storeId);
         try {
-            await weeksRef.doc(weekId).set(state.schedules[weekId] || {});
+            const weekPayload = state.schedules[weekId] || {};
+            const sig = this._safeStringify(weekPayload);
+            if (cache.weeks[weekId] === sig) return;
+            await weeksRef.doc(weekId).set(weekPayload);
+            cache.weeks[weekId] = sig;
         } catch (error) {
             console.error("Error guardando semana:", error);
             showToast("Error guardando semana: " + error.message, "error");

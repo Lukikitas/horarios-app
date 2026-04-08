@@ -9,7 +9,20 @@ export class Store {
     }
 
     setState(partialState) {
-        this.state = { ...this.state, ...partialState };
+        if (!partialState || typeof partialState !== 'object') return;
+
+        // Avoid notifying if nothing actually changed (strict equality by key).
+        const prev = this.state;
+        let changed = false;
+        for (const key of Object.keys(partialState)) {
+            if (prev[key] !== partialState[key]) {
+                changed = true;
+                break;
+            }
+        }
+        if (!changed) return;
+
+        this.state = { ...prev, ...partialState };
         this.notify();
     }
 

@@ -6,6 +6,7 @@ import { storeEmployeesRef, legacyEmployeesRef } from '../services/firestoreRefs
 import { getMonday, toISODateString } from '../utils/date.js';
 import { showToast, showConfirmDialog, showAlertDialog } from '../utils/feedback.js';
 import { checkEmployeeAvailability } from '../utils/rules.js';
+import { debounce } from '../utils/perf.js';
 
 const EXPORT_FIELD_CONFIG = {
     name: { label: 'Nombre completo', getter: (e) => e.name || '' },
@@ -26,6 +27,8 @@ const EXPORT_FIELD_CONFIG = {
 export const EmployeeManager = {
     init() {
         this.roleSignature = '';
+        // Debounced render for search typing to avoid rebuilding the table on every keystroke.
+        this.debouncedRenderList = debounce(() => this.renderList(), 120);
         this.populateRoleFilter();
         this.bindEvents();
         store.subscribe((state) => this.handleStoreUpdate(state));
@@ -35,7 +38,7 @@ export const EmployeeManager = {
         el("#btnAddEmp")?.addEventListener("click", () => this.addEmployee());
         el("#inpName")?.addEventListener("keydown", (ev) => { if(ev.key==="Enter") this.addEmployee(); });
         el("#empFilter")?.addEventListener("change", () => this.renderList());
-        el("#empSearch")?.addEventListener("input", () => this.renderList());
+        el("#empSearch")?.addEventListener("input", () => this.debouncedRenderList());
         el("#empSort")?.addEventListener("change", () => this.renderList());
         el("#btn-clear-emp-filters")?.addEventListener("click", () => this.resetFilters());
         el("#fileImportExcel")?.addEventListener("change", (ev) => this.importFromExcel(ev));

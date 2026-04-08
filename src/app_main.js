@@ -58,7 +58,8 @@ async function init() {
 
     // Try to persist pending cambios antes de salir/cerrar pestaña
     window.addEventListener('beforeunload', () => {
-        DataManager.saveState();
+        // Best-effort flush (still async, but avoids waiting for debounce window)
+        DataManager.flushSaveState?.();
     });
 
     document.addEventListener('store-changed', async (event) => {
