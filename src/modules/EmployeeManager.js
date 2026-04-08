@@ -449,6 +449,7 @@ export const EmployeeManager = {
         const panel = create("div", { className: "employee-detail-panel" });
         const grid = create("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: "10px" } });
 
+        const outerContainer = container;
         import('../config.js').then(({ ROLES }) => {
             ROLES.forEach(r => {
                 const isOn = (emp.stars || []).includes(r.key);
@@ -462,7 +463,8 @@ export const EmployeeManager = {
                         if(i >= 0) stars.splice(i, 1); else stars.push(r.key);
                         emp.stars = stars;
                         DataManager.saveState();
-                        this.renderList();
+                        // Re-render only the stars panel to avoid flicker in the whole list.
+                        this.renderStarsPanel(outerContainer, empId);
                     }
                 });
 
@@ -634,7 +636,8 @@ export const EmployeeManager = {
             const delBtn = create("button", { className: "btn secondary del", textContent: "X", onClick: () => {
                 emp.exceptions = emp.exceptions.filter(x => x !== ex);
                 DataManager.saveState();
-                this.renderList();
+                // Re-render only the exceptions panel to evitar parpadeo en toda la tabla.
+                this.renderExceptionsPanel(container, empId);
             }});
             row.appendChild(delBtn);
             list.appendChild(row);
@@ -697,7 +700,8 @@ export const EmployeeManager = {
                 }
 
                 DataManager.saveState();
-                this.renderList();
+                // Mantener panel abierto y evitar reconstruir toda la lista.
+                this.renderExceptionsPanel(container, empId);
             } else {
                 showToast("Ingresa una fecha.", "warning");
             }
@@ -834,6 +838,8 @@ export const EmployeeManager = {
         footer.appendChild(create("button", { className: "btn", textContent: "Guardar y Cerrar", onClick: () => {
             DataManager.saveState();
             store.setState({ activeDetailEmployeeId: null });
+            // Cerrar panel sin reconstruir toda la tabla para evitar parpadeo del dropdown.
+            // La próxima interacción o cambio de filtro refrescará las métricas de la lista.
             this.renderList();
         }}));
         stack.appendChild(footer);
