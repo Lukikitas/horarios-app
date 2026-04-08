@@ -1282,6 +1282,13 @@ export const ScheduleManager = {
             const row = create("tr");
             row.appendChild(create("td", { className: "monthly-employee-cell", textContent: employee.name || employee.displayName || 'Sin nombre' }));
 
+            // Precompute exception dates for fast lookups per day cell.
+            const exceptionDateSet = new Set(
+                (employee.exceptions || [])
+                    .map(ex => ex?.date)
+                    .filter(Boolean)
+            );
+
             dates.forEach((date) => {
                 const dateISO = toISODateString(date);
                 const shift = this.getEmployeeShiftForDate(employee.id, date);
@@ -1306,6 +1313,47 @@ export const ScheduleManager = {
                     cell.innerHTML = `<div style="font-size:12px;font-weight:800;">${startLabel} - ${endLabel}</div><div style="font-size:9px;opacity:.9;">${this.escapeHtml(shift.role || '')}</div>`;
                 } else {
                     cell.textContent = 'OFF';
+                }
+
+                // Alerts: exceptions / licenses / sanctions for that day.
+                const hasException = exceptionDateSet.has(dateISO);
+                const hasSanction = Array.isArray(employee.sanctions) && employee.sanctions.length > 0
+                    ? isDateInSanctionPeriod(date, employee.sanctions)
+                    : false;
+
+                if (hasException || hasSanction) {
+                    const parts = [];
+                    if (hasException) parts.push('EX');
+                    if (hasSanction) parts.push('LIC');
+
+                    const badgeLabel = parts.join('+');
+                    const bg = (hasException && hasSanction)
+                        ? 'rgba(124,58,237,0.95)' // both
+                        : (hasException ? 'rgba(239,68,68,0.95)' : 'rgba(245,158,11,0.95)'); // exception / sanction
+
+                    cell.style.position = cell.style.position || 'relative';
+                    cell.style.zIndex = 1;
+
+                    // Avoid blocking clicks/drag on the cell.
+                    cell.appendChild(create('div', {
+                        className: 'monthly-day-alert-badge',
+                        textContent: badgeLabel,
+                        style: {
+                            position: 'absolute',
+                            top: '2px',
+                            right: '2px',
+                            fontSize: '10px',
+                            fontWeight: '800',
+                            background: bg,
+                            color: '#fff',
+                            padding: '1px 4px',
+                            borderRadius: '999px',
+                            pointerEvents: 'none'
+                        }
+                    }));
+
+                    const alertTitle = `${parts.join(' + ')} en ${dateISO}`;
+                    cell.title = cell.title ? `${cell.title} • ${alertTitle}` : alertTitle;
                 }
 
                 if (!isLocked) {
