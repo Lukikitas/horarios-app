@@ -29,7 +29,8 @@ export const UIManager = {
 
         el("#btn-dark-mode")?.addEventListener("click", () => this.toggleDarkMode());
 
-        this.bindActionsDropdown();
+        this.bindHeaderToolsDropdown();
+        this.bindHeaderAccountDropdown();
         this.bindMoreDropdown();
 
         // Init Dark Mode
@@ -38,8 +39,12 @@ export const UIManager = {
         }
     },
 
-    bindActionsDropdown() {
-        this.setupDropdown('#btn-actions', '#actions-dropdown');
+    bindHeaderToolsDropdown() {
+        this.setupDropdown('#btn-header-tools', '#header-tools-dropdown');
+    },
+
+    bindHeaderAccountDropdown() {
+        this.setupDropdown('#btn-header-account', '#header-account-dropdown');
     },
 
     bindMoreDropdown() {
@@ -83,9 +88,10 @@ export const UIManager = {
             if(elem) elem.style.display = 'none';
         });
 
-        // Reset buttons
+        // Reset view buttons (toolbar + items en "Más")
         document.querySelectorAll('.main-menu-btn').forEach(btn => {
             btn.classList.add('secondary');
+            btn.classList.remove('header-nav-active');
         });
 
         // Show specific view
@@ -108,7 +114,10 @@ export const UIManager = {
         if(viewEl) viewEl.style.display = 'block';
 
         const btnEl = el(btnId);
-        if(btnEl) btnEl.classList.remove('secondary');
+        if (btnEl) {
+            btnEl.classList.remove('secondary');
+            btnEl.classList.add('header-nav-active');
+        }
 
         // Handle special logic (like cleaning temp state)
         if (viewName !== 'planilla-turno') {
@@ -150,3 +159,4 @@ export const UIManager = {
         }
     }
 };
+
