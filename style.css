@@ -66,8 +66,7 @@ body{
 .bar-inner{position:relative;display:flex;gap:8px;align-items:center;justify-content:space-between;padding:10px 16px;flex-wrap:nowrap;overflow:visible;}
 .bar-inner.main-bar-row{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;}
 .main-bar-row{width:100%;align-items:center;}
-.main-menu{display:flex;flex-wrap:nowrap;gap:6px;flex:1;align-items:center;min-width:0;}
-.main-bar-left{display:flex; align-items:center; min-width:0; overflow:visible; gap:10px;}
+.main-bar-left{display:flex; align-items:center; min-width:0; overflow:visible; gap:12px;}
 .header-logo{
   width:28px;
   height:28px;
@@ -75,9 +74,57 @@ body{
   flex:0 0 auto;
 }
 .main-bar-right{display:flex; align-items:center; gap:10px; justify-content:flex-end; min-width:0; overflow:visible;}
-.actions-dropdown{margin-left:0;}
-.more-dropdown{margin-left:8px;}
-.week-selector{gap:6px; justify-content:center; flex: 0 0 auto; margin: 0 auto;}
+.header-nav-primary{display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-width:0;}
+.more-dropdown,
+.tools-dropdown,
+.account-dropdown{position:relative;}
+.header-dropdown-trigger{font-weight:500;}
+.header-dropdown-caret{opacity:0.72;font-size:0.85em;margin-left:2px;}
+.dropdown-content-panels{min-width:240px;left:0;right:auto;}
+.dropdown-section-label{
+  font-size:11px;
+  font-weight:600;
+  letter-spacing:0.04em;
+  text-transform:uppercase;
+  color:var(--muted);
+  padding:10px 14px 4px;
+  line-height:1.2;
+}
+.dropdown-content-panels .dropdown-section-label:first-child{padding-top:6px;}
+.dropdown-item-danger{color:#b91c1c;}
+.dropdown-item-danger:hover{background-color:#fef2f2;color:#991b1b;}
+body.dark-mode .dropdown-item-danger{color:#fca5a5;}
+body.dark-mode .dropdown-item-danger:hover{background-color:#450a0a;color:#fecaca;}
+.dropdown-content .dropdown-item.main-menu-btn.header-nav-active{
+  font-weight:600;
+  background:var(--bg);
+  box-shadow:inset 3px 0 0 var(--ink);
+}
+body.dark-mode .dropdown-content .dropdown-item.main-menu-btn.header-nav-active{
+  background:#1f2937;
+  box-shadow:inset 3px 0 0 #e5e7eb;
+}
+.btn.main-menu-btn.header-nav-active{
+  box-shadow:inset 0 -2px 0 var(--ink);
+}
+body.dark-mode .btn.main-menu-btn.header-nav-active{
+  box-shadow:inset 0 -2px 0 #f9fafb;
+}
+.week-selector{
+  gap:6px;
+  justify-content:center;
+  flex:0 0 auto;
+  margin:0 auto;
+  padding:4px 10px;
+  border-radius:8px;
+  border:1px solid var(--border);
+  background:var(--card);
+  box-shadow:0 1px 2px rgba(0,0,0,.04);
+}
+body.dark-mode .week-selector{
+  background:#1f2937;
+  border-color:#4b5563;
+}
   h1{margin:0;font-size:18px}
 .btn{border:1px solid var(--ink);background:var(--ink);color:#fff;border-radius:4px;padding:8px 12px;cursor:pointer;white-space:nowrap}
 .btn.secondary{background:#fff;color:var(--ink);border-color:var(--border)}
@@ -883,6 +930,13 @@ body.dark-mode .b-warning { background: rgba(251, 191, 36, 0.16); color: #fde68a
   background-color: var(--bg);
 }
 
+.dropdown-divider {
+  height: 1px;
+  margin: 6px 0;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
 .dropdown-content.show {
   display: flex;
   flex-direction: column;
@@ -1019,21 +1073,31 @@ body.dark-mode .b-warning { background: rgba(251, 191, 36, 0.16); color: #fde68a
     flex-direction: column;
     align-items: stretch;
     gap: 8px;
+    width: 100%;
   }
-  .main-menu {
+  #main-menu {
     width: 100%;
     flex-wrap: wrap;
     justify-content: flex-start;
     gap: 8px;
   }
-  .main-menu .btn {
+  .header-nav-primary {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .header-nav-primary .btn {
     flex: 1 1 calc(50% - 8px);
     min-width: 140px;
   }
-  .actions-dropdown {
-    width: 100%;
+  .more-dropdown,
+  .tools-dropdown,
+  .account-dropdown {
+    flex: 1 1 calc(33.333% - 8px);
+    min-width: 0;
   }
-  .actions-dropdown .btn {
+  .more-dropdown .header-dropdown-trigger,
+  .tools-dropdown .header-dropdown-trigger,
+  .account-dropdown .header-dropdown-trigger {
     width: 100%;
     text-align: left;
   }
@@ -1605,10 +1669,13 @@ body.dark-mode .monthly-grid-table tbody tr + tr td {
     color: #fca5a5;
 }
 
-#main-menu {
-  flex-grow: 1;
+#main-menu.header-nav {
+  flex: 1;
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 
 .clock-in-table-internal {
@@ -1860,24 +1927,29 @@ body.dark-mode .monthly-grid-table tbody tr + tr td {
       font-size: 16px;
   }
 
-  /* Main Menu - Horizontal Scroll */
+  /* Navegación principal: fila de vistas + menús en bloque */
   #main-menu {
     width: 100%;
     margin-left: 0 !important;
-    overflow-x: auto;
-    white-space: nowrap;
-    padding-bottom: 8px; /* Space for touch scroll */
-    display: flex;
+    flex-wrap: wrap;
+    padding-bottom: 4px;
     gap: 8px;
-    -webkit-overflow-scrolling: touch;
   }
 
-  #main-menu::-webkit-scrollbar {
-      height: 4px;
+  .header-nav-primary {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    width: 100%;
+    padding-bottom: 4px;
   }
-  #main-menu::-webkit-scrollbar-thumb {
-      background: var(--border);
-      border-radius: 2px;
+
+  .header-nav-primary::-webkit-scrollbar {
+    height: 4px;
+  }
+  .header-nav-primary::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 2px;
   }
 
   /* Week Selector - Stacked */
