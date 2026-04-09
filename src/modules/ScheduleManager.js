@@ -87,7 +87,7 @@ export const ScheduleManager = {
         // Auto Assign
         el("#btn-auto-assign")?.addEventListener("click", () => {
             this.autoAssignShifts();
-            el("#actions-dropdown")?.classList.remove('show');
+            el("#header-tools-dropdown")?.classList.remove('show');
         });
 
 
