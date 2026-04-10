@@ -1,0 +1,10 @@
+/* Employee Portal Styles */
+.status-pending { background-color: #f59e0b; color: white; }
+.status-approved { background-color: #10b981; color: white; }
+.status-rejected { background-color: #ef4444; color: white; }
+.status-cancelled { background-color: #6b7280; color: white; }
+.status-manager_review { background-color: #3b82f6; color: white; }
+
+body {
+    padding-top: 2rem;
+}

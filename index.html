@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>STAR App | Gestión de turnos para restaurantes</title>
+  <meta name="description" content="STAR App te ayuda a organizar horarios, solicitudes y operación de equipos en restaurantes y negocios gastronómicos.">
+  <link rel="icon" href="assets/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" href="assets/favicon.png">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+  <link rel="stylesheet" href="landing.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="container header-row">
+      <div class="brand">
+        <img src="assets/logo.PNG" alt="STAR App" class="brand-logo" onerror="if (this.src.endsWith('logo.PNG')) this.src='assets/logo.png';">
+      </div>
+      <a class="account-link" href="login.html">Si ya tenés cuenta</a>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero container">
+      <div class="hero-copy">
+        <p class="tag">Software para equipos operativos</p>
+        <h1>Gestioná turnos, solicitudes y dotación en un solo lugar</h1>
+        <p class="lead">
+          STAR App simplifica la organización diaria de tu negocio. Centralizá horarios, controlá cambios y mejorá la coordinación entre managers y colaboradores.
+        </p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="login.html">Quiero una demo</a>
+          <a class="btn btn-outline" href="#caracteristicas">Ver características</a>
+        </div>
+      </div>
+      <div class="hero-shot">
+        <img src="verification_refactor.png" alt="Vista general de STAR App">
+      </div>
+    </section>
+
+    <section id="caracteristicas" class="container section">
+      <h2>Características principales</h2>
+      <div class="features-grid">
+        <article class="card">
+          <h3>Planificación semanal</h3>
+          <p>Creación y edición de horarios por local, rol y disponibilidad del equipo.</p>
+        </article>
+        <article class="card">
+          <h3>Gestión de solicitudes</h3>
+          <p>Aprobá o rechazá días libres y cambios de disponibilidad con trazabilidad.</p>
+        </article>
+        <article class="card">
+          <h3>Vista por locales</h3>
+          <p>Administrá múltiples sucursales desde la misma cuenta de manager.</p>
+        </article>
+        <article class="card">
+          <h3>Portal de empleado</h3>
+          <p>Tu equipo visualiza turnos y envía pedidos sin depender de mensajes sueltos.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="container section">
+      <h2>Así se ve STAR App</h2>
+      <div class="shots-grid">
+        <figure class="shot-card">
+          <img src="verification_requests.png" alt="Módulo de solicitudes">
+          <figcaption>Módulo de solicitudes</figcaption>
+        </figure>
+        <figure class="shot-card">
+          <img src="verification_employees.png" alt="Gestión de colaboradores">
+          <figcaption>Gestión de colaboradores</figcaption>
+        </figure>
+        <figure class="shot-card">
+          <img src="verification_db_migration.png" alt="Operación multi-local">
+          <figcaption>Operación multi-local</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section id="planes" class="container section">
+      <h2>Plan actual</h2>
+      <article class="pricing-card">
+        <p class="pricing-tag">Licencia mensual</p>
+        <h3 class="pricing-price" id="monthly-plan-price">Precio a definir</h3>
+        <p class="pricing-note">Este valor se ajusta según la necesidad de tu negocio.</p>
+        <ul class="pricing-list">
+          <li>Uso completo de la plataforma STAR App</li>
+          <li>Gestión de horarios y solicitudes</li>
+          <li>Administración multi-local</li>
+          <li>Actualizaciones incluidas</li>
+        </ul>
+      </article>
+    </section>
+
+    <section id="contacto" class="container section">
+      <h2>Contacto</h2>
+      <p class="contact-lead">Dejanos tus datos y te contactamos para mostrarte la app.</p>
+      <form class="contact-form" id="contact-form">
+        <label for="contact-name">Nombre</label>
+        <input id="contact-name" name="name" type="text" required placeholder="Tu nombre">
+
+        <label for="contact-email">Email</label>
+        <input id="contact-email" name="email" type="email" required placeholder="tuemail@negocio.com">
+
+        <label for="contact-message">Mensaje</label>
+        <textarea id="contact-message" name="message" rows="5" required placeholder="Contanos sobre tu negocio"></textarea>
+
+        <button type="submit" class="btn btn-primary" id="contact-submit-btn">Enviar consulta</button>
+        <p id="contact-form-feedback" class="contact-feedback" aria-live="polite"></p>
+      </form>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-row">
+      <p>STAR App · Solución de planificación para negocios gastronómicos.</p>
+      <a class="btn btn-primary" href="login.html">Acceso clientes</a>
+    </div>
+  </footer>
+  <script src="https://www.gstatic.com/firebasejs/12.2.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore-compat.js"></script>
+  <script type="module" src="landing.js"></script>
+</body>
+</html>

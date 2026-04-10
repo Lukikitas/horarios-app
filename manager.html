@@ -1,0 +1,971 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Planificador de Horarios</title>
+<link rel="icon" href="assets/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<script src="https://www.gstatic.com/firebasejs/12.2.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.2.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="loading-overlay">
+    <img src="assets/loading.gif" alt="Cargando" class="loading-gif">
+    <div class="loading-text">Cargando...</div>
+  </div>
+  <div class="bar">
+    <div class="bar-inner main-bar-row">
+      <div class="main-bar-left">
+        <img src="assets/favicon.png" alt="Logo" class="header-logo">
+        <nav class="header-nav" id="main-menu" aria-label="Navegación principal">
+          <div class="header-nav-primary">
+            <button type="button" id="btn-view-schedule" class="btn main-menu-btn">Horarios</button>
+            <button type="button" id="btn-schedule-list" class="btn secondary main-menu-btn">Listado</button>
+            <button type="button" id="btn-weekly-summary" class="btn secondary main-menu-btn">Resumen semanal</button>
+            <button type="button" id="btn-view-employees" class="btn secondary main-menu-btn">Empleados</button>
+          </div>
+          <div class="dropdown more-dropdown">
+            <button type="button" id="btn-more" class="btn secondary header-dropdown-trigger" aria-expanded="false" aria-haspopup="true" aria-controls="more-dropdown">Más <span class="header-dropdown-caret" aria-hidden="true">▾</span></button>
+            <div id="more-dropdown" class="dropdown-content dropdown-content-panels" role="menu">
+              <div class="dropdown-section-label">Equipo y registros</div>
+              <button type="button" id="btn-view-clock-ins" class="dropdown-item main-menu-btn" role="menuitem">Fichadas</button>
+              <button type="button" id="btn-view-requests" class="dropdown-item main-menu-btn" role="menuitem">Solicitudes</button>
+              <div class="dropdown-divider"></div>
+              <div class="dropdown-section-label">Plantillas y configuración</div>
+              <button type="button" id="btn-view-templates" class="dropdown-item main-menu-btn" role="menuitem">Plantillas</button>
+              <button type="button" id="btn-view-francos" class="dropdown-item main-menu-btn" role="menuitem">Francos</button>
+              <button type="button" id="btn-planilla-turno" class="dropdown-item main-menu-btn" role="menuitem">Planilla de turno</button>
+              <button type="button" id="btn-view-options" class="dropdown-item main-menu-btn" role="menuitem">Opciones</button>
+            </div>
+          </div>
+          <div class="dropdown tools-dropdown">
+            <button type="button" id="btn-header-tools" class="btn secondary header-dropdown-trigger" aria-expanded="false" aria-haspopup="true" aria-controls="header-tools-dropdown">Herramientas <span class="header-dropdown-caret" aria-hidden="true">▾</span></button>
+            <div id="header-tools-dropdown" class="dropdown-content dropdown-content-panels" role="menu">
+              <div class="dropdown-section-label">Plan y datos</div>
+              <button type="button" id="btnPrint" class="dropdown-item" role="menuitem">Imprimir</button>
+              <button type="button" id="btn-import-text" class="dropdown-item" role="menuitem">Importar desde texto</button>
+              <button type="button" id="btn-auto-assign" class="dropdown-item" role="menuitem">Auto-completar semana</button>
+              <div class="dropdown-divider"></div>
+              <button type="button" id="btn-advanced-import-export" class="dropdown-item" role="menuitem">Importar / exportar (avanzado)</button>
+            </div>
+          </div>
+          <div class="dropdown account-dropdown">
+            <button type="button" id="btn-header-account" class="btn secondary header-dropdown-trigger" aria-expanded="false" aria-haspopup="true" aria-controls="header-account-dropdown">Cuenta <span class="header-dropdown-caret" aria-hidden="true">▾</span></button>
+            <div id="header-account-dropdown" class="dropdown-content dropdown-content-panels" role="menu">
+              <button type="button" id="change-store-inline" class="dropdown-item" role="menuitem">Cambiar local</button>
+              <div class="dropdown-divider"></div>
+              <button type="button" id="logout-inline" class="dropdown-item dropdown-item-danger" role="menuitem">Cerrar sesión</button>
+            </div>
+          </div>
+        </nav>
+      </div>
+
+      <div id="week-selector-container" class="row week-selector">
+        <button id="btn-lock-week" class="btn secondary">🔓</button>
+        <button id="btn-prev-week" class="btn secondary">◄</button>
+        <button id="week-display" class="btn secondary"></button>
+        <button id="btn-next-week" class="btn secondary">►</button>
+        <input id="monthly-top-month" type="month" class="input input-compact" style="display:none; min-width:170px;" />
+      </div>
+
+      <div class="row main-bar-right">
+        <button id="admin-contact-header-alert" class="btn admin-contact-header-alert" style="display:none;" type="button">
+          Nuevos contactos pendientes: 0
+        </button>
+        <div id="session-banner" class="session-banner">
+          <span class="pill" id="session-user-label"></span>
+          <span class="pill pill-neutral" id="session-store-label"></span>
+        </div>
+        <button id="btn-dark-mode" class="btn secondary">🌙</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="main-content">
+    <div id="view-employees" class="wrap" style="display:none; max-width: none; padding: 0 16px;">
+        <!-- Empleados -->
+        <section class="card">
+            <div class="card-h card-h-controls">
+              <div class="stack" style="gap:4px;">
+                <strong>Empleados</strong>
+                <span class="muted mini-label">Gestiona la base de colaboradores, disponibilidad y etiquetas sin salir del planificador.</span>
+              </div>
+              <div class="row" style="gap:8px; align-items:center;">
+                <span class="muted mini-label">Vista diseñada para escritorio</span>
+                <span class="pill pill-neutral" id="stat-filtered-employees">--</span>
+              </div>
+            </div>
+            <div class="card-c stack">
+                <div class="employee-overview-grid">
+                  <div class="employee-stat-card">
+                    <div class="muted mini-label">Total de empleados</div>
+                    <div class="stat-value" id="stat-total-employees">--</div>
+                    <div class="muted mini-label">Incluye todos los perfiles cargados</div>
+                  </div>
+                  <div class="employee-stat-card">
+                    <div class="muted mini-label">All Star</div>
+                    <div class="stat-value" id="stat-all-stars">--</div>
+                    <div class="mini-pill b-blue">Con insignia destacada</div>
+                  </div>
+                  <div class="employee-stat-card">
+                    <div class="muted mini-label">Menores</div>
+                    <div class="stat-value" id="stat-minors">--</div>
+                    <div class="mini-pill b-minor">Controlá sus límites</div>
+                  </div>
+                  <div class="employee-stat-card">
+                    <div class="muted mini-label">Disponibilidad cargada</div>
+                    <div class="stat-value" id="stat-availability">--</div>
+                    <div class="mini-pill b-green">Con restricciones definidas</div>
+                  </div>
+                  <div class="employee-stat-card">
+                    <div class="muted mini-label">Con licencias o sanciones</div>
+                    <div class="stat-value" id="stat-sanctions">--</div>
+                    <div class="mini-pill b-warning">Seguimiento activo</div>
+                  </div>
+                </div>
+
+                <div class="employee-controls-grid">
+                  <div class="control-card utilities-card">
+                    <div class="control-card-head">Alta rápida</div>
+                    <div class="control-card-body stack">
+                      <div class="row employee-form-row">
+                          <input id="inpName" class="input" placeholder="Nombre y apellido" style="flex:1">
+                          <input id="inpDni" class="input" placeholder="DNI" style="flex:1">
+                          <input id="inpMail" class="input" placeholder="Mail" style="flex:1">
+                          <input id="inpCell" class="input" placeholder="Celular" style="flex:1">
+                          <button id="btnAddEmp" class="btn">Añadir</button>
+                      </div>
+                      <div class="muted mini-label">La columna "Nombre para planilla" se edita dentro de la fila del empleado.</div>
+                    </div>
+                  </div>
+
+                  <div class="control-card">
+                    <div class="control-card-head">Filtros y búsqueda</div>
+                    <div class="control-card-body stack" style="gap:10px;">
+                      <div class="row" style="gap:8px;">
+                        <input id="empSearch" class="input" placeholder="Buscar por nombre o contacto" style="flex:2">
+                        <select id="empFilter" class="select" style="flex:1"></select>
+                      </div>
+                      <div class="row filter-badges" style="gap:10px;">
+                        <label class="pill pill-toggle"><input id="filterAllStarOnly" type="checkbox"> Solo All Star</label>
+                        <label class="pill pill-toggle"><input id="filterMinorOnly" type="checkbox"> Solo menores</label>
+                        <label class="pill pill-toggle"><input id="filterSanctionsOnly" type="checkbox"> Con sanciones</label>
+                        <label class="pill pill-toggle"><input id="filterAvailabilityOnly" type="checkbox"> Con disponibilidad</label>
+                      </div>
+                      <div class="row" style="gap:8px; align-items:center;">
+                        <div class="row" style="gap:6px; flex:1; align-items:center;">
+                          <span class="muted mini-label">Ordenar por</span>
+                          <select id="empSort" class="select" style="flex:1;">
+                            <option value="name">Nombre (A-Z)</option>
+                            <option value="priority">Prioridad</option>
+                            <option value="stars">Cantidad de estrellas</option>
+                          </select>
+                        </div>
+                        <button id="btn-clear-emp-filters" class="btn secondary" style="white-space:nowrap;">Limpiar filtros</button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="control-card">
+                    <div class="control-card-head">Utilidades</div>
+                    <div class="control-card-body stack utilities-body" style="gap:12px;">
+                      <div class="row" style="align-items:center; gap:10px; flex-wrap:wrap;">
+                        <label class="btn secondary" style="cursor:pointer;">
+                          Importar desde Excel
+                          <input id="fileImportExcel" class="file" type="file" accept=".xlsx, .xls" style="display:none">
+                        </label>
+                        <div class="stack" style="gap:4px; min-width:220px;">
+                          <span class="muted mini-label">Exportar datos</span>
+                          <span class="muted" style="font-size:12px;">Elegí columnas y descargá en Excel o PDF.</span>
+                        </div>
+                      </div>
+                      <div class="row export-controls" style="gap:10px; flex-wrap:wrap; align-items:center;">
+                        <div class="dropdown export-dropdown">
+                          <button id="btn-export-fields-menu" class="btn secondary">Datos a exportar ▾</button>
+                          <div id="export-fields-dropdown" class="dropdown-content export-dropdown-content">
+                            <div class="stack" style="padding:12px; gap:10px;">
+                              <div class="export-fields-grid">
+                                <label class="pill-toggle export-field">
+                                  <input type="checkbox" value="name" checked>
+                                  <span>Nombre completo</span>
+                                </label>
+                                <label class="pill-toggle export-field">
+                                  <input type="checkbox" value="displayName" checked>
+                                  <span>Nombre para planilla</span>
+                                </label>
+                                <label class="pill-toggle export-field">
+                                  <input type="checkbox" value="dni" checked>
+                                  <span>DNI</span>
+                                </label>
+                                <label class="pill-toggle export-field">
+                                  <input type="checkbox" value="mail" checked>
+                                  <span>Mail</span>
+                                </label>
+                                <label class="pill-toggle export-field">
+                                  <input type="checkbox" value="celular" checked>
+                                  <span>Celular</span>
+                                </label>
+                                <label class="pill-toggle export-field">
+                                  <input type="checkbox" value="stars" checked>
+                                  <span>Roles/Estrellas</span>
+                                </label>
+                                <label class="pill-toggle export-field">
+                                  <input type="checkbox" value="allStar" checked>
+                                  <span>All Star</span>
+                                </label>
+                                <label class="pill-toggle export-field">
+                                  <input type="checkbox" value="minor" checked>
+                                  <span>Menor</span>
+                                </label>
+                                <label class="pill-toggle export-field">
+                                  <input type="checkbox" value="availabilityByDay">
+                                  <span>Disponibilidad por día</span>
+                                </label>
+                                <label class="pill-toggle export-field">
+                                  <input type="checkbox" value="exceptions">
+                                  <span>Excepciones</span>
+                                </label>
+                                <label class="pill-toggle export-field">
+                                  <input type="checkbox" value="exceptionsDetailed">
+                                  <span>Excepciones (detalle)</span>
+                                </label>
+                                <label class="pill-toggle export-field">
+                                  <input type="checkbox" value="sanctions">
+                                  <span>Licencias / sanciones</span>
+                                </label>
+                                <label class="pill-toggle export-field">
+                                  <input type="checkbox" value="priority">
+                                  <span>Prioridad</span>
+                                </label>
+                              </div>
+                              <div class="row" style="gap:8px; flex-wrap:wrap;">
+                                <button id="btn-select-all-fields" class="btn secondary">Seleccionar todo</button>
+                                <button id="btn-clear-fields" class="btn secondary">Limpiar selección</button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        <span class="muted mini-label" style="flex:1; min-width:220px;">Elegí los datos desde el menú y generá el reporte con el formato que prefieras.</span>
+                        <div class="row" style="gap:8px;">
+                          <button id="btn-export-employees-excel" class="btn">Exportar a Excel</button>
+                          <button id="btn-export-employees-pdf" class="btn secondary">Exportar a PDF</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div id="empList" class="stack"></div>
+            </div>
+        </section>
+    </div>
+
+    <div id="view-templates" class="wrap" style="display:none; max-width: none; padding: 0 16px;">
+        <!-- Plantillas -->
+        <section class="card">
+            <div class="card-h"><strong>Plantillas de días</strong></div>
+            <div class="card-c stack">
+                <div class="stack">
+                    <input id="inpTemplateName" class="input" placeholder="Nombre de la plantilla">
+                    <textarea id="inpTemplateDesc" class="input" placeholder="Añade una descripción (opcional)..." rows="2"></textarea>
+                    <div style="text-align: right;">
+                        <button id="btnSaveTemplate" class="btn">Guardar día actual como plantilla</button>
+                    </div>
+                </div>
+                <div class="hr"></div>
+                <div id="templateList" class="stack"></div>
+            </div>
+        </section>
+    </div>
+
+    <div id="view-schedule" class="wrap" style="max-width: none; padding: 0 16px;">
+        <!-- Horarios -->
+        <section class="card">
+            <div class="card-h card-h-controls">
+                <div class="controls-left">
+                    <div class="dropdown filter-dropdown">
+                        <button id="btn-schedule-filters" class="btn secondary">Filtros ▾</button>
+                        <div id="schedule-filter-dropdown" class="dropdown-content">
+                            <div class="filters-content">
+                                <label for="schedule-search" class="muted mini-label">Buscar</label>
+                                <input id="schedule-search" class="input input-compact" placeholder="Empleado...">
+                                <label for="schedule-role-filter" class="muted mini-label">Puestos</label>
+                                <select id="schedule-role-filter" class="select select-compact" multiple></select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="controls-group">
+                        <div class="control-item"><label for="activeRole" class="muted">Rol</label><select id="activeRole" class="select"></select></div>
+                        <div class="control-item"><label for="formStart" class="muted">Inicio</label><select id="formStart" class="select"></select></div>
+                        <div class="control-item"><label for="formEnd" class="muted">Fin</label><select id="formEnd" class="select"></select></div>
+                        <div class="control-item"><span id="shiftDuration" class="muted"></span></div>
+                        <div class="control-item"><button id="btnAddUnassignedShift" class="btn">Crear turno</button></div>
+                        <div class="control-item"><button id="btnUndo" class="btn secondary" disabled>Deshacer</button></div>
+                    </div>
+                </div>
+                <div class="controls-center">
+                    <div class="day-title-row">
+                        <h2 id="day-title" class="day-title"></h2>
+                        <div class="day-metrics">
+                            <label for="projectedTickets" class="muted mini-label">Tickets</label>
+                            <input id="projectedTickets" type="number" class="input input-compact">
+                            <span class="muted mini-label">Prod.</span>
+                            <span id="projectedProductivity" class="strong"></span>
+                            <button id="btn-suggest-productivity" class="btn secondary" style="margin-left:8px;">Sugerir turnos (6.5)</button>
+                        </div>
+                        <div id="weekly-stats-container" class="weekly-stats"></div>
+                    </div>
+                </div>
+                <div class="controls-right">
+                    <div id="dayTabs" class="row" style="flex-wrap:wrap;"></div>
+                </div>
+            </div>
+
+
+            <!-- Grilla -->
+            <div class="scroller">
+                <div class="table">
+                    <div id="thead" class="thead"></div>
+                    <div id="tbody"></div>
+                </div>
+            </div>
+
+            <div id="monthly-planner-section" class="card-c stack" style="display:none;">
+              <div id="monthly-planner-editor" class="row" style="display:none; gap:8px; align-items:flex-end; flex-wrap:wrap;">
+                <span id="monthly-editor-target" class="pill pill-neutral"></span>
+                <div class="stack">
+                  <label class="muted mini-label" for="monthly-editor-role">Puesto</label>
+                  <select id="monthly-editor-role" class="select input-compact"></select>
+                </div>
+                <div class="stack">
+                  <label class="muted mini-label" for="monthly-editor-start">Entrada</label>
+                  <select id="monthly-editor-start" class="select input-compact"></select>
+                </div>
+                <div class="stack">
+                  <label class="muted mini-label" for="monthly-editor-method">Método de carga</label>
+                  <select id="monthly-editor-method" class="select input-compact">
+                    <option value="duration">Entrada + duración</option>
+                    <option value="end">Entrada + salida</option>
+                  </select>
+                </div>
+                <div id="monthly-editor-duration-wrap" class="stack">
+                  <label class="muted mini-label" for="monthly-editor-duration">Duración del turno</label>
+                  <select id="monthly-editor-duration" class="select input-compact">
+                    <option value="">--</option>
+                    <option value="4">4 hs</option>
+                    <option value="5">5 hs</option>
+                    <option value="6">6 hs</option>
+                    <option value="7">7 hs</option>
+                    <option value="8">8 hs</option>
+                    <option value="9">9 hs</option>
+                    <option value="10">10 hs</option>
+                  </select>
+                </div>
+                <div id="monthly-editor-end-wrap" class="stack" style="display:none;">
+                  <label class="muted mini-label" for="monthly-editor-end">Salida</label>
+                  <select id="monthly-editor-end" class="select input-compact"></select>
+                </div>
+                <button id="monthly-editor-save" class="btn">Guardar celda</button>
+                <button id="monthly-editor-clear" class="btn secondary">Marcar OFF</button>
+              </div>
+              <div id="monthly-planner-grid"></div>
+            </div>
+        </section>
+    </div>
+
+    <div id="view-francos" class="wrap" style="display:none; max-width: none; padding: 0 16px;">
+      <!-- Francos -->
+      <section class="card">
+        <div class="card-h"><strong>Francos de la Semana</strong></div>
+        <div id="francos-content" class="card-c">
+            <!-- Content will be generated by app.js -->
+        </div>
+      </section>
+    </div>
+
+    <div id="view-schedule-list" class="wrap" style="display:none; max-width: none; padding: 0 16px;">
+      <!-- Listado de Horarios -->
+      <section class="card">
+        <div class="card-h"><strong>Listado de Horarios</strong></div>
+        <div class="card-c" id="schedule-list-filter-bar">
+            <div class="row" style="justify-content: flex-end; width: 100%; gap: 12px; flex-wrap: wrap; align-items: flex-end;">
+                <div class="stack" style="min-width: 220px; flex: 1;">
+                    <label class="muted mini-label" for="schedule-list-search">Buscar por empleado</label>
+                    <input id="schedule-list-search" class="input" placeholder="Nombre o apellido">
+                </div>
+                <button id="schedule-list-multi-btn" class="btn secondary" style="white-space: nowrap;">Selección múltiple</button>
+            </div>
+        </div>
+        <div id="schedule-list-content" class="card-c">
+            <!-- Content will be generated by app.js -->
+        </div>
+      </section>
+    </div>
+
+	    <div id="view-options" class="wrap" style="display:none; max-width: none; padding: 0 16px;">
+	      <section class="card" style="margin-bottom:16px;">
+	        <div class="card-h">
+	          <strong>Configuración del local</strong>
+	          <span class="pill pill-neutral">Por local</span>
+	        </div>
+	        <div class="card-c stack" style="gap:16px;">
+	          <p class="muted" style="margin:0;">
+	            Definí cómo se muestra este local en los impresos y qué restricciones automáticas querés aplicar al armar horarios.
+	          </p>
+	          <form id="store-settings-form" class="admin-user-grid">
+	            <div class="stack">
+	              <label class="muted mini-label" for="store-display-name">Nombre del local para impresión</label>
+	              <input id="store-display-name" class="input" placeholder="Ej: Local Norte" />
+	            </div>
+	            <div class="stack">
+	              <label class="muted mini-label" for="store-scheduling-period">Metodología para armar/pasar horarios</label>
+	              <select id="store-scheduling-period" class="select">
+	                <option value="1">Semanal (7 días)</option>
+	                <option value="2">Quincenal (14 días)</option>
+	                <option value="4">Mensual (28 días)</option>
+	              </select>
+	            </div>
+	            <label class="pill pill-toggle" style="align-self:end;">
+	              <input id="rule-enforce-sanctions" type="checkbox" checked>
+	              Bloquear por licencias/sanciones
+	            </label>
+	            <label class="pill pill-toggle" style="align-self:end;">
+	              <input id="rule-enforce-minor-limit" type="checkbox" checked>
+	              Restringir horario de menores
+	            </label>
+	            <label class="pill pill-toggle" style="align-self:end;">
+	              <input id="rule-enforce-role-star" type="checkbox" checked>
+	              Exigir estrella/puesto para asignar
+	            </label>
+	            <label class="pill pill-toggle" style="align-self:end;">
+	              <input id="rule-enforce-availability" type="checkbox" checked>
+	              Respetar disponibilidad
+	            </label>
+	            <label class="pill pill-toggle" style="align-self:end;">
+	              <input id="rule-enforce-overlap" type="checkbox" checked>
+	              Evitar turnos superpuestos
+	            </label>
+	            <label class="pill pill-toggle" style="align-self:end;">
+	              <input id="rule-enforce-rest-time" type="checkbox" checked>
+	              Exigir descanso mínimo entre turnos
+	            </label>
+	            <div class="stack">
+	              <label class="muted mini-label" for="rule-min-rest-hours">Horas mínimas de descanso</label>
+	              <input id="rule-min-rest-hours" type="number" min="1" class="input" value="12" />
+	            </div>
+	            <div class="stack">
+	              <label class="muted mini-label" for="rule-max-consecutive-limit">Máximo de días consecutivos</label>
+	              <input id="rule-max-consecutive-limit" type="number" min="1" class="input" value="5" />
+	            </div>
+	            <label class="pill pill-toggle" style="align-self:end;">
+	              <input id="rule-max-consecutive-enabled" type="checkbox" checked>
+	              Aplicar regla de días consecutivos
+	            </label>
+	            <div class="admin-form-actions">
+	              <button id="btn-save-store-settings" class="btn" type="submit">Guardar configuración</button>
+	              <span class="muted mini-label">Si desactivás esta regla, la autoasignación dejará de bloquear turnos por ese motivo.</span>
+	            </div>
+	          </form>
+	        </div>
+	      </section>
+	      <section class="card">
+	        <div class="card-h"><strong>Opciones</strong></div>
+	        <div class="card-c stack">
+          <div class="row" style="flex-wrap:wrap; gap:8px; align-items:flex-end;">
+            <div class="stack" style="min-width:200px;">
+              <label class="muted mini-label">Nombre del puesto</label>
+              <input id="new-role-name" class="input input-compact" placeholder="Ej: Barista" />
+            </div>
+            <div class="stack" style="min-width:120px;">
+              <label class="muted mini-label">Color</label>
+              <input id="new-role-color" type="color" class="input color-input" value="#6b7280" />
+            </div>
+            <label class="muted" style="display:flex;align-items:center;gap:6px;">
+              <input id="new-role-darktext" type="checkbox" /> Texto oscuro
+            </label>
+            <button id="btn-add-role" class="btn">Agregar</button>
+            <button id="btn-reset-roles" class="btn secondary">Restablecer</button>
+          </div>
+	          <div id="roles-list" class="stack"></div>
+	        </div>
+	      </section>
+	      <section id="admin-user-management" class="card" style="display:none; margin-top:16px;">
+	        <div class="card-h">
+	          <strong>Administración de usuarios y locales</strong>
+	          <span class="pill pill-neutral">Solo admin</span>
+	        </div>
+	        <div class="card-c stack" style="gap:16px;">
+	          <p class="muted" style="margin:0;">
+	            Desde acá podés crear un usuario nuevo y asignarlo a un local existente o crear un local nuevo en el mismo paso.
+	          </p>
+	          <form id="admin-create-user-form" class="admin-user-grid">
+	            <div class="stack">
+	              <label class="muted mini-label" for="admin-user-name">Nombre visible</label>
+	              <input id="admin-user-name" class="input" placeholder="Ej: Laura Pérez" required />
+	            </div>
+	            <div class="stack">
+	              <label class="muted mini-label" for="admin-user-email">Email</label>
+	              <input id="admin-user-email" type="email" class="input" placeholder="usuario@empresa.com" required />
+	            </div>
+	            <div class="stack">
+	              <label class="muted mini-label" for="admin-user-password">Contraseña temporal</label>
+	              <input id="admin-user-password" type="password" class="input" placeholder="Mínimo 6 caracteres" minlength="6" required />
+	            </div>
+	            <div class="stack">
+	              <label class="muted mini-label" for="admin-user-role">Rol</label>
+	              <select id="admin-user-role" class="select">
+	                <option value="manager">Manager</option>
+	                <option value="admin">Admin</option>
+	              </select>
+	            </div>
+	            <div class="stack">
+	              <label class="muted mini-label" for="admin-store-mode">Tipo de asignación</label>
+	              <select id="admin-store-mode" class="select">
+	                <option value="existing">Asignar local existente</option>
+	                <option value="new">Crear local nuevo</option>
+	              </select>
+	            </div>
+	            <div id="admin-existing-store-row" class="stack admin-store-row">
+	              <label class="muted mini-label" for="admin-store-select">Local existente</label>
+	              <select id="admin-store-select" class="select">
+	                <option value="" selected disabled>Cargando locales...</option>
+	              </select>
+	            </div>
+	            <div id="admin-new-store-row" class="admin-store-row admin-store-grid" style="display:none;">
+	              <div class="stack">
+	                <label class="muted mini-label" for="admin-new-store-id">ID del local</label>
+	                <input id="admin-new-store-id" class="input" placeholder="Ej: store-norte" disabled />
+	              </div>
+	              <div class="stack">
+	                <label class="muted mini-label" for="admin-new-store-name">Nombre visible del local</label>
+	                <input id="admin-new-store-name" class="input" placeholder="Ej: Local Norte" disabled />
+	              </div>
+	            </div>
+	            <div class="admin-form-actions">
+	              <button id="admin-create-user-btn" class="btn" type="submit">Crear usuario</button>
+	              <span class="muted mini-label">Si creás un local nuevo, también se agrega a tus locales habilitados para administrarlo.</span>
+	            </div>
+	          </form>
+	        </div>
+	      </section>
+	      <section id="admin-contact-leads" class="card" style="display:none; margin-top:16px;">
+	        <div class="card-h">
+	          <strong>Contactos comerciales</strong>
+	          <span class="pill pill-neutral">Solo admin</span>
+	        </div>
+	        <div class="card-c stack" style="gap:16px;">
+	          <p class="muted" style="margin:0;">
+	            Consultas enviadas desde la página pública. Podés revisar pendientes, moverlas a historial y eliminarlas.
+	          </p>
+	          <div class="row" style="gap:8px; flex-wrap:wrap;">
+	            <button id="admin-contacts-tab-pending" class="btn">Pendientes</button>
+	            <button id="admin-contacts-tab-history" class="btn secondary">Historial</button>
+	            <span id="admin-contacts-pending-pill" class="pill pill-neutral">Pendientes: 0</span>
+	          </div>
+	          <div class="admin-contacts-layout">
+	            <div id="admin-contacts-list" class="admin-contacts-list"></div>
+	            <div id="admin-contacts-detail" class="admin-contacts-detail"></div>
+	          </div>
+	        </div>
+	      </section>
+	    </div>
+
+    <div id="view-clock-ins" class="wrap" style="display:none; max-width: none; padding: 0 16px;">
+      <!-- Fichadas -->
+      <section class="card">
+        <div class="card-h"><strong>Análisis de Fichadas</strong></div>
+        <div class="card-c stack">
+            <div class="row" style="justify-content: space-between;">
+                <p class="muted" style="max-width: 400px;">Sube el archivo Excel de fichadas para compararlo con los horarios planificados.</p>
+                <div class="row">
+                    <input id="clockInSearch" class="input" placeholder="Buscar empleado...">
+                    <input type="date" id="clockInDateFilter" class="input">
+                    <select id="clockInSort" class="select">
+                        <option value="alpha">Ordenar Alfabéticamente</option>
+                        <option value="hours_desc">Ordenar por Horas (mayor a menor)</option>
+                        <option value="hours_asc">Ordenar por Horas (menor a mayor)</option>
+                    </select>
+                    <label class="btn" style="cursor:pointer;">
+                        Cargar Excel
+                        <input id="fileImportClockIns" class="file" type="file" accept=".xlsx, .xls" style="display:none">
+                    </label>
+                </div>
+            </div>
+            <div class="hr"></div>
+            <div id="clock-in-report-content">
+                <!-- Report will be generated by app.js -->
+            </div>
+        </div>
+      </section>
+    </div>
+
+    <div id="view-requests" class="wrap" style="display:none; max-width: none; padding: 0 16px;">
+      <!-- Solicitudes -->
+      <section class="card requests-card">
+        <div class="card-h requests-header">
+          <div class="row" style="gap: 12px; align-items: flex-start;">
+            <div class="stack" style="gap:4px;">
+              <strong>Solicitudes</strong>
+              <p class="muted" style="margin:0; font-size:12px;">Pendientes primero, luego fecha de creación (desc).</p>
+            </div>
+          </div>
+          <div class="row" style="gap: 8px; align-items: center;">
+            <input id="requests-search" class="input" placeholder="Buscar nombre, motivo o tipo" aria-label="Buscar solicitudes" />
+            <select id="requests-status-filter" class="select" aria-label="Filtrar por estado">
+              <option value="all">Estado: todos</option>
+              <option value="pendiente_aprobacion">Pendientes</option>
+              <option value="aprobada">Aprobadas</option>
+              <option value="rechazada">Rechazadas</option>
+            </select>
+            <select id="requests-type-filter" class="select" aria-label="Filtrar por tipo">
+              <option value="all">Tipo: todos</option>
+              <option value="licencia">Licencias</option>
+              <option value="disponibilidad">Disponibilidad</option>
+            </select>
+            <div class="row" style="gap:4px;">
+              <input type="date" id="requests-date-from" class="input" aria-label="Desde" />
+              <input type="date" id="requests-date-to" class="input" aria-label="Hasta" />
+            </div>
+          </div>
+        </div>
+        <div class="card-c requests-body">
+          <div class="requests-layout" id="requests-layout">
+            <div class="requests-list" id="requests-list"></div>
+            <div class="requests-detail" id="requests-detail"></div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- Sticky Legend Footer -->
+    <div id="legend-footer" class="legend-footer">
+        <div id="legend" class="legend">
+    </div>
+
+  </div>
+
+    <div id="view-planilla-turno" class="wrap" style="display:none; max-width: none; padding: 0 16px;">
+      <section class="card">
+        <div class="card-h">
+            <strong id="planilla-header-title">Planilla de Turno</strong>
+            <div class="row" style="margin-left: 16px;">
+                <label for="rappi-code-input" class="muted" style="font-size:12px;">Cód. Rappi:</label>
+                <input type="text" id="rappi-code-input" class="input" style="width: 80px;">
+            </div>
+            <input type="date" id="planilla-date-picker" class="input" style="margin-left: 16px;">
+            <button id="btn-edit-planilla" class="btn secondary" style="margin-left: auto;">Editar Planilla</button>
+            <button id="btn-print-planilla" class="btn" style="margin-left: 8px;">Imprimir</button>
+        </div>
+        <div class="card-c">
+            <div id="print-header-info">
+                <div id="rappi-code-print"></div>
+            </div>
+            <h2 id="planilla-title" style="text-align: center;"></h2>
+            <div id="planilla-content" class="planilla-grid">
+                <div id="planilla-manana" class="planilla-columna">
+                    <h3>TURNO MAÑANA</h3>
+                    <table id="tabla-manana" class="planilla-tabla">
+                        <thead>
+                            <tr>
+                                <th>Nombre</th>
+                                <th>Horario</th>
+                                <th>Hs</th>
+                                <th>Puesto</th>
+                                <th>BKS</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                        <tfoot>
+                            <tr>
+                                <td colspan="2">TOTAL HS:</td>
+                                <td id="total-hs-manana" class="total-hs-cell"></td>
+                                <td colspan="2"></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+                <div id="planilla-tarde" class="planilla-columna">
+                    <h3>TURNO TARDE</h3>
+                    <table id="tabla-tarde" class="planilla-tabla">
+                        <thead>
+                            <tr>
+                                <th>Nombre</th>
+                                <th>Horario</th>
+                                <th>Hs</th>
+                                <th>Puesto</th>
+                                <th>BKS</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                        <tfoot>
+                            <tr>
+                                <td colspan="2">TOTAL HS:</td>
+                                <td id="total-hs-tarde" class="total-hs-cell"></td>
+                                <td colspan="2"></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+            <div id="breaks-section" class="breaks-section">
+                <h3>BREAKS</h3>
+                <table id="breaks-table" class="breaks-table">
+                    <!-- Contenido de breaks se generará aquí -->
+                </table>
+                 <button id="btn-edit-breaks" class="btn secondary">Editar Breaks</button>
+            </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <!-- Print Modal -->
+  <div id="print-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-content">
+      <div class="card">
+        <div class="card-h">
+          <strong>Imprimir</strong>
+          <button id="print-modal-close" class="btn secondary del" style="margin-left: auto;">&times;</button>
+        </div>
+        <div class="card-c stack" style="padding: 20px;">
+          <p>Seleccione el formato de impresión:</p>
+          <div class="row" style="justify-content: center; gap: 16px;">
+            <button id="btn-print-schedule-list" class="btn">Listado de horarios</button>
+            <button id="btn-print-daily-planning" class="btn">Planificación diaria</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Schedule List Multi-Select Modal -->
+  <div id="schedule-list-multi-modal" class="modal-overlay" style="display:none; z-index: 1500;">
+    <div class="modal-content card" style="max-width: 520px;">
+      <div class="card-h" style="display:flex; align-items:center; justify-content:space-between;">
+        <strong>Seleccionar múltiples empleados</strong>
+        <button id="schedule-list-multi-close" class="btn secondary del" style="margin-left:auto;">&times;</button>
+      </div>
+      <div class="card-c stack" style="max-height: 420px; overflow: auto; gap: 8px;">
+        <p class="muted" style="margin:0;">Usá el nombre de planilla para comparar horarios.</p>
+        <div class="stack" style="gap: 4px;">
+          <label class="muted mini-label" for="schedule-list-multi-search">Buscar empleado</label>
+          <input id="schedule-list-multi-search" class="input" placeholder="Nombre de planilla o nombre completo">
+        </div>
+        <div id="schedule-list-multi-container" class="stack" style="gap: 6px;"></div>
+      </div>
+      <div class="card-c" style="display:flex; justify-content: flex-end; gap: 8px;">
+        <button id="schedule-list-clear-filter" class="btn secondary">Limpiar selección</button>
+        <button id="schedule-list-multi-close-footer" class="btn">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Weekly Summary Modal -->
+  <div id="weekly-summary-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-content">
+        <div class="card">
+            <div class="card-h">
+                <div class="stack" style="gap: 0;">
+                    <strong id="summary-modal-heading">Resumen Semanal</strong>
+                    <h4 id="weekly-summary-title" class="muted" style="margin:0;font-weight:normal;font-size:13px;"></h4>
+                </div>
+                <div class="row" style="margin-left: 16px; align-items: center; gap: 8px;">
+                  <label for="weekly-summary-sort" class="muted" style="font-size:12px;">Ordenar por:</label>
+                  <select id="weekly-summary-sort" class="select">
+                    <option value="alpha">Alfabético</option>
+                    <option value="hours">Horas (mayor a menor)</option>
+                    <option value="days">Días (mayor a menor)</option>
+                  </select>
+                </div>
+                <button id="btn-print-weekly-summary" class="btn" style="margin-left: auto;">Imprimir</button>
+                <button id="weekly-summary-modal-close" class="btn secondary del" style="margin-left: 8px;">&times;</button>
+            </div>
+            <div id="weekly-summary-content" class="card-c">
+                <!-- Content will be generated by app.js -->
+            </div>
+        </div>
+    </div>
+  </div>
+
+  <!-- Import from Text Modal -->
+  <div id="import-text-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-content">
+      <div class="card">
+        <div class="card-h">
+          <strong>Importar desde texto</strong>
+          <button id="import-text-modal-close" class="btn secondary del" style="margin-left: auto;">&times;</button>
+        </div>
+        <div class="card-c stack" style="padding: 20px;">
+          <p class="muted" style="font-size:12px;">Pega los horarios, uno por línea, con el formato: <code>HH:MM a HH:MM &lt;tab&gt; Puesto</code></p>
+          <textarea id="import-text-area" class="input" rows="10" placeholder="06:00 a 11:30	Empaque&#10;07:00 a 12:30	Caja..."></textarea>
+          <div class="row" style="justify-content: flex-end; gap: 16px; margin-top: 16px;">
+            <button id="btn-import-text-cancel" class="btn secondary">Cancelar</button>
+            <button id="btn-import-text-process" class="btn">Procesar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Calendar Modal -->
+  <div id="calendar-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-content">
+      <div class="card">
+        <div class="card-h">
+          <button id="calendar-prev-month" class="btn secondary">◄</button>
+          <strong id="calendar-month-year"></strong>
+          <button id="calendar-next-month" class="btn secondary">►</button>
+        </div>
+        <div id="calendar-grid" class="card-c">
+          <!-- Calendar grid will be generated here -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Requests: Approve Confirmation Modal -->
+  <div id="request-approve-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-content" style="max-width: 460px;">
+      <div class="card">
+        <div class="card-h">
+          <strong>Confirmar aprobación</strong>
+          <button class="btn secondary del" id="close-approve-modal" style="margin-left:auto;">&times;</button>
+        </div>
+        <div class="card-c stack" style="padding:20px;">
+          <p class="muted" style="margin:0;">¿Confirmás aprobar esta solicitud? Se notificará al empleado.</p>
+          <div class="row" style="justify-content:flex-end; gap: 8px;">
+            <button class="btn secondary" id="cancel-approve-modal">Cancelar</button>
+            <button class="btn" id="confirm-approve-modal">Aprobar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Requests: Reject Modal -->
+  <div id="request-reject-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-content" style="max-width: 520px;">
+      <div class="card">
+        <div class="card-h">
+          <strong>Rechazar solicitud</strong>
+          <button class="btn secondary del" id="close-reject-modal" style="margin-left:auto;">&times;</button>
+        </div>
+        <div class="card-c stack" style="padding:20px; gap: 12px;">
+          <label for="reject-reason" class="muted" style="font-size:12px;">Motivo del rechazo (requerido)</label>
+          <textarea id="reject-reason" class="input" rows="4" placeholder="Ej. Falta de cobertura, error en la solicitud..."></textarea>
+          <div class="row" style="justify-content:flex-end; gap: 8px;">
+            <button class="btn secondary" id="cancel-reject-modal">Cancelar</button>
+            <button class="btn" id="confirm-reject-modal">Rechazar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Requests: Delete Modal -->
+  <div id="request-delete-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-content" style="max-width: 520px;">
+      <div class="card">
+        <div class="card-h">
+          <strong>Eliminar licencia</strong>
+          <button class="btn secondary del" id="close-delete-modal" style="margin-left:auto;">&times;</button>
+        </div>
+        <div class="card-c stack" style="padding:20px; gap: 12px;">
+          <p class="muted" style="margin:0;">Esta acción quitará la licencia del historial y no enviará notificación. Confirmá para continuar.</p>
+          <div class="row" style="justify-content:flex-end; gap: 8px;">
+            <button class="btn secondary" id="cancel-delete-modal">Cancelar</button>
+            <button class="btn danger" id="confirm-delete-modal">Eliminar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<!-- Advanced Import/Export Modal -->
+<div id="advanced-import-export-modal" class="modal-overlay" style="display:none;">
+  <div class="modal-content" style="max-width: 700px;">
+    <div class="card">
+      <div class="card-h">
+        <strong>Importar / Exportar Datos</strong>
+        <button id="advanced-import-export-modal-close" class="btn secondary del" style="margin-left: auto;">&times;</button>
+      </div>
+      <div class="card-c stack" style="padding: 20px;">
+
+        <!-- Employees Section -->
+        <div class="import-export-section">
+          <strong class="section-title">Empleados</strong>
+          <p class="section-description">Exporta o importa la lista completa de empleados, incluyendo sus roles, disponibilidad, excepciones y licencias.</p>
+          <div class="row" style="justify-content: space-between; align-items: center;">
+            <button id="btn-export-employees" class="btn">Exportar Empleados</button>
+            <label class="btn secondary" style="cursor:pointer;">
+              Importar Empleados
+              <input id="file-import-employees" type="file" accept="application/json" style="display:none">
+            </label>
+          </div>
+        </div>
+
+        <div class="hr"></div>
+
+        <!-- Day Section -->
+        <div class="import-export-section">
+          <strong class="section-title">Día Actual</strong>
+          <p class="section-description">Exporta o importa todos los turnos del día actualmente visible, incluyendo los empleados asignados.</p>
+          <div class="row" style="justify-content: space-between; align-items: center;">
+            <button id="btn-export-day" class="btn">Exportar Día Actual</button>
+            <label class="btn secondary" style="cursor:pointer;">
+              Importar Día Actual
+              <input id="file-import-day" type="file" accept="application/json" style="display:none">
+            </label>
+          </div>
+        </div>
+
+        <div class="hr"></div>
+
+        <!-- Week Section -->
+        <div id="advanced-week-section" class="import-export-section">
+          <strong class="section-title">Semana Actual</strong>
+          <p class="section-description">Exporta o importa la semana completa. Puedes elegir si incluyes los empleados asignados a los turnos.</p>
+          <div class="row" style="justify-content: space-between; align-items: center;">
+            <div class="row">
+              <button id="btn-export-week" class="btn">Exportar Semana</button>
+              <div class="row" style="align-items: center; margin-left: 16px;">
+                <input type="checkbox" id="chk-include-assignments" checked>
+                <label for="chk-include-assignments" style="margin-left: 8px;">Incluir asignaciones</label>
+              </div>
+            </div>
+            <label class="btn secondary" style="cursor:pointer;">
+              Importar Semana
+              <input id="file-import-week" type="file" accept="application/json" style="display:none">
+            </label>
+          </div>
+        </div>
+
+        <div class="hr"></div>
+
+        <!-- Month Section -->
+        <div id="advanced-month-section" class="import-export-section">
+          <strong class="section-title">Mes (modo mensual)</strong>
+          <p class="section-description">Exporta o importa el mes natural completo de la grilla mensual, ideal para backups o reutilizar meses anteriores.</p>
+          <div class="row" style="justify-content: space-between; align-items: center;">
+            <button id="btn-export-month" class="btn">Exportar Mes</button>
+            <label class="btn secondary" style="cursor:pointer;">
+              Importar Mes
+              <input id="file-import-month" type="file" accept="application/json" style="display:none">
+            </label>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="src/app_main.js"></script>
+</body>
+</html>
