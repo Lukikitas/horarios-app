@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Login - Planificador de Horarios</title>
+  <link rel="icon" href="assets/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" href="assets/favicon.png">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="login-screen">
+    <img id="login-logo" src="assets/logo.PNG" alt="Logo" class="login-logo" onerror="if (this.src.endsWith('logo.PNG')) this.src='assets/logo.png';">
+    <div class="card login-card">
+      <div class="card-h"><strong>Iniciar Sesion</strong></div>
+      <div class="card-c stack">
+        <div id="login-view">
+          <input type="email" id="email" class="input" placeholder="Email">
+          <input type="password" id="password" class="input" placeholder="Contrasena">
+          <button id="login" class="btn" style="width: 100%;">Ingresar</button>
+          <button id="btn-forgot-password" class="btn secondary" style="width: 100%; margin-top: 8px;">Recuperar contrasena</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <div id="forgot-password-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-content" style="max-width: 420px;">
+      <div class="card">
+        <div class="card-h">
+          <strong>Recuperar contrasena</strong>
+          <button id="forgot-password-close" class="btn secondary del" style="margin-left:auto;">&times;</button>
+        </div>
+        <div class="card-c stack" style="padding:16px;">
+          <p class="muted" style="margin:0;">Ingresa tu email de manager para enviarte el enlace de cambio de contrasena.</p>
+          <input type="email" id="forgot-password-email" class="input" placeholder="Email">
+          <button id="forgot-password-send" class="btn">Enviar email de recuperacion</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="https://www.gstatic.com/firebasejs/12.2.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.2.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore-compat.js"></script>
+  <script type="module" src="login.js"></script>
+</body>
+</html>

@@ -1,0 +1,105 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function allowedStores() {
+      return isSignedIn() ? (userDoc().data.allowedStores || []) : [];
+    }
+
+    function userRole() {
+      return isSignedIn() ? (userDoc().data.role || '') : '';
+    }
+
+    function hasStoreAccess(storeId) {
+      return isSignedIn() && allowedStores().hasAny([storeId]);
+    }
+
+    function isAdmin() {
+      return userRole() == 'admin';
+    }
+
+    function validContactLeadCreate() {
+      return request.resource.data.keys().hasOnly([
+        'name',
+        'email',
+        'message',
+        'status',
+        'source',
+        'createdAt'
+      ])
+      && request.resource.data.name is string
+      && request.resource.data.name.size() >= 2
+      && request.resource.data.name.size() <= 120
+      && request.resource.data.email is string
+      && request.resource.data.email.size() >= 5
+      && request.resource.data.email.size() <= 180
+      && request.resource.data.message is string
+      && request.resource.data.message.size() >= 3
+      && request.resource.data.message.size() <= 3000
+      && request.resource.data.status == 'pending'
+      && request.resource.data.source == 'landing';
+    }
+
+    function validContactLeadUpdate() {
+      return request.resource.data.keys().hasOnly([
+        'name',
+        'email',
+        'message',
+        'status',
+        'source',
+        'createdAt',
+        'resolvedAt',
+        'resolvedBy'
+      ])
+      && resource.data.keys().hasAll(['name', 'email', 'message', 'status', 'source', 'createdAt'])
+      && request.resource.data.name == resource.data.name
+      && request.resource.data.email == resource.data.email
+      && request.resource.data.message == resource.data.message
+      && request.resource.data.source == resource.data.source
+      && request.resource.data.createdAt == resource.data.createdAt
+      && request.resource.data.status in ['pending', 'resolved'];
+    }
+
+    match /users/{uid} {
+      allow read: if isSignedIn() && (uid == request.auth.uid || isAdmin());
+      allow write: if isSignedIn() && isAdmin();
+    }
+
+    match /stores/{storeId} {
+      allow read: if hasStoreAccess(storeId) || isAdmin();
+      allow write: if isAdmin() || (hasStoreAccess(storeId) && userRole() in ['manager', 'admin']);
+    }
+
+    match /stores/{storeId}/employees/{employeeId} {
+      allow read, write: if isAdmin() || (hasStoreAccess(storeId) && userRole() in ['manager', 'admin']);
+    }
+
+    match /stores/{storeId}/schedules/{docId} {
+      allow read, write: if isAdmin() || (hasStoreAccess(storeId) && userRole() in ['manager', 'admin']);
+    }
+
+    match /stores/{storeId}/weeks/{weekId} {
+      allow read, write: if isAdmin() || (hasStoreAccess(storeId) && userRole() in ['manager', 'admin']);
+    }
+
+    match /stores/{storeId}/solicitudes/{reqId} {
+      allow read: if isAdmin() || hasStoreAccess(storeId);
+      allow create: if isAdmin() || hasStoreAccess(storeId);
+      allow update, delete: if isAdmin() || (hasStoreAccess(storeId) && userRole() in ['manager', 'admin']);
+    }
+
+    match /contactLeads/{leadId} {
+      allow create: if validContactLeadCreate();
+      allow read: if isAdmin();
+      allow update: if isAdmin() && validContactLeadUpdate();
+      allow delete: if isAdmin();
+    }
+  }
+}
