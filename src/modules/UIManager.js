@@ -113,6 +113,11 @@ export const UIManager = {
         const viewEl = el('#' + viewId);
         if(viewEl) viewEl.style.display = 'block';
 
+        const legendFooter = el('#legend-footer');
+        if (legendFooter) {
+            legendFooter.style.display = viewName === 'schedule' ? 'block' : 'none';
+        }
+
         const btnEl = el(btnId);
         if (btnEl) {
             btnEl.classList.remove('secondary');
