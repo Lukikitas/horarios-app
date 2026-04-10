@@ -112,10 +112,16 @@ body.dark-mode .dropdown-content .dropdown-item.main-menu-btn.header-nav-active{
   box-shadow:inset 3px 0 0 #e5e7eb;
 }
 .btn.main-menu-btn.header-nav-active{
-  box-shadow:inset 0 -2px 0 var(--ink);
+  box-shadow:none;
+  background:var(--btn-primary-bg);
+  color:var(--btn-primary-ink);
+  border-color:var(--btn-primary-bg);
 }
 body.dark-mode .btn.main-menu-btn.header-nav-active{
-  box-shadow:inset 0 -2px 0 #f9fafb;
+  box-shadow:none;
+  background:var(--btn-primary-bg);
+  color:var(--btn-primary-ink);
+  border-color:var(--btn-primary-bg);
 }
 .week-selector{
   gap:6px;
@@ -261,6 +267,7 @@ body.dark-mode .week-selector{
   .hr{height:1px;background:var(--border);margin:8px 0}
 .day-tab-item { display: flex; flex-direction: column; align-items: center; gap: 2px; }
 .pilltab{border:1px solid var(--border);background:var(--card);padding:5px 6px;border-radius:4px;cursor:pointer;position:relative;font-size:13px;}
+.pilltab{color:var(--ink);}
   .pilltab.active{background:#111;border-color:#111;color:#fff; border: 2px solid var(--c-active-border); padding: 4px 5px;}
 .unassigned-dot { position:absolute; top:3px; right:3px; width:8px; height:8px; border-radius:50%; background: var(--c-danger); box-shadow: 0 0 0 2px var(--card); }
   .muted{color:var(--muted)}
@@ -1038,10 +1045,41 @@ body.dark-mode .b-warning { background: rgba(251, 191, 36, 0.16); color: #fde68a
 .assign-employee-list {
   max-height: 40vh;
   overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding-right: 8px; /* For scrollbar */
+  padding-right: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--muted) 65%, transparent) transparent;
+}
+
+.assign-employee-list::-webkit-scrollbar {
+  width: 10px;
+}
+
+.assign-employee-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.assign-employee-list::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--muted) 55%, var(--card));
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+.assign-employee-list .btn {
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.assign-employee-list .assignment-summary,
+.assign-employee-list .warning-text {
+  white-space: normal;
+  word-break: break-word;
 }
 
 .assignment-summary {

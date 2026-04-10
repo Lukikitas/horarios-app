@@ -33,10 +33,9 @@ export const UIManager = {
         this.bindHeaderAccountDropdown();
         this.bindMoreDropdown();
 
-        // Init Dark Mode
-        if (localStorage.getItem("darkMode") === "enabled") {
-            this.setDarkMode(true);
-        }
+        // Init theme: dark by default unless user explicitly chose light before.
+        const savedTheme = localStorage.getItem("darkMode");
+        this.setDarkMode(savedTheme !== "disabled", false);
     },
 
     bindHeaderToolsDropdown() {
@@ -151,16 +150,16 @@ export const UIManager = {
         this.setDarkMode(!isDark);
     },
 
-    setDarkMode(isDark) {
+    setDarkMode(isDark, persist = true) {
         const btn = el("#btn-dark-mode");
         if (isDark) {
             document.body.classList.add("dark-mode");
             if(btn) btn.textContent = "☀️";
-            localStorage.setItem("darkMode", "enabled");
+            if (persist) localStorage.setItem("darkMode", "enabled");
         } else {
             document.body.classList.remove("dark-mode");
             if(btn) btn.textContent = "🌙";
-            localStorage.setItem("darkMode", "disabled");
+            if (persist) localStorage.setItem("darkMode", "disabled");
         }
     }
 };
