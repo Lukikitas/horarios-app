@@ -24,6 +24,10 @@ export function storeSettingsRef(storeId) {
   return storeDoc(storeId).collection('settings');
 }
 
+export function storePresenceRef(storeId) {
+  return storeDoc(storeId).collection('presence');
+}
+
 // Compatibilidad: referencias legacy centralizadas
 export function legacyEmployeesRef() {
   return getDb().collection('employees');

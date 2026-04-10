@@ -255,6 +255,21 @@ export const ScheduleManager = {
         if (promises.length) await Promise.all(promises);
     },
 
+    getRealtimeFocusWeekIds() {
+        const state = store.getState();
+        const activeWeek = state.activeWeek;
+        if (!activeWeek) return [];
+        if (this.getSchedulingPeriodWeeks() === 4) {
+            const monthValue = this.getMonthlySelectedMonth();
+            const dates = this.getDatesForNaturalMonth(monthValue);
+            return [...new Set(dates.map((date) => toISODateString(getMonday(date))))];
+        }
+        const weeks = this.getSchedulingPeriodWeeks();
+        const ids = [activeWeek];
+        for (let i = 1; i < weeks; i++) ids.push(this.getWeekIdByDayOffset(i * 7));
+        return [...new Set(ids)];
+    },
+
     getMonthlySelectedMonth() {
         if (this.monthlySelectedMonth) return this.monthlySelectedMonth;
         const today = new Date();
@@ -452,6 +467,7 @@ export const ScheduleManager = {
         if (this.getSchedulingPeriodWeeks() === 4) {
             this.renderMonthlyPlanner();
         }
+        DataManager.setRealtimeFocusWeeks(this.getRealtimeFocusWeekIds());
     },
 
     toggleMonthlyPlannerMode() {
@@ -1288,6 +1304,7 @@ export const ScheduleManager = {
         if (monthInput.value !== monthValue) monthInput.value = monthValue;
 
         await this.preloadMonthWeeks(monthValue);
+        DataManager.setRealtimeFocusWeeks(this.getRealtimeFocusWeekIds());
 
         const dates = this.getDatesForNaturalMonth(monthValue);
         const state = store.getState();

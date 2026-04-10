@@ -77,6 +77,7 @@ const defaultState = {
     storeName: '',
     schedulingRules: null,
     schedulingPeriodWeeks: 1,
+    concurrentSessions: 0,
     // Data loaded flags
     isLoading: true,
 };

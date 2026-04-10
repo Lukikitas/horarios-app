@@ -95,6 +95,11 @@ service cloud.firestore {
       allow update, delete: if isAdmin() || (hasStoreAccess(storeId) && userRole() in ['manager', 'admin']);
     }
 
+    match /stores/{storeId}/presence/{sessionId} {
+      allow read: if isAdmin() || hasStoreAccess(storeId);
+      allow create, update, delete: if isSignedIn() && (isAdmin() || hasStoreAccess(storeId));
+    }
+
     match /contactLeads/{leadId} {
       allow create: if validContactLeadCreate();
       allow read: if isAdmin();

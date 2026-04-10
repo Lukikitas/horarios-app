@@ -39,6 +39,14 @@ export const DataManager = {
     _savePendingReject: null,
     _saveDebounceMs: 600,
     _writeCacheByStore: {},
+    _realtimeStoreId: '',
+    _mainRealtimeUnsubscribe: null,
+    _storeRootRealtimeUnsubscribe: null,
+    _employeesRealtimeUnsubscribe: null,
+    _weekRealtimeUnsubscribers: {},
+    _weekRealtimeFirstSnapshotDone: {},
+    _focusedWeekIds: [],
+    _lastRealtimeToastAt: 0,
 
     _safeStringify(value) {
         try {
@@ -247,6 +255,8 @@ export const DataManager = {
 
             store.setState(newState);
             this._primeWriteCacheFromState(storeId, newState);
+            this._startCoreRealtime(storeId);
+            this.setRealtimeFocusWeeks([newState.activeWeek]);
             console.log("DataManager: State loaded.");
 
         } catch (error) {
@@ -478,6 +488,7 @@ export const DataManager = {
                     [weekId]: weekData
                 }
             });
+            this.setRealtimeFocusWeeks([weekId]);
         } catch (err) {
             console.error(err);
         } finally {
@@ -523,10 +534,164 @@ export const DataManager = {
                     [weekId]: weekData
                 }
             });
+            this.setRealtimeFocusWeeks([store.getState().activeWeek, weekId]);
         } catch (err) {
             console.error(err);
         }
 
         return weekData;
+    },
+
+    _stopStoreRealtime() {
+        [this._mainRealtimeUnsubscribe, this._storeRootRealtimeUnsubscribe, this._employeesRealtimeUnsubscribe].forEach((unsub) => {
+            if (!unsub) return;
+            try { unsub(); } catch (error) { console.error('Error cerrando listener realtime', error); }
+        });
+        this._mainRealtimeUnsubscribe = null;
+        this._storeRootRealtimeUnsubscribe = null;
+        this._employeesRealtimeUnsubscribe = null;
+        Object.values(this._weekRealtimeUnsubscribers).forEach((unsub) => {
+            if (!unsub) return;
+            try { unsub(); } catch (error) { console.error('Error cerrando listener de semana', error); }
+        });
+        this._weekRealtimeUnsubscribers = {};
+        this._weekRealtimeFirstSnapshotDone = {};
+        this._focusedWeekIds = [];
+        this._realtimeStoreId = '';
+    },
+
+    _startCoreRealtime(storeId) {
+        if (!storeId) {
+            this._stopStoreRealtime();
+            return;
+        }
+        if (this._realtimeStoreId === storeId && this._mainRealtimeUnsubscribe && this._employeesRealtimeUnsubscribe) return;
+
+        this._stopStoreRealtime();
+        this._realtimeStoreId = storeId;
+
+        this._mainRealtimeUnsubscribe = storeSchedulesRef(storeId).doc('main').onSnapshot((snapshot) => {
+            if (!snapshot.exists) return;
+            const data = snapshot.data() || {};
+            const state = store.getState();
+            const incomingMain = {
+                templates: data.templates || {},
+                projectedTickets: data.projectedTickets || {},
+                breaks: data.breaks || {},
+                rappiCode: data.rappiCode || '',
+                roles: Array.isArray(data.roles) && data.roles.length ? data.roles : DEFAULT_ROLES,
+                schedulingRules: normalizeSchedulingRules(data.schedulingRules || {}),
+                schedulingPeriodWeeks: [1, 2, 4].includes(Number(data.schedulingPeriodWeeks)) ? Number(data.schedulingPeriodWeeks) : 1,
+            };
+            const currentMain = {
+                templates: state.templates || {},
+                projectedTickets: state.projectedTickets || {},
+                breaks: state.breaks || {},
+                rappiCode: state.rappiCode || '',
+                roles: state.roles && state.roles.length ? state.roles : DEFAULT_ROLES,
+                schedulingRules: normalizeSchedulingRules(state.schedulingRules || {}),
+                schedulingPeriodWeeks: [1, 2, 4].includes(Number(state.schedulingPeriodWeeks)) ? Number(state.schedulingPeriodWeeks) : 1,
+            };
+            if (this._safeStringify(currentMain) === this._safeStringify(incomingMain)) return;
+            setRoles(incomingMain.roles);
+            store.setState(incomingMain);
+            this._primeWriteCacheFromState(storeId, store.getState());
+            this._maybeShowRealtimeToast(snapshot.metadata);
+        });
+
+        this._storeRootRealtimeUnsubscribe = storeDoc(storeId).onSnapshot((snapshot) => {
+            if (!snapshot.exists) return;
+            const displayName = (snapshot.data()?.displayName || storeId || '').trim();
+            if (displayName && displayName !== (store.getState().storeName || '').trim()) {
+                store.setState({ storeName: displayName });
+                this._maybeShowRealtimeToast(snapshot.metadata);
+            }
+        });
+
+        this._employeesRealtimeUnsubscribe = storeEmployeesRef(storeId).onSnapshot((snapshot) => {
+            const employees = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+            employees.forEach((emp) => {
+                if (!emp.displayName) {
+                    const name = emp.name || 'Sin Nombre';
+                    const nameParts = String(name).split(',');
+                    emp.displayName = nameParts.length > 1 ? nameParts[1].trim() : String(name).split(' ')[0];
+                }
+                if (!emp.availability) emp.availability = {};
+                if (!emp.exceptions) emp.exceptions = [];
+                if (!emp.sanctions) emp.sanctions = [];
+                if (!emp.priority) emp.priority = 'medium';
+            });
+            const current = store.getState().employees || [];
+            if (this._safeStringify(current) === this._safeStringify(employees)) return;
+            const cache = this._getStoreWriteCache(storeId);
+            cache.employees = {};
+            employees.forEach((emp) => { if (emp?.id) cache.employees[emp.id] = this._safeStringify(emp); });
+            store.setState({ employees });
+            this._maybeShowRealtimeToast(snapshot.metadata);
+        });
+    },
+
+    _startWeekRealtime(storeId, weekId) {
+        if (!storeId || !weekId) return;
+        if (this._weekRealtimeUnsubscribers[weekId]) return;
+        this._weekRealtimeFirstSnapshotDone[weekId] = false;
+        const weekRef = storeWeeksRef(storeId).doc(weekId);
+        this._weekRealtimeUnsubscribers[weekId] = weekRef.onSnapshot((snapshot) => {
+            if (!snapshot.exists) return;
+            const incomingWeek = snapshot.data() || {};
+            const incomingSignature = this._safeStringify(incomingWeek);
+            const cache = this._getStoreWriteCache(storeId);
+            const state = store.getState();
+            const currentWeek = state.schedules?.[weekId] || {};
+            const currentSignature = this._safeStringify(currentWeek);
+
+            if (!this._weekRealtimeFirstSnapshotDone[weekId]) {
+                this._weekRealtimeFirstSnapshotDone[weekId] = true;
+                cache.weeks[weekId] = incomingSignature;
+                if (currentSignature !== incomingSignature) {
+                    store.setState({ schedules: { ...state.schedules, [weekId]: incomingWeek } });
+                }
+                return;
+            }
+            if (currentSignature === incomingSignature) return;
+            cache.weeks[weekId] = incomingSignature;
+            store.setState({ schedules: { ...state.schedules, [weekId]: incomingWeek } });
+            this._maybeShowRealtimeToast(snapshot.metadata);
+        }, (error) => {
+            console.error('Error en realtime de semana', error);
+        });
+    },
+
+    _stopWeekRealtime(weekId) {
+        const unsub = this._weekRealtimeUnsubscribers[weekId];
+        if (!unsub) return;
+        try { unsub(); } catch (error) { console.error('Error cerrando listener de semana', error); }
+        delete this._weekRealtimeUnsubscribers[weekId];
+        delete this._weekRealtimeFirstSnapshotDone[weekId];
+    },
+
+    _maybeShowRealtimeToast(metadata) {
+        const now = Date.now();
+        if (!metadata?.hasPendingWrites && now - this._lastRealtimeToastAt > 2200) {
+            this._lastRealtimeToastAt = now;
+            showToast('Se aplicaron cambios en tiempo real de otro manager.', 'info');
+        }
+    },
+
+    setRealtimeFocusWeeks(weekIds = []) {
+        const state = store.getState();
+        const storeId = state.activeStoreId;
+        if (!storeId) return;
+        this._startCoreRealtime(storeId);
+        const normalized = [...new Set((weekIds || []).map((id) => String(id || '').trim()).filter(Boolean))];
+        const activeWeek = String(state.activeWeek || '').trim();
+        if (activeWeek && !normalized.includes(activeWeek)) normalized.unshift(activeWeek);
+        const limited = normalized.slice(0, 8);
+        const target = new Set(limited);
+        Object.keys(this._weekRealtimeUnsubscribers).forEach((existingWeekId) => {
+            if (!target.has(existingWeekId)) this._stopWeekRealtime(existingWeekId);
+        });
+        limited.forEach((weekId) => this._startWeekRealtime(storeId, weekId));
+        this._focusedWeekIds = limited;
     },
 };
