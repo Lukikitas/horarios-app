@@ -4,53 +4,61 @@ firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
 
+const TOAST_MS = { error: 8000, warning: 5500, success: 4200, info: 4000 };
+
+function clearLoginAlert(alertEl) {
+  if (!alertEl) return;
+  alertEl.textContent = '';
+  alertEl.className = 'login-alert login-alert--hidden';
+  alertEl.hidden = true;
+}
+
+function setLoginAlert(alertEl, message, type) {
+  if (!alertEl) return;
+  alertEl.hidden = false;
+  alertEl.className = `login-alert login-alert--${type}`;
+  alertEl.textContent = message;
+}
+
+function pulseLoginCard(loginCard) {
+  if (!loginCard) return;
+  loginCard.classList.add('login-card--pulse');
+  window.setTimeout(() => loginCard.classList.remove('login-card--pulse'), 450);
+}
+
 function showPopup(message, type = 'info') {
   const existing = document.getElementById('login-popup');
   if (existing) existing.remove();
 
-  const colorByType = {
-    success: '#166534',
-    error: '#991b1b',
-    warning: '#92400e',
-    info: '#1d4ed8',
-  };
-
   const popup = document.createElement('div');
   popup.id = 'login-popup';
-  popup.style.position = 'fixed';
-  popup.style.top = '16px';
-  popup.style.left = '50%';
-  popup.style.transform = 'translateX(-50%)';
-  popup.style.zIndex = '4000';
-  popup.style.maxWidth = '92vw';
-  popup.style.padding = '12px 16px';
-  popup.style.borderRadius = '10px';
-  popup.style.background = '#fff';
-  popup.style.color = colorByType[type] || colorByType.info;
-  popup.style.border = `1px solid ${colorByType[type] || colorByType.info}`;
-  popup.style.boxShadow = '0 10px 30px rgba(0,0,0,.15)';
-  popup.style.fontWeight = '600';
+  popup.className = `login-toast login-toast--${type}`;
+  popup.setAttribute('role', 'status');
   popup.textContent = message;
   document.body.appendChild(popup);
-  setTimeout(() => popup.remove(), 3800);
+  const ms = TOAST_MS[type] ?? TOAST_MS.info;
+  setTimeout(() => popup.remove(), ms);
 }
 
 function getLoginErrorMessage(errorCode) {
   const map = {
-    'auth/invalid-email': 'El email ingresado no es válido.',
+    'auth/invalid-email': 'El email no tiene un formato válido.',
     'auth/user-disabled': 'Tu cuenta está deshabilitada. Contactá al administrador.',
-    'auth/user-not-found': 'Email o contraseña incorrectos.',
-    'auth/wrong-password': 'Email o contraseña incorrectos.',
-    'auth/invalid-credential': 'Email o contraseña incorrectos.',
+    'auth/user-not-found': 'Email o contraseña incorrectos. Revisá los datos e intentá de nuevo.',
+    'auth/wrong-password': 'Email o contraseña incorrectos. Revisá los datos e intentá de nuevo.',
+    'auth/invalid-credential': 'Email o contraseña incorrectos. Revisá los datos e intentá de nuevo.',
     'auth/too-many-requests': 'Demasiados intentos. Esperá unos minutos e intentá nuevamente.',
   };
-  return map[errorCode] || 'No se pudo iniciar sesión. Verificá tus datos.';
+  return map[errorCode] || 'No se pudo iniciar sesión. Verificá email y contraseña e intentá de nuevo.';
 }
 
 document.addEventListener('DOMContentLoaded', () => {
   const loginButton = document.getElementById('login');
   const emailInput = document.getElementById('email');
   const passwordInput = document.getElementById('password');
+  const loginAlert = document.getElementById('login-alert');
+  const loginCard = document.querySelector('.login-card');
+  const loginLogo = document.getElementById('login-logo');
 
   const forgotModal = document.getElementById('forgot-password-modal');
   const forgotBtn = document.getElementById('btn-forgot-password');
@@ -63,7 +71,9 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const userDoc = await db.collection('users').doc(user.uid).get();
       if (!userDoc.exists) {
+        setLoginAlert(loginAlert, 'No tenés permisos para acceder al sistema.', 'error');
         showPopup('Usuario sin permisos para acceder al sistema.', 'error');
+        pulseLoginCard(loginCard);
         await auth.signOut();
         return;
       }
@@ -75,21 +85,31 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
+      setLoginAlert(loginAlert, 'Esta aplicación es solo para cuentas de manager.', 'warning');
       showPopup('Esta aplicación está habilitada únicamente para managers.', 'warning');
+      pulseLoginCard(loginCard);
       await auth.signOut();
     } catch (error) {
       console.error('Error al validar sesión:', error);
+      setLoginAlert(loginAlert, 'No pudimos validar tu sesión. Intentá de nuevo.', 'error');
       showPopup('Error al validar tu sesión. Intentá nuevamente.', 'error');
+      pulseLoginCard(loginCard);
       await auth.signOut();
     }
   });
+
+  const clearAlertOnEdit = () => clearLoginAlert(loginAlert);
+  emailInput?.addEventListener('input', clearAlertOnEdit);
+  passwordInput?.addEventListener('input', clearAlertOnEdit);
 
   loginButton?.addEventListener('click', async () => {
     const email = emailInput?.value.trim() || '';
     const password = passwordInput?.value || '';
 
     if (!email || !password) {
+      setLoginAlert(loginAlert, 'Completá el email y la contraseña para continuar.', 'warning');
       showPopup('Por favor ingresá email y contraseña.', 'warning');
+      pulseLoginCard(loginCard);
       return;
     }
 
@@ -97,7 +117,10 @@ document.addEventListener('DOMContentLoaded', () => {
       await auth.signInWithEmailAndPassword(email, password);
     } catch (error) {
       console.error('Login failed:', error);
-      showPopup(getLoginErrorMessage(error.code), 'error');
+      const msg = getLoginErrorMessage(error.code);
+      setLoginAlert(loginAlert, msg, 'error');
+      showPopup(msg, 'error');
+      pulseLoginCard(loginCard);
     }
   });
 
@@ -153,11 +176,11 @@ document.addEventListener('DOMContentLoaded', () => {
       showPopup(resetErrors[error.code] || 'No se pudo enviar el email de recuperación.', 'error');
     }
   });
+
+  loginLogo?.addEventListener('error', () => {
+    const src = loginLogo.getAttribute('src') || '';
+    if (src.toLowerCase().endsWith('.png') && src !== 'assets/logo.png') {
+      loginLogo.src = 'assets/logo.png';
+    }
+  });
 });
-  if (loginLogo) {
-    loginLogo.addEventListener('error', () => {
-      if (loginLogo.getAttribute('src')?.toLowerCase().endsWith('.png') && loginLogo.getAttribute('src') !== 'assets/logo.png') {
-        loginLogo.src = 'assets/logo.png';
-      }
-    });
-  }

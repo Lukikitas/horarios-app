@@ -9,17 +9,28 @@
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
   <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body class="login-page">
   <main class="login-screen">
-    <img id="login-logo" src="assets/logo.PNG" alt="Logo" class="login-logo" onerror="if (this.src.endsWith('logo.PNG')) this.src='assets/logo.png';">
+    <div class="login-brand">
+      <img id="login-logo" src="assets/logo.PNG" alt="STAR App" class="login-logo" onerror="if (this.src.endsWith('logo.PNG')) this.src='assets/logo.png';">
+      <p class="login-tagline">Acceso para managers</p>
+    </div>
     <div class="card login-card">
-      <div class="card-h"><strong>Iniciar Sesion</strong></div>
-      <div class="card-c stack">
+      <div class="card-h login-card-h">
+        <div>
+          <strong class="login-title">Iniciar sesión</strong>
+          <p class="login-subtitle">Ingresá con tu cuenta corporativa</p>
+        </div>
+      </div>
+      <div class="card-c stack login-card-body">
         <div id="login-view">
-          <input type="email" id="email" class="input" placeholder="Email">
-          <input type="password" id="password" class="input" placeholder="Contrasena">
-          <button id="login" class="btn" style="width: 100%;">Ingresar</button>
-          <button id="btn-forgot-password" class="btn secondary" style="width: 100%; margin-top: 8px;">Recuperar contrasena</button>
+          <div id="login-alert" class="login-alert login-alert--hidden" role="alert" aria-live="assertive" hidden></div>
+          <label class="login-label" for="email">Email</label>
+          <input type="email" id="email" class="input login-input" placeholder="nombre@empresa.com" autocomplete="username">
+          <label class="login-label" for="password">Contraseña</label>
+          <input type="password" id="password" class="input login-input" placeholder="Tu contraseña" autocomplete="current-password">
+          <button type="button" id="login" class="btn login-btn-primary">Ingresar</button>
+          <button type="button" id="btn-forgot-password" class="btn secondary login-btn-secondary">Recuperar contraseña</button>
         </div>
       </div>
     </div>
