@@ -78,11 +78,12 @@ body.login-page .login-screen {
 
 .login-brand {
   text-align: center;
-  max-width: min(600px, 96vw);
+  max-width: min(800px, 96vw);
 }
 
 .login-logo {
-  width: min(400px, 78vw);
+  /* +80% respecto al tamaño anterior (400px → 720px) */
+  width: min(720px, 94vw);
   height: auto;
   object-fit: contain;
   filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.35)) brightness(0.97);
