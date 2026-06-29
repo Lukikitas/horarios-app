@@ -1372,10 +1372,16 @@ body.dark-mode .b-warning { background: rgba(251, 191, 36, 0.16); color: #fde68a
 }
 
 .assign-employee-list .btn {
-  width: 100%;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex: 0 0 auto;
+  width: max-content;
+  min-width: 100%;
+  max-width: none;
+  min-height: 36px;
+  height: auto;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  line-height: 1.25;
 }
 
 .assign-employee-list .assignment-summary,
