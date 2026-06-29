@@ -2764,13 +2764,13 @@ export const ScheduleManager = {
         const shift = schedule[day].find(s => s.id === shiftId);
         if (!shift) { showToast("No se encontró el turno.", "error"); return; }
 
-        const wrap = create("div", { style: { position:"fixed", inset:"0", background:"rgba(0,0,0,.35)", display:"flex", alignItems:"center", justifyContent:"center", padding:"16px", zIndex:1000 }});
-        const box = create("div", { className:"card", style:{ maxWidth:"600px", width:"100%" } });
+        const wrap = create("div", { className: "assign-employee-modal-overlay", style: { position:"fixed", inset:"0", background:"rgba(0,0,0,.35)", display:"flex", alignItems:"center", justifyContent:"center", padding:"16px", zIndex:1000 }});
+        const box = create("div", { className:"card assign-employee-modal", style:{ maxWidth:"600px", width:"100%" } });
 
         box.appendChild(create("div", { className:"card-h", innerHTML: `<strong>Asignar empleado a ${shift.role}</strong>` }));
 
-        const c = create("div", { className:"card-c stack" });
-        const listContainer = create("div", { className:"assign-employee-list", style: { maxHeight: "400px", overflowY: "auto" } });
+        const c = create("div", { className:"card-c stack assign-employee-modal-body" });
+        const listContainer = create("div", { className:"assign-employee-list" });
         const ignoreRestrictions = !!shift.ignoreRestrictions;
 
         if (ignoreRestrictions) {
@@ -2900,7 +2900,7 @@ export const ScheduleManager = {
 
         box.appendChild(c);
 
-        const f = create("div", { style: { textAlign:"right", marginTop:"12px", padding: "12px" } });
+        const f = create("div", { className: "assign-employee-modal-footer", style: { textAlign:"right", marginTop:"12px", padding: "12px" } });
         f.appendChild(create("button", { className:"btn", textContent:"Cancelar", onClick: () => wrap.remove() }));
         box.appendChild(f);
 

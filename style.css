@@ -1320,7 +1320,9 @@ body.dark-mode .b-warning { background: rgba(251, 191, 36, 0.16); color: #fde68a
 }
 
 .assign-employee-list {
-  max-height: 80vh;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
   overflow-y: auto;
   overflow-x: auto;
   display: flex;
@@ -1329,6 +1331,29 @@ body.dark-mode .b-warning { background: rgba(251, 191, 36, 0.16); color: #fde68a
   padding-right: 6px;
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--muted) 65%, transparent) transparent;
+}
+
+.assign-employee-modal-overlay {
+  overflow: hidden;
+}
+
+.assign-employee-modal {
+  max-height: calc(100dvh - 32px);
+  display: flex;
+  flex-direction: column;
+}
+
+.assign-employee-modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: hidden;
+  overflow-x: auto;
+}
+
+.assign-employee-modal-footer {
+  flex: 0 0 auto;
+  border-top: 1px solid var(--border);
+  background: var(--card);
 }
 
 .assign-employee-list::-webkit-scrollbar {
