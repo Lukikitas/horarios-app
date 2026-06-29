@@ -1320,7 +1320,7 @@ body.dark-mode .b-warning { background: rgba(251, 191, 36, 0.16); color: #fde68a
 }
 
 .assign-employee-list {
-  max-height: 40vh;
+  max-height: 80vh;
   overflow-y: auto;
   overflow-x: hidden;
   display: flex;
