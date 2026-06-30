@@ -607,8 +607,7 @@ export const ScheduleManager = {
 
             const roleRow = create("div", { className: "template-roles" });
             if (roleBreakdown.length) {
-                roleBreakdown.slice(0, 6).forEach(({ role, count }) => roleRow.appendChild(create("span", { className: "template-role-chip", textContent: `${count} ${role}` })));
-                if (roleBreakdown.length > 6) roleRow.appendChild(create("span", { className: "template-role-chip muted-chip", textContent: `+${roleBreakdown.length - 6}` }));
+                roleBreakdown.forEach(({ role, count }) => roleRow.appendChild(create("span", { className: "template-role-chip", textContent: `${count} ${role}` })));
             } else {
                 roleRow.appendChild(create("span", { className: "template-role-chip muted-chip", textContent: "Sin puestos" }));
             }
