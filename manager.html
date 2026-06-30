@@ -269,22 +269,26 @@
 
     <div id="view-templates" class="wrap" style="display:none; max-width: none; padding: 0 16px;">
         <!-- Plantillas -->
-        <section class="card">
-            <div class="card-h"><strong>Plantillas de días</strong></div>
-            <div class="card-c stack">
-                <div class="stack">
-                    <input id="inpTemplateName" class="input" placeholder="Nombre de la plantilla">
-                    <textarea id="inpTemplateDesc" class="input" placeholder="Añade una descripción (opcional)..." rows="2"></textarea>
-                    <div style="text-align: right;">
-                        <button id="btnSaveTemplate" class="btn">Guardar día actual como plantilla</button>
-                    </div>
+        <section class="card templates-card">
+            <div class="card-h templates-header">
+                <div>
+                    <strong>Plantillas de dias</strong>
+                    <div class="muted mini-label">Turnos guardados para reutilizar en la grilla semanal</div>
                 </div>
-                <div class="hr"></div>
-                <div id="templateList" class="stack"></div>
+                <div id="templateSummary" class="template-summary"></div>
+            </div>
+            <div class="card-c templates-body">
+                <div class="template-editor">
+                    <div class="template-editor-fields">
+                        <input id="inpTemplateName" class="input" placeholder="Nombre de la plantilla">
+                        <textarea id="inpTemplateDesc" class="input" placeholder="Descripcion breve (opcional)" rows="2"></textarea>
+                    </div>
+                    <button id="btnSaveTemplate" class="btn template-save-btn">Guardar dia actual</button>
+                </div>
+                <div id="templateList" class="template-grid"></div>
             </div>
         </section>
     </div>
-
     <div id="view-schedule" class="wrap" style="max-width: none; padding: 0 16px;">
         <!-- Horarios -->
         <section class="card">

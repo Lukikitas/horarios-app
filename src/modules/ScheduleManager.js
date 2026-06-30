@@ -509,52 +509,130 @@ export const ScheduleManager = {
 
     renderTemplateList() {
         const list = el("#templateList");
+        const summary = el("#templateSummary");
         if (!list) return;
 
         clear(list);
-        const templates = store.getState().templates || {};
+        if (summary) clear(summary);
 
-        if (Object.keys(templates).length === 0) {
-            list.appendChild(create("div", { className: "muted", style: { padding: "10px", textAlign: "center" }, textContent: "No hay plantillas guardadas." }));
+        const templates = store.getState().templates || {};
+        const entries = Object.entries(templates).sort(([nameA], [nameB]) => nameA.localeCompare(nameB));
+        const templateStats = entries.map(([name, template]) => {
+            const shifts = Array.isArray(template?.shifts) ? template.shifts : [];
+            const totalHours = shifts.reduce((sum, shift) => sum + Math.max(0, ((shift.endSlot ?? shift.startSlot) - (shift.startSlot ?? 0) + 1) / 2), 0);
+            const roles = Array.from(new Set(shifts.map(shift => shift.role).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+            const assignedCount = shifts.filter(shift => !!shift.employeeId).length;
+            const starts = shifts.map(shift => shift.startSlot).filter(slot => Number.isFinite(slot));
+            const ends = shifts.map(shift => shift.endSlot).filter(slot => Number.isFinite(slot));
+            const firstSlot = starts.length ? Math.min(...starts) : null;
+            const lastSlot = ends.length ? Math.max(...ends) : null;
+            const timeRange = firstSlot === null || lastSlot === null
+                ? "Sin horarios"
+                : `${SLOTS[firstSlot]?.label || "--:--"} a ${SLOTS[lastSlot + 1]?.label || "02:00"}`;
+            const sourceDay = Number.isInteger(template?.sourceDayIndex) ? DAYS[template.sourceDayIndex] : null;
+            const createdAt = template?.createdAt ? new Date(template.createdAt) : null;
+            const createdLabel = createdAt && !Number.isNaN(createdAt.getTime())
+                ? createdAt.toLocaleDateString('es-AR')
+                : null;
+
+            return { name, template, shifts, totalHours, roles, assignedCount, timeRange, sourceDay, createdLabel };
+        });
+
+        if (summary) {
+            const totalTemplates = templateStats.length;
+            const totalShifts = templateStats.reduce((sum, item) => sum + item.shifts.length, 0);
+            const totalHours = templateStats.reduce((sum, item) => sum + item.totalHours, 0);
+            const summaryItems = [
+                [totalTemplates, totalTemplates === 1 ? "plantilla" : "plantillas"],
+                [totalShifts, totalShifts === 1 ? "turno" : "turnos"],
+                [`${String(totalHours).replace('.', ',')} hs`, "guardadas"]
+            ];
+            summaryItems.forEach(([value, label]) => {
+                summary.appendChild(create("div", { className: "template-summary-item" }, [
+                    create("strong", { textContent: value }),
+                    create("span", { textContent: label })
+                ]));
+            });
+        }
+
+        if (entries.length === 0) {
+            list.appendChild(create("div", { className: "templates-empty" }, [
+                create("strong", { textContent: "No hay plantillas guardadas" }),
+                create("span", { textContent: "Guarda un dia armado para reutilizarlo despues." })
+            ]));
             return;
         }
 
-        Object.entries(templates).forEach(([name, template]) => {
-            const item = create("div", { className: "template-item" });
-            const info = create("div", { style: { flex: 1 } });
-            info.appendChild(create("div", { style: { fontWeight: "600" }, textContent: name }));
-            if (template.description) {
-                info.appendChild(create("div", { className: "muted", style: { fontSize: "12px" }, textContent: template.description }));
-            }
-            item.appendChild(info);
+        templateStats.forEach(({ name, template, shifts, totalHours, roles, assignedCount, timeRange, sourceDay, createdLabel }) => {
+            const item = create("article", { className: "template-item" });
+            const header = create("div", { className: "template-item-header" });
+            const titleWrap = create("div", { className: "template-title-wrap" });
+            titleWrap.appendChild(create("h3", { textContent: name }));
 
-            const actions = create("div", { style: { display: "flex", gap: "5px" } });
+            const metaParts = [];
+            if (sourceDay) metaParts.push(sourceDay);
+            if (createdLabel) metaParts.push(`Guardada ${createdLabel}`);
+            if (metaParts.length) {
+                titleWrap.appendChild(create("div", { className: "template-meta muted", textContent: metaParts.join(" · ") }));
+            }
+            header.appendChild(titleWrap);
+            header.appendChild(create("span", { className: "template-count-pill", textContent: `${shifts.length} ${shifts.length === 1 ? "turno" : "turnos"}` }));
+            item.appendChild(header);
+
+            if (template.description) {
+                item.appendChild(create("p", { className: "template-description", textContent: template.description }));
+            }
+
+            const metrics = create("div", { className: "template-metrics" }, [
+                create("div", { className: "template-metric" }, [
+                    create("span", { textContent: "Horas" }),
+                    create("strong", { textContent: `${String(totalHours).replace('.', ',')} hs` })
+                ]),
+                create("div", { className: "template-metric" }, [
+                    create("span", { textContent: "Rango" }),
+                    create("strong", { textContent: timeRange })
+                ]),
+                create("div", { className: "template-metric" }, [
+                    create("span", { textContent: "Asignados" }),
+                    create("strong", { textContent: `${assignedCount}/${shifts.length}` })
+                ])
+            ]);
+            item.appendChild(metrics);
+
+            const roleRow = create("div", { className: "template-roles" });
+            if (roles.length) {
+                roles.slice(0, 6).forEach(role => roleRow.appendChild(create("span", { className: "template-role-chip", textContent: role })));
+                if (roles.length > 6) roleRow.appendChild(create("span", { className: "template-role-chip muted-chip", textContent: `+${roles.length - 6}` }));
+            } else {
+                roleRow.appendChild(create("span", { className: "template-role-chip muted-chip", textContent: "Sin puestos" }));
+            }
+            item.appendChild(roleRow);
+
+            const actions = create("div", { className: "template-actions" });
             actions.appendChild(create("button", {
                 className: "btn small", textContent: "Aplicar",
                 onClick: async () => {
                     const confirmed = await showConfirmDialog({
                         title: "Aplicar plantilla",
-                        message: `¿Aplicar plantilla "${name}"? Esto sobrescribirá el día actual.`
+                        message: `Aplicar plantilla "${name}"? Esto sobrescribira el dia actual.`
                     });
                     if (confirmed) this.applyTemplate(name);
                 }
             }));
             actions.appendChild(create("button", {
-                className: "btn small secondary del", innerHTML: "&times;",
+                className: "btn small secondary del", textContent: "Eliminar",
                 onClick: async () => {
                     const confirmed = await showConfirmDialog({
                         title: "Eliminar plantilla",
-                        message: `¿Eliminar plantilla "${name}"?`
+                        message: `Eliminar plantilla "${name}"?`
                     });
                     if (confirmed) this.deleteTemplate(name);
                 }
             }));
-
             item.appendChild(actions);
             list.appendChild(item);
         });
     },
-
     handleSwapSelection(shiftId) {
         if (this.isWeekLocked()) {
             showToast("La semana está bloqueada. Solo podés ver los turnos.", "warning");
@@ -679,6 +757,9 @@ export const ScheduleManager = {
             ...state.templates,
             [name]: {
                 description,
+                createdAt: new Date().toISOString(),
+                sourceDayIndex: state.activeDay,
+                sourceWeek: state.activeWeek,
                 shifts: templateShifts
             }
         };
