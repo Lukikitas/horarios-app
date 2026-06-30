@@ -520,8 +520,14 @@ export const ScheduleManager = {
         const templateStats = entries.map(([name, template]) => {
             const shifts = Array.isArray(template?.shifts) ? template.shifts : [];
             const totalHours = shifts.reduce((sum, shift) => sum + Math.max(0, ((shift.endSlot ?? shift.startSlot) - (shift.startSlot ?? 0) + 1) / 2), 0);
-            const roles = Array.from(new Set(shifts.map(shift => shift.role).filter(Boolean))).sort((a, b) => a.localeCompare(b));
-            const assignedCount = shifts.filter(shift => !!shift.employeeId).length;
+            const roleCounts = shifts.reduce((acc, shift) => {
+                if (!shift.role) return acc;
+                acc[shift.role] = (acc[shift.role] || 0) + 1;
+                return acc;
+            }, {});
+            const roleBreakdown = Object.entries(roleCounts)
+                .map(([role, count]) => ({ role, count }))
+                .sort((a, b) => b.count - a.count || a.role.localeCompare(b.role));
             const starts = shifts.map(shift => shift.startSlot).filter(slot => Number.isFinite(slot));
             const ends = shifts.map(shift => shift.endSlot).filter(slot => Number.isFinite(slot));
             const firstSlot = starts.length ? Math.min(...starts) : null;
@@ -535,7 +541,7 @@ export const ScheduleManager = {
                 ? createdAt.toLocaleDateString('es-AR')
                 : null;
 
-            return { name, template, shifts, totalHours, roles, assignedCount, timeRange, sourceDay, createdLabel };
+            return { name, template, shifts, totalHours, roleBreakdown, timeRange, sourceDay, createdLabel };
         });
 
         if (summary) {
@@ -563,7 +569,7 @@ export const ScheduleManager = {
             return;
         }
 
-        templateStats.forEach(({ name, template, shifts, totalHours, roles, assignedCount, timeRange, sourceDay, createdLabel }) => {
+        templateStats.forEach(({ name, template, shifts, totalHours, roleBreakdown, timeRange, sourceDay, createdLabel }) => {
             const item = create("article", { className: "template-item" });
             const header = create("div", { className: "template-item-header" });
             const titleWrap = create("div", { className: "template-title-wrap" });
@@ -593,16 +599,16 @@ export const ScheduleManager = {
                     create("strong", { textContent: timeRange })
                 ]),
                 create("div", { className: "template-metric" }, [
-                    create("span", { textContent: "Asignados" }),
-                    create("strong", { textContent: `${assignedCount}/${shifts.length}` })
+                    create("span", { textContent: "Puestos" }),
+                    create("strong", { textContent: roleBreakdown.length })
                 ])
             ]);
             item.appendChild(metrics);
 
             const roleRow = create("div", { className: "template-roles" });
-            if (roles.length) {
-                roles.slice(0, 6).forEach(role => roleRow.appendChild(create("span", { className: "template-role-chip", textContent: role })));
-                if (roles.length > 6) roleRow.appendChild(create("span", { className: "template-role-chip muted-chip", textContent: `+${roles.length - 6}` }));
+            if (roleBreakdown.length) {
+                roleBreakdown.slice(0, 6).forEach(({ role, count }) => roleRow.appendChild(create("span", { className: "template-role-chip", textContent: `${count} ${role}` })));
+                if (roleBreakdown.length > 6) roleRow.appendChild(create("span", { className: "template-role-chip muted-chip", textContent: `+${roleBreakdown.length - 6}` }));
             } else {
                 roleRow.appendChild(create("span", { className: "template-role-chip muted-chip", textContent: "Sin puestos" }));
             }
