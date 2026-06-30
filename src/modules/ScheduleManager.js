@@ -1205,7 +1205,8 @@ export const ScheduleManager = {
             this.printMonthlySchedule();
             return;
         }
-        const periodDays = this.getSchedulingPeriodDays();
+
+        const periodDays = Math.min(this.getSchedulingPeriodDays(), 7);
         const employees = state.employees
             .filter(emp => {
                 for (let dayOffset = 0; dayOffset < periodDays; dayOffset++) {
@@ -1213,52 +1214,62 @@ export const ScheduleManager = {
                 }
                 return false;
             })
-            .sort((a,b) => a.name.localeCompare(b.name));
+            .sort((a,b) => (a.name || '').localeCompare(b.name || ''));
 
         const monday = new Date(state.activeWeek + "T12:00:00Z");
         const periodEnd = new Date(monday);
         periodEnd.setDate(monday.getDate() + periodDays - 1);
         const formatDate = (d) => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
         const storeLabel = this.escapeHtml(this.getActiveStoreLabel());
+        const dayLabels = ["Lunes", "Martes", "Miercoles", "Jueves", "Viernes", "Sabado", "Domingo"].slice(0, periodDays);
+        const dayHeaders = dayLabels.map(day => `<th class="day-cell">${day}</th>`).join('');
 
-        const chunkSize = periodDays > 10 ? 7 : periodDays;
-        const sections = [];
-        for (let startOffset = 0; startOffset < periodDays; startOffset += chunkSize) {
-            const endOffset = Math.min(startOffset + chunkSize, periodDays);
-            const dayHeaders = [];
-            for (let dayOffset = startOffset; dayOffset < endOffset; dayOffset++) {
-                const dayDate = new Date(monday);
-                dayDate.setDate(monday.getDate() + dayOffset);
-                const dayName = dayDate.toLocaleDateString('es-AR', { weekday: 'short' }).replace('.', '');
-                dayHeaders.push(`<th>${this.escapeHtml(dayName)}<br>${dayDate.getDate()}/${dayDate.getMonth() + 1}</th>`);
+        const tableRows = employees.map(emp => {
+            const cells = [];
+
+            for (let dayOffset = 0; dayOffset < periodDays; dayOffset++) {
+                const dayShifts = this.getShiftsByDayOffset(dayOffset)
+                    .filter(s => s.employeeId === emp.id)
+                    .sort((a, b) => a.startSlot - b.startSlot);
+
+                if (dayShifts.length > 0) {
+                    const shiftsText = dayShifts.map(shift => {
+                        const startTime = SLOTS[shift.startSlot]?.label || '';
+                        const endTime = SLOTS[shift.endSlot + 1]?.label || "02:00";
+                        return `${startTime} - ${endTime}`;
+                    }).join('<br>');
+                    cells.push(`<td class="day-cell">${shiftsText}</td>`);
+                } else {
+                    cells.push('<td class="day-cell rest-cell">Descanso</td>');
+                }
             }
 
-            let tableRows = '';
-            employees.forEach(emp => {
-                let row = `<tr><td>${this.escapeHtml(emp.name)}</td>`;
-                for (let dayOffset = startOffset; dayOffset < endOffset; dayOffset++) {
-                    const dayShifts = this.getShiftsByDayOffset(dayOffset).filter(s => s.employeeId === emp.id);
-                    if (dayShifts.length > 0) {
-                        const shift = dayShifts[0];
-                        const startTime = SLOTS[shift.startSlot].label;
-                        const endTime = SLOTS[shift.endSlot + 1] ? SLOTS[shift.endSlot + 1].label : "02:00";
-                        row += `<td>${startTime}<br>${endTime}</td>`;
-                    } else {
-                        row += `<td>OFF</td>`;
-                    }
-                }
-                row += '</tr>';
-                tableRows += row;
-            });
+            return `<tr><td class="name-cell">${this.escapeHtml(emp.name || 'Sin nombre')}</td>${cells.join('')}</tr>`;
+        }).join('');
 
-            sections.push(`<section class="print-section"><h3>Días ${startOffset + 1} al ${endOffset}</h3><table><thead><tr><th>Nombre</th>${dayHeaders.join('')}</tr></thead><tbody>${tableRows}</tbody></table></section>`);
-        }
+        const printStyles = `
+            body{font-family:Arial,sans-serif;margin:0;color:#111;font-size:8.5px}
+            .sheet{padding:6mm 5mm}
+            .legal-title{margin:0 0 6px;text-align:center;font-size:13px;font-weight:700;letter-spacing:.2px}
+            .meta{display:flex;justify-content:space-between;gap:12px;margin:0 0 5px;font-size:10px;line-height:1.2}
+            .meta strong{font-weight:700}
+            table{width:100%;border-collapse:collapse;table-layout:fixed}
+            th,td{border:1px solid #777;padding:3px 4px;text-align:center;vertical-align:middle;line-height:1.15;word-break:break-word}
+            th{font-weight:700;background:#fff}
+            tr{break-inside:avoid;page-break-inside:avoid}
+            .name-cell{width:27%;text-align:left;font-weight:700}
+            .day-cell{width:10.42%}
+            .rest-cell{font-weight:400}
+            @media print{
+                @page{size:landscape;margin:7mm}
+                body{print-color-adjust:exact;-webkit-print-color-adjust:exact}
+                .sheet{padding:0}
+            }`;
 
         const w = window.open('', '', 'height=800,width=1200');
-        w.document.write(`<html><head><title>Horarios</title><style>body{font-family:sans-serif;font-size:9px}h3{margin:8px 0}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #ccc;padding:4px;text-align:center;word-wrap:break-word}th{background:#f2f2f2}.print-section{margin-bottom:14px}@media print{@page{size:landscape;margin:8mm}.print-section{page-break-after:always}.print-section:last-child{page-break-after:auto}}</style></head><body><h2>${storeLabel} - Período ${formatDate(monday)} al ${formatDate(periodEnd)}</h2>${sections.join('')}<script>setTimeout(()=>{window.print();window.close()},500)</script></body></html>`);
+        w.document.write(`<html><head><title>Planilla de horarios</title><style>${printStyles}</style></head><body><div class="sheet"><h1 class="legal-title">PLANILLA DE HORARIOS CONFORME AL ART. 6 DE LEY 11544</h1><div class="meta"><span><strong>Departamento:</strong> ${storeLabel}</span><span><strong>Semana del :</strong> ${formatDate(monday)} al ${formatDate(periodEnd)}</span></div><table><thead><tr><th class="name-cell">Apellido y Nombre</th>${dayHeaders}</tr></thead><tbody>${tableRows}</tbody></table></div><script>setTimeout(()=>{window.print();window.close()},500)</script></body></html>`);
         w.document.close();
     },
-
     printMonthlySchedule() {
         const state = store.getState();
         const monthValue = this.getMonthlySelectedMonth();
