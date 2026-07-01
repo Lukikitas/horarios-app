@@ -906,7 +906,7 @@ export const ScheduleManager = {
                     style: { flexDirection: "column", alignItems: "flex-start", justifyContent: "center", position: "relative" }
                 });
 
-                const detailsDiv = create("div");
+                const detailsDiv = create("div", { className: "shift-details" });
                 detailsDiv.appendChild(create("div", { style: { fontWeight: "600" }, textContent: shift.role }));
 
                 const startTime = SLOTS[shift.startSlot].label;
@@ -914,7 +914,7 @@ export const ScheduleManager = {
                 const duration = (shift.endSlot - shift.startSlot + 1) * 0.5;
                 detailsDiv.appendChild(create("div", { className: "muted", style: { fontSize: "12px" }, textContent: `${startTime} - ${endTime} (${String(duration).replace('.',',')}hs)` }));
 
-                const assignWrapper = create("div", { className: "row", style: { marginTop: "4px" } });
+                const assignWrapper = create("div", { className: "row shift-assign-row", style: { marginTop: "4px" } });
 
                 if (shift.employeeId) {
                     const emp = state.employees.find(e => e.id === shift.employeeId);
@@ -964,7 +964,7 @@ export const ScheduleManager = {
                 namecol.appendChild(detailsDiv);
 
                 // Actions Div
-                const actionsDiv = create("div", { className: "row", style: { position: "absolute", top: "5px", right: "5px" } });
+                const actionsDiv = create("div", { className: "row shift-actions", style: { position: "absolute", top: "5px", right: "5px" } });
                 actionsDiv.appendChild(create("button", {
                     className: "btn secondary swap-button", innerHTML: "⇄",
                     style: { padding: "2px 6px", fontSize: "10px" }, title: "Intercambiar turno",

@@ -3210,6 +3210,48 @@ body.dark-mode .monthly-grid-table tbody tr + tr td {
     min-width: 132px;
     max-width: 132px;
     padding: 8px;
+    align-items: stretch !important;
+    justify-content: flex-start !important;
+  }
+
+  .shift-details {
+    min-width: 0;
+    width: 100%;
+    padding-right: 0;
+  }
+
+  .shift-assign-row {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 6px;
+    width: 100%;
+  }
+
+  .shift-assign-row span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    line-height: 1.25;
+  }
+
+  .shift-assign-row .btn {
+    min-height: 34px;
+    white-space: normal;
+  }
+
+  .shift-actions {
+    position: static !important;
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(32px, 1fr));
+    gap: 6px;
+    width: 100%;
+    margin-top: 8px;
+  }
+
+  .shift-actions .btn {
+    min-width: 0;
+    min-height: 34px;
+    padding: 4px 6px !important;
+    font-size: 12px !important;
   }
 
   .name {
