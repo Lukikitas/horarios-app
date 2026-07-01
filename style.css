@@ -3078,8 +3078,8 @@ body.dark-mode .monthly-grid-table tbody tr + tr td {
   }
 
   #view-schedule .card {
-    height: calc(100dvh - 250px);
-    min-height: 430px;
+    height: auto;
+    min-height: 0;
   }
 
   #view-schedule .card-h {
@@ -3195,7 +3195,10 @@ body.dark-mode .monthly-grid-table tbody tr + tr td {
   }
 
   .scroller {
-    min-height: 0;
+    flex: 0 0 auto;
+    height: 58dvh;
+    min-height: 360px;
+    max-height: 620px;
     overscroll-behavior: contain;
   }
 
@@ -3591,6 +3594,11 @@ body.dark-mode .monthly-grid-table tbody tr + tr td {
 
   .day-metrics {
     grid-template-columns: 1fr;
+  }
+
+  .scroller {
+    height: 56dvh;
+    min-height: 320px;
   }
 
   .week-selector {
