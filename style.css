@@ -2876,3 +2876,724 @@ body.dark-mode .monthly-grid-table tbody tr + tr td {
     grid-template-columns: 1fr;
   }
 }
+
+/* Mobile usability pass: overrides only for phone layouts */
+@media (max-width: 768px) {
+  html,
+  body {
+    width: 100%;
+    min-height: 100dvh;
+    overflow-x: hidden;
+    font-size: 15px;
+  }
+
+  body {
+    background: var(--bg);
+  }
+
+  .main-content {
+    width: 100%;
+    min-width: 0;
+    padding-bottom: calc(76px + env(safe-area-inset-bottom));
+  }
+
+  .wrap,
+  #view-schedule.wrap,
+  #view-employees.wrap,
+  #view-templates.wrap,
+  #view-francos.wrap,
+  #view-schedule-list.wrap,
+  #view-options.wrap,
+  #view-clock-ins.wrap,
+  #view-requests.wrap,
+  #view-planilla-turno.wrap {
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 10px !important;
+    margin: 0 !important;
+  }
+
+  .card {
+    border-radius: 10px;
+  }
+
+  .card-h,
+  .card-c {
+    padding: 12px;
+  }
+
+  .row {
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+
+  .btn,
+  .select,
+  .input,
+  .file {
+    min-height: 44px;
+    font-size: 15px;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px 12px;
+    touch-action: manipulation;
+  }
+
+  .select,
+  .input,
+  textarea.input {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .bar {
+    position: sticky;
+    top: 0;
+    z-index: 300;
+  }
+
+  .bar-inner.main-bar-row {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    padding: 10px;
+  }
+
+  .main-bar-left,
+  .main-bar-right,
+  #main-menu.header-nav {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .main-bar-left {
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .header-logo {
+    width: 34px;
+    height: 34px;
+    margin-top: 2px;
+  }
+
+  #main-menu.header-nav {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .header-nav-primary {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(112px, 1fr);
+    gap: 6px;
+    width: 100%;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scroll-snap-type: x proximity;
+  }
+
+  .header-nav-primary .btn {
+    min-width: 112px;
+    width: 100%;
+    scroll-snap-align: start;
+    white-space: normal;
+    line-height: 1.15;
+  }
+
+  .more-dropdown,
+  .tools-dropdown,
+  .account-dropdown {
+    min-width: 0;
+  }
+
+  #main-menu.header-nav > .dropdown {
+    width: 100%;
+  }
+
+  #main-menu.header-nav > .dropdown .header-dropdown-trigger {
+    width: 100%;
+  }
+
+  .dropdown-content,
+  .dropdown-content-panels,
+  .filter-dropdown .dropdown-content,
+  .export-dropdown-content {
+    left: 0;
+    right: auto;
+    width: min(340px, calc(100vw - 20px));
+    min-width: min(340px, calc(100vw - 20px));
+    max-height: min(70dvh, 520px);
+    overflow-y: auto;
+  }
+
+  .main-bar-right {
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .main-bar-right > * {
+    min-width: 0;
+  }
+
+  .session-banner {
+    flex: 1 1 auto;
+    gap: 6px;
+    overflow-x: auto;
+    margin-left: 0;
+  }
+
+  #admin-contact-header-alert {
+    width: 100%;
+    white-space: normal;
+  }
+
+  .week-selector {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 44px 44px minmax(0, 1fr) 44px;
+    gap: 6px;
+    padding: 6px;
+  }
+
+  .week-selector .btn {
+    width: 100%;
+    padding-inline: 8px;
+  }
+
+  #week-display {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  #monthly-top-month {
+    grid-column: 1 / -1;
+    min-width: 0 !important;
+  }
+
+  #view-schedule .card {
+    height: calc(100dvh - 250px);
+    min-height: 430px;
+  }
+
+  #view-schedule .card-h {
+    padding: 10px;
+  }
+
+  .card-h-controls {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .controls-left,
+  .controls-center,
+  .controls-right,
+  .controls-group {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .controls-left,
+  .controls-right {
+    justify-content: stretch;
+  }
+
+  .controls-left > *,
+  .controls-right > *,
+  .controls-group > *,
+  .control-item {
+    min-width: 0;
+  }
+
+  .controls-group {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .controls-group .control-item,
+  .controls-filters {
+    grid-column: span 2;
+  }
+
+  .control-item {
+    align-items: stretch;
+  }
+
+  .control-item label {
+    white-space: normal;
+    font-size: 12px;
+  }
+
+  .day-title-row,
+  .day-metrics,
+  .weekly-stats {
+    width: 100%;
+  }
+
+  .day-title {
+    width: 100%;
+    white-space: normal;
+    font-size: 16px;
+    line-height: 1.2;
+  }
+
+  .day-metrics {
+    display: grid;
+    grid-template-columns: 1fr auto;
+  }
+
+  .day-metrics .input-compact {
+    width: 100%;
+  }
+
+  .weekly-stats {
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+
+  .weekly-stat-pill {
+    flex: 0 0 auto;
+    min-height: 34px;
+  }
+
+  #dayTabs {
+    width: 100%;
+    display: grid !important;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(72px, 1fr);
+    gap: 6px;
+    overflow-x: auto;
+    flex-wrap: nowrap !important;
+    padding-bottom: 4px;
+  }
+
+  .pilltab {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    line-height: 1.15;
+    white-space: normal;
+  }
+
+  .scroller,
+  #schedule-list-content,
+  #monthly-planner-grid,
+  #francos-content,
+  #clock-in-report-content {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .scroller {
+    min-height: 0;
+    overscroll-behavior: contain;
+  }
+
+  .table {
+    min-width: 920px;
+  }
+
+  .namecol {
+    min-width: 132px;
+    max-width: 132px;
+    padding: 8px;
+  }
+
+  .name {
+    white-space: normal;
+    line-height: 1.15;
+    font-size: 13px;
+  }
+
+  .slot {
+    min-height: 44px;
+  }
+
+  .slot.assigned {
+    min-height: 40px;
+  }
+
+  .slot.assigned .label {
+    font-size: 11px;
+    line-height: 1.1;
+    padding: 2px;
+    text-align: center;
+  }
+
+  .slot-h {
+    min-height: 34px;
+    font-size: 11px;
+  }
+
+  .legend-footer {
+    padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+  }
+
+  .legend-footer .legend {
+    justify-content: flex-start;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    white-space: nowrap;
+    gap: 10px;
+  }
+
+  .legend-footer .legend > div {
+    flex: 0 0 auto;
+  }
+
+  .schedule-list-table {
+    min-width: 760px;
+    table-layout: auto;
+    font-size: 13px;
+  }
+
+  .schedule-list-table th,
+  .schedule-list-table td {
+    padding: 8px;
+  }
+
+  .schedule-list-table th:first-child,
+  .schedule-list-table td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 5;
+    width: 132px;
+    min-width: 132px;
+    background: var(--card);
+    text-align: left;
+    box-shadow: 2px 0 0 var(--border);
+  }
+
+  .schedule-list-table th:first-child {
+    background: var(--bg-secondary);
+    z-index: 8;
+  }
+
+  .schedule-list-shift {
+    min-height: 42px;
+    padding: 7px 8px;
+    font-size: 12px;
+    line-height: 1.2;
+  }
+
+  .schedule-list-monthly-table {
+    min-width: 980px;
+  }
+
+  .monthly-grid-table {
+    min-width: 980px;
+    font-size: 11px;
+  }
+
+  .monthly-employee-cell {
+    width: 150px;
+    min-width: 150px;
+    max-width: 150px;
+  }
+
+  .monthly-shift-cell {
+    width: 64px;
+    min-width: 64px;
+    max-width: 64px;
+    height: 58px;
+  }
+
+  #monthly-planner-editor {
+    position: static;
+    display: grid !important;
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  #monthly-planner-editor .row {
+    width: 100%;
+  }
+
+  .employee-overview-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .employee-stat-card {
+    min-height: auto;
+    padding: 10px;
+  }
+
+  .stat-value {
+    font-size: 22px;
+  }
+
+  .employee-controls-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .employee-form-row,
+  .filter-badges,
+  .export-controls,
+  .utilities-body .row {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px !important;
+  }
+
+  .employee-form-row .input,
+  .employee-form-row #btnAddEmp,
+  #inpName,
+  #inpDni,
+  #inpMail,
+  #inpCell,
+  #empSearch,
+  #empFilter,
+  #empSort,
+  #btn-clear-emp-filters,
+  .export-controls .btn {
+    width: 100%;
+    min-width: 0;
+  }
+
+  #empList,
+  .employee-detail-panel {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .emp-table-new {
+    min-width: 780px;
+    font-size: 13px;
+  }
+
+  .emp-table-new th,
+  .emp-table-new td {
+    padding: 8px;
+    font-size: 13px;
+  }
+
+  .emp-table-new .actions-cell-new {
+    width: 180px;
+  }
+
+  .emp-table-new .actions-cell-new .btn {
+    min-height: 38px;
+    white-space: normal;
+  }
+
+  .employee-availability-cell {
+    min-width: 180px;
+  }
+
+  .templates-card {
+    min-height: auto;
+  }
+
+  .templates-header,
+  .template-summary,
+  .template-item-header,
+  .template-actions {
+    align-items: stretch;
+    justify-content: flex-start;
+  }
+
+  .template-summary,
+  .template-actions {
+    width: 100%;
+  }
+
+  .template-summary-item,
+  .template-actions .btn {
+    flex: 1 1 100%;
+  }
+
+  .template-editor,
+  .template-editor-fields,
+  .template-metrics,
+  .role-row,
+  .admin-user-grid,
+  .rules-grid,
+  .requests-detail-grid,
+  .planilla-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .role-row {
+    align-items: stretch;
+  }
+
+  .requests-header > .row,
+  .requests-header input,
+  .requests-header select,
+  .requests-header .row > * {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .requests-layout {
+    min-height: 0;
+  }
+
+  .requests-list,
+  .requests-detail {
+    padding: 10px;
+  }
+
+  .requests-list {
+    max-height: none;
+  }
+
+  .request-card {
+    grid-template-columns: 1fr;
+  }
+
+  .request-actions {
+    width: 100%;
+    justify-content: stretch;
+    flex-wrap: wrap;
+  }
+
+  .request-actions .btn {
+    flex: 1 1 120px;
+  }
+
+  .detail-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  #view-planilla-turno .card-h {
+    gap: 8px;
+    align-items: stretch;
+  }
+
+  #view-planilla-turno .card-h > * {
+    margin-left: 0 !important;
+  }
+
+  .planilla-columna,
+  .breaks-section {
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .planilla-tabla,
+  .breaks-table,
+  .clock-in-table-internal {
+    min-width: 620px;
+  }
+
+  .modal-overlay {
+    align-items: stretch;
+    justify-content: center;
+    padding: 10px;
+  }
+
+  .modal-content,
+  #weekly-summary-modal .modal-content,
+  #calendar-modal .modal-content,
+  .assign-employee-modal,
+  .feedback-modal-content {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    max-height: calc(100dvh - 20px);
+    margin: 0 !important;
+  }
+
+  .modal-content .card,
+  .assign-employee-modal {
+    max-height: calc(100dvh - 20px);
+  }
+
+  .modal-content .card-h,
+  .feedback-modal-header {
+    gap: 8px;
+    align-items: center;
+  }
+
+  .modal-content .card-c,
+  .assign-employee-modal-body,
+  .feedback-modal-body {
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .assign-employee-modal-footer,
+  .feedback-modal-footer {
+    position: sticky;
+    bottom: 0;
+    background: var(--card);
+    border-top: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+
+  .assign-employee-modal-footer .btn,
+  .feedback-modal-footer .btn {
+    flex: 1 1 120px;
+  }
+
+  .shift-context-menu,
+  .monthly-context-menu {
+    position: fixed;
+    left: 10px !important;
+    right: 10px !important;
+    top: auto !important;
+    bottom: calc(12px + env(safe-area-inset-bottom)) !important;
+    width: auto;
+  }
+
+  .shift-context-menu button,
+  .monthly-context-menu button {
+    min-height: 44px;
+    font-size: 15px;
+  }
+
+  .toast-container {
+    left: 10px;
+    right: 10px;
+    bottom: calc(80px + env(safe-area-inset-bottom));
+  }
+
+  .toast {
+    width: 100%;
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 420px) {
+  .employee-overview-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .main-bar-left {
+    flex-direction: column;
+  }
+
+  .header-logo {
+    align-self: flex-start;
+  }
+
+  .controls-group {
+    grid-template-columns: 1fr;
+  }
+
+  .controls-group .control-item,
+  .controls-filters {
+    grid-column: 1;
+  }
+
+  .day-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .week-selector {
+    grid-template-columns: 44px 44px 1fr 44px;
+  }
+}
